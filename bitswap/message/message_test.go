@@ -2,6 +2,7 @@ package message
 
 import (
 	"bytes"
+	"slices"
 	"testing"
 
 	"github.com/ipfs/boxo/bitswap/client/wantlist"
@@ -9,6 +10,7 @@ import (
 	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
 	"github.com/ipfs/go-test/random"
+	"google.golang.org/protobuf/proto"
 )
 
 func mkFakeCid(s string) cid.Cid {
@@ -20,26 +22,31 @@ func TestAppendWanted(t *testing.T) {
 	m := New(true)
 	m.AddEntry(str, 1, pb.Message_Wantlist_Block, true)
 
-	if !wantlistContains(&m.ToProtoV0().Wantlist, str) {
+	if !wantlistContains(m.ToProtoV0().Wantlist, str) {
 		t.Fail()
 	}
 }
 
 func TestNewMessageFromProto(t *testing.T) {
 	str := mkFakeCid("a_key")
-	protoMessage := new(pb.Message)
-	protoMessage.Wantlist.Entries = []pb.Message_Wantlist_Entry{
-		{Block: pb.Cid{Cid: str}},
+
+	protoMessage := &pb.Message{
+		Wantlist: &pb.Message_Wantlist{
+			Entries: []*pb.Message_Wantlist_Entry{
+				{Block: str.Bytes()},
+			},
+		},
 	}
-	if !wantlistContains(&protoMessage.Wantlist, str) {
+
+	if !wantlistContains(protoMessage.Wantlist, str) {
 		t.Fail()
 	}
-	m, err := newMessageFromProto(*protoMessage)
+	m, err := newMessageFromProto(protoMessage)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if !wantlistContains(&m.ToProtoV0().Wantlist, str) {
+	if !wantlistContains(m.ToProtoV0().Wantlist, str) {
 		t.Fail()
 	}
 }
@@ -58,7 +65,7 @@ func TestAppendBlock(t *testing.T) {
 	// assert strings are in proto message
 	for _, blockbytes := range m.ToProtoV0().GetBlocks() {
 		s := bytes.NewBuffer(blockbytes).String()
-		if !contains(strs, s) {
+		if !slices.Contains(strs, s) {
 			t.Fail()
 		}
 	}
@@ -91,7 +98,7 @@ func TestCopyProtoByValue(t *testing.T) {
 	m := New(true)
 	protoBeforeAppend := m.ToProtoV0()
 	m.AddEntry(str, 1, pb.Message_Wantlist_Block, true)
-	if wantlistContains(&protoBeforeAppend.Wantlist, str) {
+	if wantlistContains(protoBeforeAppend.Wantlist, str) {
 		t.Fail()
 	}
 }
@@ -109,7 +116,7 @@ func TestToNetFromNetPreservesWantList(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	copied, err := FromNet(buf)
+	copied, _, err := FromNet(buf)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -142,7 +149,7 @@ func TestToAndFromNetMessage(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	m2, err := FromNet(buf)
+	m2, _, err := FromNet(buf)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -161,16 +168,8 @@ func TestToAndFromNetMessage(t *testing.T) {
 
 func wantlistContains(wantlist *pb.Message_Wantlist, c cid.Cid) bool {
 	for _, e := range wantlist.GetEntries() {
-		if e.Block.Cid.Defined() && c.Equals(e.Block.Cid) {
-			return true
-		}
-	}
-	return false
-}
-
-func contains(strs []string, x string) bool {
-	for _, s := range strs {
-		if s == x {
+		blkCid, err := cid.Cast(e.Block)
+		if err == nil && blkCid.Defined() && c.Equals(blkCid) {
 			return true
 		}
 	}
@@ -299,7 +298,7 @@ func TestEntrySize(t *testing.T) {
 		Cancel:       false,
 	}
 	epb := e.ToPB()
-	if e.Size() != epb.Size() {
-		t.Fatal("entry size calculation incorrect", e.Size(), epb.Size())
+	if e.Size() != proto.Size(epb) {
+		t.Fatal("entry size calculation incorrect", e.Size(), proto.Size(epb))
 	}
 }

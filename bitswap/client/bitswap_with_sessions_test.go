@@ -318,7 +318,7 @@ func TestFetchNotConnected(t *testing.T) {
 }
 
 func TestFetchAfterDisconnect(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	vnet := getVirtualNetwork()
@@ -560,4 +560,36 @@ func TestWantlistClearsOnCancel(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
+}
+
+func TestDontHaveTimeoutConfig(t *testing.T) {
+	cfg := client.DefaultDontHaveTimeoutConfig()
+	if cfg.DontHaveTimeout <= 0 {
+		t.Fatal("invalid default dont have timeout")
+	}
+
+	vnet := getVirtualNetwork()
+	router := mockrouting.NewServer()
+	ig := testinstance.NewTestInstanceGenerator(vnet, router, nil, nil)
+	defer ig.Close()
+
+	a := ig.Next()
+
+	// Replace bitswap in instance a with our customized one.
+	pqm, err := providerquerymanager.New(a.Adapter, router.Client(a.Identity))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pqm.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	bs := bitswap.New(ctx, a.Adapter, pqm, a.Blockstore,
+		bitswap.WithClientOption(client.WithDontHaveTimeoutConfig(cfg)))
+	a.Exchange.Close()
+	a.Exchange = bs
+
+	a.Exchange.Close()
+	bs.Close()
 }

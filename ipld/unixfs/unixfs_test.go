@@ -6,9 +6,8 @@ import (
 	"testing"
 	"time"
 
-	proto "github.com/gogo/protobuf/proto"
-
 	pb "github.com/ipfs/boxo/ipld/unixfs/pb"
+	"google.golang.org/protobuf/proto"
 )
 
 func TestFSNode(t *testing.T) {
@@ -220,7 +219,7 @@ func TestMode(t *testing.T) {
 		t.Fatal("expected mode not to be set")
 	}
 
-	fileMode := os.FileMode(0640)
+	fileMode := os.FileMode(0o640)
 	fsn.SetMode(fileMode)
 	if !fsn.Mode().IsRegular() {
 		t.Fatal("expected a regular file mode")
@@ -283,7 +282,7 @@ func TestMode(t *testing.T) {
 	fsn.SetMode(fileMode | os.ModeSetuid | os.ModeSticky)
 	pbn := fsn.getPbData(t)
 	// unix perms setuid and sticky bits should also be set
-	expected := uint32(05000 | (fileMode & os.ModePerm))
+	expected := uint32(0o5000 | (fileMode & os.ModePerm))
 	if *pbn.Mode != expected {
 		t.Fatalf("expected stored permissions to be %O but got %O", expected, *pbn.Mode)
 	}
@@ -305,7 +304,7 @@ func TestMode(t *testing.T) {
 func TestExtendedMode(t *testing.T) {
 	fsn := NewFSNode(TFile)
 	fsn.SetMode(os.ModePerm | os.ModeSetuid | os.ModeSticky)
-	const expectedUnixMode = uint32(05777)
+	const expectedUnixMode = uint32(0o5777)
 
 	expectedExtMode := uint32(0xAAAAA)
 	fsn.SetExtendedMode(expectedExtMode)

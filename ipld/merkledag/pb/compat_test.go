@@ -1,4 +1,4 @@
-package merkledag_pb
+package pb
 
 // mirrored in JavaScript @ https://github.com/ipld/js-dag-pb/blob/master/test/test-compat.js
 
@@ -6,6 +6,8 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"testing"
+
+	"google.golang.org/protobuf/proto"
 )
 
 var (
@@ -76,7 +78,7 @@ var testCases = []testCase{
 	{
 		name:          "Data some Links empty",
 		node:          &PBNode{Data: dataSome, Links: []*PBLink{{}}},
-		expectedBytes: "12000a050001020304",
+		expectedBytes: "0a0500010203041200",
 		expectedForm: `{
 	"Data": "0001020304",
 	"Links": [
@@ -242,13 +244,13 @@ func verifyRoundTrip(t *testing.T, tc testCase) {
 }
 
 func nodeRoundTripToString(t *testing.T, n *PBNode) (string, string, error) {
-	bytes, err := n.Marshal()
+	bytes, err := proto.Marshal(n)
 	if err != nil {
 		return "", "", err
 	}
 	t.Logf("[%v]\n", hex.EncodeToString(bytes))
 	rt := new(PBNode)
-	if err := rt.Unmarshal(bytes); err != nil {
+	if err := proto.Unmarshal(bytes, rt); err != nil {
 		return "", "", err
 	}
 	str, err := json.MarshalIndent(cleanPBNode(t, rt), "", "\t")
@@ -262,10 +264,6 @@ func nodeRoundTripToString(t *testing.T, n *PBNode) (string, string, error) {
 func cleanPBLink(t *testing.T, link *PBLink) map[string]interface{} {
 	if link == nil {
 		return nil
-	}
-	// this would be a bad pb decode
-	if link.XXX_unrecognized != nil {
-		t.Fatal("Got unexpected XXX_unrecognized")
 	}
 	nl := make(map[string]interface{})
 	if link.Hash != nil {
@@ -282,10 +280,6 @@ func cleanPBLink(t *testing.T, link *PBLink) map[string]interface{} {
 
 // convert a PBNode into a map for clean JSON marshalling
 func cleanPBNode(t *testing.T, node *PBNode) map[string]interface{} {
-	// this would be a bad pb decode
-	if node.XXX_unrecognized != nil {
-		t.Fatal("Got unexpected XXX_unrecognized")
-	}
 	nn := make(map[string]interface{})
 	if node.Data != nil {
 		nn["Data"] = hex.EncodeToString(node.Data)

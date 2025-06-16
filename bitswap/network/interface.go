@@ -5,30 +5,15 @@ import (
 	"time"
 
 	bsmsg "github.com/ipfs/boxo/bitswap/message"
-	"github.com/ipfs/boxo/bitswap/network/internal"
-
 	cid "github.com/ipfs/go-cid"
-
-	"github.com/libp2p/go-libp2p/core/connmgr"
+	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/libp2p/go-libp2p/core/routing"
 	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
-)
-
-var (
-	// ProtocolBitswapNoVers is equivalent to the legacy bitswap protocol
-	ProtocolBitswapNoVers = internal.ProtocolBitswapNoVers
-	// ProtocolBitswapOneZero is the prefix for the legacy bitswap protocol
-	ProtocolBitswapOneZero = internal.ProtocolBitswapOneZero
-	// ProtocolBitswapOneOne is the prefix for version 1.1.0
-	ProtocolBitswapOneOne = internal.ProtocolBitswapOneOne
-	// ProtocolBitswap is the current version of the bitswap protocol: 1.2.0
-	ProtocolBitswap = internal.ProtocolBitswap
 )
 
 // BitSwapNetwork provides network connectivity for BitSwap sessions.
 type BitSwapNetwork interface {
-	Self() peer.ID
-
 	// SendMessage sends a BitSwap message to a peer.
 	SendMessage(
 		context.Context,
@@ -45,18 +30,27 @@ type BitSwapNetwork interface {
 
 	NewMessageSender(context.Context, peer.ID, *MessageSenderOpts) (MessageSender, error)
 
-	ConnectionManager() connmgr.ConnManager
+	Host() host.Host
 
 	Stats() Stats
 
+	Self() peer.ID
 	Pinger
+	PeerTagger
+}
+
+// PeerTagger is an interface for tagging peers with metadata
+type PeerTagger interface {
+	TagPeer(peer.ID, string, int)
+	UntagPeer(peer.ID, string)
+	Protect(peer.ID, string)
+	Unprotect(peer.ID, string) bool
 }
 
 // MessageSender is an interface for sending a series of messages over the bitswap
 // network
 type MessageSender interface {
 	SendMsg(context.Context, bsmsg.BitSwapMessage) error
-	Close() error
 	Reset() error
 	// Indicates whether the remote peer supports HAVE / DONT_HAVE messages
 	SupportsHave() bool
@@ -85,8 +79,7 @@ type Receiver interface {
 // Routing is an interface to providing and finding providers on a bitswap
 // network.
 type Routing interface {
-	// FindProvidersAsync returns a channel of providers for the given key.
-	FindProvidersAsync(context.Context, cid.Cid, int) <-chan peer.AddrInfo
+	routing.ContentDiscovery
 
 	// Provide provides the key to the network.
 	Provide(context.Context, cid.Cid) error

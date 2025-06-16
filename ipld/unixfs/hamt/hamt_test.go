@@ -6,8 +6,9 @@ import (
 	"fmt"
 	"math/rand"
 	"os"
-	"sort"
+	"slices"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -60,6 +61,12 @@ func makeDirWidth(ds ipld.DAGService, size, width int) ([]string, *Shard, error)
 	return dirs, s, nil
 }
 
+func sortLinks(links []*ipld.Link) {
+	slices.SortStableFunc(links, func(a, b *ipld.Link) int {
+		return strings.Compare(a.Name, b.Name)
+	})
+}
+
 func assertLink(s *Shard, name string, found bool) error {
 	_, err := s.Find(context.Background(), name)
 	switch err {
@@ -85,8 +92,8 @@ func assertLinksEqual(linksA []*ipld.Link, linksB []*ipld.Link) error {
 		return errors.New("links arrays are different sizes")
 	}
 
-	sort.Stable(dag.LinkSlice(linksA))
-	sort.Stable(dag.LinkSlice(linksB))
+	sortLinks(linksA)
+	sortLinks(linksB)
 	for i, a := range linksA {
 		b := linksB[i]
 		if a.Name != b.Name {
@@ -513,7 +520,7 @@ func TestRemoveElemsAfterMarshal(t *testing.T) {
 	}
 	ctx := context.Background()
 
-	sort.Strings(dirs)
+	slices.Sort(dirs)
 
 	err = s.Remove(ctx, dirs[0])
 	if err != nil {

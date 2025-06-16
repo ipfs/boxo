@@ -1,10 +1,9 @@
-// Package bitswap implements the IPFS exchange interface with the BitSwap
+// Package client implements the IPFS exchange interface with the BitSwap
 // bilateral exchange protocol.
 package client
 
 import (
 	"context"
-	"errors"
 	"sync"
 	"time"
 
@@ -32,11 +31,19 @@ import (
 	logging "github.com/ipfs/go-log/v2"
 	"github.com/ipfs/go-metrics-interface"
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/libp2p/go-libp2p/core/routing"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
+	"go.uber.org/zap/zapcore"
 )
 
 var log = logging.Logger("bitswap/client")
+
+type DontHaveTimeoutConfig = bsmq.DontHaveTimeoutConfig
+
+func DefaultDontHaveTimeoutConfig() *DontHaveTimeoutConfig {
+	return bsmq.DefaultDontHaveTimeoutConfig()
+}
 
 // Option defines the functional option type that can be used to configure
 // bitswap instances
@@ -69,9 +76,18 @@ func SetSimulateDontHavesOnTimeout(send bool) Option {
 	}
 }
 
-func WithDontHaveTimeoutConfig(cfg *bsmq.DontHaveTimeoutConfig) Option {
+func WithDontHaveTimeoutConfig(cfg *DontHaveTimeoutConfig) Option {
 	return func(bs *Client) {
 		bs.dontHaveTimeoutConfig = cfg
+	}
+}
+
+// WithPerPeerSendDelay determines how long to wait, based on the number of
+// peers, for wants to accumulate before sending a bitswap message to peers. A
+// value of 0 uses bitswap messagequeue default.
+func WithPerPeerSendDelay(delay time.Duration) Option {
+	return func(bs *Client) {
+		bs.perPeerSendDelay = delay
 	}
 }
 
@@ -109,9 +125,7 @@ func WithoutDuplicatedBlockStats() Option {
 // lookups. The bitswap default ProviderQueryManager uses these options, which
 // may be more conservative than the ProviderQueryManager defaults:
 //
-//   - WithMaxInProcessRequests(16)
-//   - WithMaxProviders(10)
-//   - WithMaxTimeout(10 *time.Second)
+//   - WithMaxProviders(defaults.BitswapClientDefaultMaxProviders)
 //
 // To use a custom ProviderQueryManager, set to false and wrap directly the
 // content router provided with the WithContentRouting() option. Only takes
@@ -122,6 +136,69 @@ func WithDefaultProviderQueryManager(defaultProviderQueryManager bool) Option {
 	}
 }
 
+// BroadcastControlEnable enables or disables broadcast reduction logic.
+// Setting this to false restores the previous broadcast behavior of sending
+// broadcasts to all peers, and ignores all other BroadcastControl options.
+// Default is false (disabled).
+func BroadcastControlEnable(enable bool) Option {
+	return func(bs *Client) {
+		bs.bcastControl.Enable = enable
+	}
+}
+
+// BroadcastControlMaxPeers sets a hard limit on the number of peers to send
+// broadcasts to. A value of 0 means no broadcasts are sent. A value of -1
+// means there is no limit. Default is -1 (unlimited).
+func BroadcastControlMaxPeers(limit int) Option {
+	return func(bs *Client) {
+		bs.bcastControl.MaxPeers = limit
+	}
+}
+
+// BroadcastControlLocalPeers enables or disables broadcast control for peers
+// on the local network. If false, than always broadcast to peers on the local
+// network. If true, apply broadcast control to local peers. Default is false
+// (always broadcast to local peers).
+func BroadcastControlLocalPeers(enable bool) Option {
+	return func(bs *Client) {
+		bs.bcastControl.LocalPeers = enable
+	}
+}
+
+// BroadcastControlPeeredPeers enables or disables broadcast control for peers
+// configured for peering. If false, than always broadcast to peers configured
+// for peering. If true, apply broadcast control to peered peers. Default is
+// false (always broadcast to peered peers).
+func BroadcastControlPeeredPeers(enable bool) Option {
+	return func(bs *Client) {
+		bs.bcastControl.PeeredPeers = enable
+	}
+}
+
+// BroadcastControlMaxRandomPeers sets the number of peers to broadcast to
+// anyway, even though broadcast control logic has determined that they are
+// not broadcast targets. Setting this to a non-zero value ensures at least
+// this number of random peers receives a broadcast. This may be helpful in
+// cases where peers that are not receiving broadcasts may have wanted blocks.
+// Default is 0 (no random broadcasts).
+func BroadcastControlMaxRandomPeers(n int) Option {
+	return func(bs *Client) {
+		bs.bcastControl.MaxRandomPeers = n
+	}
+}
+
+// BroadcastControlSendToPendingPeers, enables or disables sending broadcasts
+// to any peers to which there is a pending message to send. When enabled, this
+// sends broadcasts to many more peers, but does so in a way that does not
+// increase the number of separate broadcast messages. There is still the
+// increased cost of the recipients having to process and respond to the
+// broadcasts. Default is false.
+func BroadcastControlSendToPendingPeers(enable bool) Option {
+	return func(bs *Client) {
+		bs.bcastControl.SendToPendingPeers = enable
+	}
+}
+
 type BlockReceivedNotifier interface {
 	// ReceivedBlocks notifies the decision engine that a peer is well-behaving
 	// and gave us useful data, potentially increasing its score and making us
@@ -129,16 +206,10 @@ type BlockReceivedNotifier interface {
 	ReceivedBlocks(peer.ID, []blocks.Block)
 }
 
-// ProviderFinder is a subset of
-// https://pkg.go.dev/github.com/libp2p/go-libp2p@v0.37.0/core/routing#ContentRouting
-type ProviderFinder interface {
-	FindProvidersAsync(context.Context, cid.Cid, int) <-chan peer.AddrInfo
-}
-
 // New initializes a Bitswap client that runs until client.Close is called.
 // The Content providerFinder paramteter can be nil to disable content-routing
 // lookups for content (rely only on bitswap for discovery).
-func New(parent context.Context, network bsnet.BitSwapNetwork, providerFinder ProviderFinder, bstore blockstore.Blockstore, options ...Option) *Client {
+func New(parent context.Context, network bsnet.BitSwapNetwork, providerFinder routing.ContentDiscovery, bstore blockstore.Blockstore, options ...Option) *Client {
 	// important to use provided parent context (since it may include important
 	// loggable data). It's probably not a good idea to allow bitswap to be
 	// coupled to the concerns of the ipfs daemon in this way.
@@ -157,15 +228,28 @@ func New(parent context.Context, network bsnet.BitSwapNetwork, providerFinder Pr
 		counters:                    new(counters),
 		dupMetric:                   bmetrics.DupHist(ctx),
 		allMetric:                   bmetrics.AllHist(ctx),
+		havesReceivedGauge:          bmetrics.HavesReceivedGauge(ctx),
+		blocksReceivedGauge:         bmetrics.BlocksReceivedGauge(ctx),
 		provSearchDelay:             defaults.ProvSearchDelay,
 		rebroadcastDelay:            delay.Fixed(defaults.RebroadcastDelay),
 		simulateDontHavesOnTimeout:  true,
 		defaultProviderQueryManager: true,
+
+		bcastControl: bspm.BroadcastControl{
+			MaxPeers: -1,
+		},
 	}
 
 	// apply functional options before starting and running bitswap
 	for _, option := range options {
 		option(bs)
+	}
+
+	if bs.bcastControl.Enable {
+		if bs.bcastControl.NeedHost() {
+			bs.bcastControl.Host = network.Host()
+		}
+		bs.bcastControl.SkipGauge = bmetrics.BroadcastSkipGauge(ctx)
 	}
 
 	// onDontHaveTimeout is called when a want-block is sent to a peer that
@@ -185,20 +269,19 @@ func New(parent context.Context, network bsnet.BitSwapNetwork, providerFinder Pr
 		}
 	}
 	peerQueueFactory := func(ctx context.Context, p peer.ID) bspm.PeerQueue {
-		return bsmq.New(ctx, p, network, onDontHaveTimeout, bsmq.WithDontHaveTimeoutConfig(bs.dontHaveTimeoutConfig))
+		return bsmq.New(ctx, p, network, onDontHaveTimeout,
+			bsmq.WithDontHaveTimeoutConfig(bs.dontHaveTimeoutConfig),
+			bsmq.WithPerPeerSendDelay(bs.perPeerSendDelay))
 	}
-	bs.dontHaveTimeoutConfig = nil
 
 	sim := bssim.New()
 	bpm := bsbpm.New()
-	pm := bspm.New(ctx, peerQueueFactory, network.Self())
+	pm := bspm.New(ctx, peerQueueFactory, bs.bcastControl)
 
 	if bs.providerFinder != nil && bs.defaultProviderQueryManager {
 		// network can do dialing.
 		pqm, err := rpqm.New(network, bs.providerFinder,
-			rpqm.WithMaxInProcessRequests(16),
-			rpqm.WithMaxProviders(10),
-			rpqm.WithMaxTimeout(10*time.Second))
+			rpqm.WithMaxProviders(defaults.BitswapClientDefaultMaxProviders))
 		if err != nil {
 			// Should not be possible to hit this
 			panic(err)
@@ -220,19 +303,19 @@ func New(parent context.Context, network bsnet.BitSwapNetwork, providerFinder Pr
 		self peer.ID,
 	) bssm.Session {
 		// careful when bs.pqm is nil. Since we are type-casting it
-		// into session.ProviderFinder when passing it, it will become
+		// into routing.ContentDiscovery when passing it, it will become
 		// not nil. Related:
 		// https://groups.google.com/g/golang-nuts/c/wnH302gBa4I?pli=1
-		var sessionProvFinder bssession.ProviderFinder
+		var sessionProvFinder routing.ContentDiscovery
 		if bs.pqm != nil {
 			sessionProvFinder = bs.pqm
 		} else if providerFinder != nil {
 			sessionProvFinder = providerFinder
 		}
-		return bssession.New(sessctx, sessmgr, id, spm, sessionProvFinder, sim, pm, bpm, notif, provSearchDelay, rebroadcastDelay, self)
+		return bssession.New(sessctx, sessmgr, id, spm, sessionProvFinder, sim, pm, bpm, notif, provSearchDelay, rebroadcastDelay, self, bs.havesReceivedGauge)
 	}
 	sessionPeerManagerFactory := func(ctx context.Context, id uint64) bssession.SessionPeerManager {
-		return bsspm.New(id, network.ConnectionManager())
+		return bsspm.New(id, network)
 	}
 	notif := notifications.New()
 	sm = bssm.New(ctx, sessionFactory, sim, sessionPeerManagerFactory, bpm, pm, notif, network.Self())
@@ -249,7 +332,7 @@ func New(parent context.Context, network bsnet.BitSwapNetwork, providerFinder Pr
 type Client struct {
 	pm *bspm.PeerManager
 
-	providerFinder ProviderFinder
+	providerFinder routing.ContentDiscovery
 
 	// the provider query manager manages requests to find providers
 	pqm                         *rpqm.ProviderQueryManager
@@ -277,6 +360,9 @@ type Client struct {
 	dupMetric metrics.Histogram
 	allMetric metrics.Histogram
 
+	havesReceivedGauge  bspm.Gauge
+	blocksReceivedGauge bspm.Gauge
+
 	// External statistics interface
 	tracer tracer.Tracer
 
@@ -297,10 +383,15 @@ type Client struct {
 
 	// whether we should actually simulate dont haves on request timeout
 	simulateDontHavesOnTimeout bool
-	dontHaveTimeoutConfig      *bsmq.DontHaveTimeoutConfig
+	dontHaveTimeoutConfig      *DontHaveTimeoutConfig
 
 	// dupMetric will stay at 0
 	skipDuplicatedBlocksStats bool
+
+	perPeerSendDelay time.Duration
+
+	// Broadcast control configuration.
+	bcastControl bspm.BroadcastControl
 }
 
 type counters struct {
@@ -354,7 +445,7 @@ func (bs *Client) NotifyNewBlocks(ctx context.Context, blks ...blocks.Block) err
 
 	select {
 	case <-bs.closing:
-		return errors.New("bitswap is closed")
+		return nil
 	default:
 	}
 
@@ -377,16 +468,22 @@ func (bs *Client) NotifyNewBlocks(ctx context.Context, blks ...blocks.Block) err
 }
 
 // receiveBlocksFrom processes blocks received from the network
-func (bs *Client) receiveBlocksFrom(ctx context.Context, from peer.ID, blks []blocks.Block, haves []cid.Cid, dontHaves []cid.Cid) error {
+func (bs *Client) receiveBlocksFrom(ctx context.Context, from peer.ID, blks []blocks.Block, haves []cid.Cid, dontHaves []cid.Cid) {
 	select {
 	case <-bs.closing:
-		return errors.New("bitswap is closed")
+		return
 	default:
 	}
 
+	if len(blks) != 0 || len(haves) != 0 {
+		bs.pm.MarkBroadcastTarget(from)
+	}
+
 	wanted, notWanted := bs.sim.SplitWantedUnwanted(blks)
-	for _, b := range notWanted {
-		log.Debugf("[recv] block not in wantlist; cid=%s, peer=%s", b.Cid(), from)
+	if log.Level().Enabled(zapcore.DebugLevel) {
+		for _, b := range notWanted {
+			log.Debugf("[recv] block not in wantlist; cid=%s, peer=%s", b.Cid(), from)
+		}
 	}
 
 	allKs := make([]cid.Cid, 0, len(blks))
@@ -414,12 +511,6 @@ func (bs *Client) receiveBlocksFrom(ctx context.Context, from peer.ID, blks []bl
 	for _, b := range wanted {
 		bs.notif.Publish(from, b)
 	}
-
-	for _, b := range wanted {
-		log.Debugw("Bitswap.GetBlockRequest.End", "cid", b.Cid())
-	}
-
-	return nil
 }
 
 // ReceiveMessage is called by the network interface when a new message is
@@ -437,8 +528,10 @@ func (bs *Client) ReceiveMessage(ctx context.Context, p peer.ID, incoming bsmsg.
 
 	if len(iblocks) > 0 {
 		bs.updateReceiveCounters(iblocks)
-		for _, b := range iblocks {
-			log.Debugf("[recv] block; cid=%s, peer=%s", b.Cid(), p)
+		if log.Level().Enabled(zapcore.DebugLevel) {
+			for _, b := range iblocks {
+				log.Debugf("[recv] block; cid=%s, peer=%s", b.Cid(), p)
+			}
 		}
 	}
 
@@ -446,11 +539,7 @@ func (bs *Client) ReceiveMessage(ctx context.Context, p peer.ID, incoming bsmsg.
 	dontHaves := incoming.DontHaves()
 	if len(iblocks) > 0 || len(haves) > 0 || len(dontHaves) > 0 {
 		// Process blocks
-		err := bs.receiveBlocksFrom(ctx, p, iblocks, haves, dontHaves)
-		if err != nil {
-			log.Warnf("ReceiveMessage recvBlockFrom error: %s", err)
-			return
-		}
+		bs.receiveBlocksFrom(ctx, p, iblocks, haves, dontHaves)
 	}
 }
 
@@ -484,6 +573,7 @@ func (bs *Client) updateReceiveCounters(blocks []blocks.Block) {
 			c.dupBlocksRecvd++
 			c.dupDataRecvd += uint64(blkLen)
 		}
+		bs.blocksReceivedGauge.Inc()
 	}
 }
 

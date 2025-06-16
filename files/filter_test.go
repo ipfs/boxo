@@ -50,10 +50,7 @@ func TestFileFilter(t *testing.T) {
 	if err == nil {
 		t.Errorf("creating a filter without an invalid ignore file path should have failed")
 	}
-	tmppath, err := os.MkdirTemp("", "filter-test")
-	if err != nil {
-		t.Fatal(err)
-	}
+	tmppath := t.TempDir()
 	ignoreFilePath := filepath.Join(tmppath, "ignoreFile")
 	ignoreFileContents := []byte("a.txt")
 	if err := os.WriteFile(ignoreFilePath, ignoreFileContents, 0o666); err != nil {

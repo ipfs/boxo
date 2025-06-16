@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -16,18 +16,16 @@ import (
 	offline "github.com/ipfs/boxo/exchange/offline"
 	mdag "github.com/ipfs/boxo/ipld/merkledag"
 	mdtest "github.com/ipfs/boxo/ipld/merkledag/test"
+	ft "github.com/ipfs/boxo/ipld/unixfs"
+	"github.com/ipfs/boxo/ipld/unixfs/internal"
+	"github.com/ipfs/boxo/ipld/unixfs/private/linksize"
 	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
 	ds "github.com/ipfs/go-datastore"
 	dssync "github.com/ipfs/go-datastore/sync"
 	ipld "github.com/ipfs/go-ipld-format"
-
-	ft "github.com/ipfs/boxo/ipld/unixfs"
-	"github.com/ipfs/boxo/ipld/unixfs/hamt"
-	"github.com/ipfs/boxo/ipld/unixfs/internal"
-	"github.com/ipfs/boxo/ipld/unixfs/private/linksize"
-
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestEmptyNode(t *testing.T) {
@@ -39,7 +37,10 @@ func TestEmptyNode(t *testing.T) {
 
 func TestDirectoryGrowth(t *testing.T) {
 	ds := mdtest.Mock()
-	dir := NewDirectory(ds)
+	dir, err := NewDirectory(ds)
+	if err != nil {
+		t.Fatal(err)
+	}
 	ctx := context.Background()
 
 	d := ft.EmptyDirNode()
@@ -54,7 +55,7 @@ func TestDirectoryGrowth(t *testing.T) {
 		}
 	}
 
-	_, err := dir.GetNode()
+	_, err = dir.GetNode()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -93,11 +94,14 @@ func TestDirectoryGrowth(t *testing.T) {
 
 func TestDuplicateAddDir(t *testing.T) {
 	ds := mdtest.Mock()
-	dir := NewDirectory(ds)
+	dir, err := NewDirectory(ds)
+	if err != nil {
+		t.Fatal(err)
+	}
 	ctx := context.Background()
 	nd := ft.EmptyDirNode()
 
-	err := dir.AddChild(ctx, "test", nd)
+	err = dir.AddChild(ctx, "test", nd)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -119,7 +123,10 @@ func TestDuplicateAddDir(t *testing.T) {
 
 func TestBasicDirectory_estimatedSize(t *testing.T) {
 	ds := mdtest.Mock()
-	basicDir := newEmptyBasicDirectory(ds)
+	basicDir, err := NewBasicDirectory(ds)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	testDirectorySizeEstimation(t, basicDir, ds, func(dir Directory) int {
 		return dir.(*BasicDirectory).estimatedSize
@@ -128,7 +135,7 @@ func TestBasicDirectory_estimatedSize(t *testing.T) {
 
 func TestHAMTDirectory_sizeChange(t *testing.T) {
 	ds := mdtest.Mock()
-	hamtDir, err := newEmptyHAMTDirectory(ds, DefaultShardWidth)
+	hamtDir, err := NewHAMTDirectory(ds, 0, WithMaxLinks(DefaultShardWidth))
 	assert.NoError(t, err)
 
 	testDirectorySizeEstimation(t, hamtDir, ds, func(dir Directory) int {
@@ -207,12 +214,14 @@ func mockLinkSizeFunc(fixedSize int) func(linkName string, linkCid cid.Cid) int 
 }
 
 func checkBasicDirectory(t *testing.T, dir Directory, errorMessage string) {
+	t.Helper()
 	if _, ok := dir.(*DynamicDirectory).Directory.(*BasicDirectory); !ok {
 		t.Fatal(errorMessage)
 	}
 }
 
 func checkHAMTDirectory(t *testing.T, dir Directory, errorMessage string) {
+	t.Helper()
 	if _, ok := dir.(*DynamicDirectory).Directory.(*HAMTDirectory); !ok {
 		t.Fatal(errorMessage)
 	}
@@ -230,7 +239,7 @@ func TestProductionLinkSize(t *testing.T) {
 	assert.Equal(t, 48, productionLinkSize(link.Name, link.Cid))
 
 	ds := mdtest.Mock()
-	basicDir := newEmptyBasicDirectory(ds)
+	basicDir, err := NewBasicDirectory(ds)
 	assert.NoError(t, err)
 	for i := 0; i < 10; i++ {
 		basicDir.AddChild(context.Background(), strconv.FormatUint(uint64(i), 10), ft.EmptyFileNode())
@@ -253,12 +262,14 @@ func TestDynamicDirectorySwitch(t *testing.T) {
 	defer func() { linksize.LinkSizeFunction = productionLinkSize }()
 
 	ds := mdtest.Mock()
-	dir := NewDirectory(ds)
+	dir, err := NewDirectory(ds)
+	require.NoError(t, err)
+
 	checkBasicDirectory(t, dir, "new dir is not BasicDirectory")
 
 	ctx := context.Background()
 	child := ft.EmptyDirNode()
-	err := ds.Add(ctx, child)
+	err = ds.Add(ctx, child)
 	assert.NoError(t, err)
 
 	err = dir.AddChild(ctx, "1", child)
@@ -291,16 +302,20 @@ func TestDynamicDirectorySwitch(t *testing.T) {
 
 func TestIntegrityOfDirectorySwitch(t *testing.T) {
 	ds := mdtest.Mock()
-	dir := NewDirectory(ds)
+	dir, err := NewDirectory(ds)
+	if err != nil {
+		t.Fatal(err)
+	}
 	checkBasicDirectory(t, dir, "new dir is not BasicDirectory")
 
 	ctx := context.Background()
 	child := ft.EmptyDirNode()
-	err := ds.Add(ctx, child)
+	err = ds.Add(ctx, child)
 	assert.NoError(t, err)
 
-	basicDir := newEmptyBasicDirectory(ds)
-	hamtDir, err := newEmptyHAMTDirectory(ds, DefaultShardWidth)
+	basicDir, err := NewBasicDirectory(ds)
+	assert.NoError(t, err)
+	hamtDir, err := NewHAMTDirectory(ds, 0, WithMaxLinks(DefaultShardWidth))
 	assert.NoError(t, err)
 	for i := 0; i < 1000; i++ {
 		basicDir.AddChild(ctx, strconv.FormatUint(uint64(i), 10), child)
@@ -309,9 +324,9 @@ func TestIntegrityOfDirectorySwitch(t *testing.T) {
 	compareDirectoryEntries(t, basicDir, hamtDir)
 
 	hamtDirFromSwitch, err := basicDir.switchToSharding(ctx)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	basicDirFromSwitch, err := hamtDir.switchToBasic(ctx)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	compareDirectoryEntries(t, basicDir, basicDirFromSwitch)
 	compareDirectoryEntries(t, hamtDir, hamtDirFromSwitch)
 }
@@ -393,7 +408,7 @@ func TestHAMTEnumerationWhenComputingSize(t *testing.T) {
 	//    the HAMTShardingSize threshold.
 	nodesToFetch += thresholdToWidthRatio
 
-	hamtDir, err := newHAMTDirectoryFromNode(dsrv, completeHAMTRoot)
+	hamtDir, err := NewHAMTDirectoryFromNode(dsrv, completeHAMTRoot)
 	assert.NoError(t, err)
 
 	countGetsDS.resetCounter()
@@ -438,22 +453,23 @@ func getAllLinksSortedByName(d Directory) ([]*ipld.Link, error) {
 	return entries, nil
 }
 
-func sortLinksByName(l []*ipld.Link) {
-	sort.SliceStable(l, func(i, j int) bool {
-		return strings.Compare(l[i].Name, l[j].Name) == -1 // FIXME: Is this correct?
+func sortLinksByName(links []*ipld.Link) {
+	slices.SortStableFunc(links, func(a, b *ipld.Link) int {
+		return strings.Compare(a.Name, b.Name)
 	})
 }
 
 func TestDirBuilder(t *testing.T) {
 	ds := mdtest.Mock()
-	dir := NewDirectory(ds)
-	ctx := context.Background()
-
-	child := ft.EmptyDirNode()
-	err := ds.Add(ctx, child)
+	dir, err := NewDirectory(ds)
 	if err != nil {
 		t.Fatal(err)
 	}
+	ctx := context.Background()
+
+	child := ft.EmptyDirNode()
+	err = ds.Add(ctx, child)
+	require.NoError(t, err)
 
 	count := 5000
 
@@ -529,27 +545,134 @@ func TestDirBuilder(t *testing.T) {
 	}
 }
 
-func newHAMTDirectoryFromNode(dserv ipld.DAGService, node ipld.Node) (*HAMTDirectory, error) {
-	shard, err := hamt.NewHamtFromDag(dserv, node)
-	if err != nil {
-		return nil, err
-	}
-	return &HAMTDirectory{
-		dserv: dserv,
-		shard: shard,
-	}, nil
+func TestBasicDirectoryWithMaxLinks(t *testing.T) {
+	ds := mdtest.Mock()
+	ctx := context.Background()
+
+	dir, err := NewBasicDirectory(ds, WithMaxLinks(2))
+	require.NoError(t, err)
+
+	child1 := ft.EmptyDirNode()
+	require.NoError(t, ds.Add(ctx, child1))
+
+	err = dir.AddChild(ctx, "entry1", child1)
+	require.NoError(t, err)
+
+	child2 := ft.EmptyDirNode()
+	require.NoError(t, ds.Add(ctx, child2))
+
+	err = dir.AddChild(ctx, "entry2", child2)
+	require.NoError(t, err)
+
+	child3 := ft.EmptyDirNode()
+	require.NoError(t, ds.Add(ctx, child3))
+
+	err = dir.AddChild(ctx, "entry3", child3)
+	require.Error(t, err)
 }
 
-func newEmptyHAMTDirectory(dserv ipld.DAGService, shardWidth int) (*HAMTDirectory, error) {
-	shard, err := hamt.NewShard(dserv, shardWidth)
-	if err != nil {
-		return nil, err
+// TestHAMTDirectoryWithMaxLinks tests that no HAMT shard as more than MaxLinks.
+func TestHAMTDirectoryWithMaxLinks(t *testing.T) {
+	ds := mdtest.Mock()
+	ctx := context.Background()
+
+	dir, err := NewHAMTDirectory(ds, 0, WithMaxHAMTFanout(8))
+	require.NoError(t, err)
+
+	// Ensure we have at least 2 levels of HAMT by adding many nodes
+	for i := 0; i < 300; i++ {
+		child := ft.EmptyDirNode()
+		require.NoError(t, ds.Add(ctx, child))
+		err := dir.AddChild(ctx, fmt.Sprintf("entry%d", i), child)
+		require.NoError(t, err)
 	}
 
-	return &HAMTDirectory{
-		dserv: dserv,
-		shard: shard,
-	}, nil
+	dirnd, err := dir.GetNode()
+	require.NoError(t, err)
+
+	require.Equal(t, 8, len(dirnd.Links()), "Node should not have more than 8 links")
+
+	for _, l := range dirnd.Links() {
+		childNd, err := ds.Get(ctx, l.Cid)
+		if err != nil {
+			t.Errorf("Failed to get node: %s", err)
+			continue
+		}
+		assert.Equal(t, 8, len(childNd.Links()), "Node does not have 8 links")
+	}
+}
+
+func TestDynamicDirectoryWithMaxLinks(t *testing.T) {
+	ds := mdtest.Mock()
+	ctx := context.Background()
+
+	dir, err := NewDirectory(ds, WithMaxLinks(8), WithMaxHAMTFanout(16))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for i := 0; i < 8; i++ {
+		child := ft.EmptyDirNode()
+		require.NoError(t, ds.Add(ctx, child))
+		err := dir.AddChild(ctx, fmt.Sprintf("entry%d", i), child)
+		require.NoError(t, err)
+		checkBasicDirectory(t, dir, "directory should be basic because it has less children than MaxLinks")
+	}
+
+	for i := 8; i < 58; i++ {
+		child := ft.EmptyDirNode()
+		require.NoError(t, ds.Add(ctx, child))
+		err := dir.AddChild(ctx, fmt.Sprintf("entry%d", i), child)
+		require.NoError(t, err)
+		checkHAMTDirectory(t, dir, "directory should be sharded because more children than MaxLinks")
+	}
+
+	// Check that the directory root node has 8 links
+	dirnd, err := dir.GetNode()
+	require.NoError(t, err)
+	assert.Equal(t, 16, len(dirnd.Links()), "HAMT Directory root node should have 16 links")
+
+	// Continue the code by removing 50 elements while checking that the underlying directory is a HAMT directory.
+	for i := 57; i >= 9; i-- {
+		err := dir.RemoveChild(ctx, fmt.Sprintf("entry%d", i))
+		require.NoError(t, err)
+		checkHAMTDirectory(t, dir, "directory should still be sharded while more than 8 children")
+	}
+
+	// Continue removing elements until the directory is a basic directory again
+	for i := 8; i >= 0; i-- {
+		err := dir.RemoveChild(ctx, fmt.Sprintf("entry%d", i))
+		require.NoError(t, err)
+		checkBasicDirectory(t, dir, "directory should be basic when less than 8 children")
+	}
+}
+
+// add a test that tests that validShardWidth(n) only returns true with positive numbers that are powers of 8 and multiples of 8.
+func TestValidShardWidth(t *testing.T) {
+	testCases := []struct {
+		width  int
+		expect bool
+	}{
+		{0, false},
+		{-1, false},
+		{1, false},
+		{2, false},
+		{4, false},
+		{8, true},
+		{16, true},
+		{32, true},
+		{64, true},
+		{512, true},
+		{1024, true},
+		{4096, true},
+	}
+
+	for _, tc := range testCases {
+		t.Run(fmt.Sprintf("Width%d", tc.width), func(t *testing.T) {
+			result := validShardWidth(tc.width)
+			assert.Equal(t, tc.expect, result, "Expected %v for width %d", tc.expect, tc.width)
+		})
+	}
 }
 
 // countGetsDS is a DAG service that keeps track of the number of

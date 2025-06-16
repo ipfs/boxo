@@ -9,21 +9,18 @@ import (
 	"time"
 
 	bs "github.com/ipfs/boxo/blockservice"
+	blockstore "github.com/ipfs/boxo/blockstore"
+	offline "github.com/ipfs/boxo/exchange/offline"
 	mdag "github.com/ipfs/boxo/ipld/merkledag"
-	"github.com/stretchr/testify/require"
-
+	ipfspin "github.com/ipfs/boxo/pinning/pinner"
 	cid "github.com/ipfs/go-cid"
 	ds "github.com/ipfs/go-datastore"
 	"github.com/ipfs/go-datastore/query"
 	dssync "github.com/ipfs/go-datastore/sync"
 	ipld "github.com/ipfs/go-ipld-format"
 	logging "github.com/ipfs/go-log/v2"
-
-	blockstore "github.com/ipfs/boxo/blockstore"
-	offline "github.com/ipfs/boxo/exchange/offline"
 	"github.com/ipfs/go-test/random"
-
-	ipfspin "github.com/ipfs/boxo/pinning/pinner"
+	"github.com/stretchr/testify/require"
 )
 
 type fakeLogger struct {
@@ -367,7 +364,7 @@ func TestAddLoadPin(t *testing.T) {
 		t.Fatal(err)
 	}
 	if pinData.Mode != mode {
-		t.Error("worng pin mode")
+		t.Error("wrong pin mode")
 	}
 	if pinData.Cid != ak {
 		t.Error("wrong pin cid")
@@ -428,8 +425,8 @@ func TestPinAddOverwriteName(t *testing.T) {
 }
 
 func TestIsPinnedLookup(t *testing.T) {
-	// Test that lookups work in pins which share
-	// the same branches.  For that construct this tree:
+	// Test that lookups work in pins which share the same branches. For that
+	// construct this tree:
 	//
 	// A5->A4->A3->A2->A1->A0
 	//         /           /
@@ -437,8 +434,8 @@ func TestIsPinnedLookup(t *testing.T) {
 	//  \                /
 	//   C---------------
 	//
-	// This ensures that IsPinned works for all objects both when they
-	// are pinned and once they have been unpinned.
+	// This ensures that IsPinned works for all objects both when they are
+	// pinned and once they have been unpinned.
 	aBranchLen := 6
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -449,8 +446,8 @@ func TestIsPinnedLookup(t *testing.T) {
 
 	dserv := mdag.NewDAGService(bserv)
 
-	// Create new pinner.  New will not load anything since there are
-	// no pins saved in the datastore yet.
+	// Create new pinner. New will not load anything since there are no pins
+	// saved in the datastore yet.
 	p, err := New(ctx, dstore, dserv)
 	if err != nil {
 		t.Fatal(err)
@@ -563,7 +560,7 @@ func TestPinRecursiveFail(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// NOTE: This isnt a time based test, we expect the pin to fail
+	// NOTE: This isn't a time based test, we expect the pin to fail
 	mctx, cancel := context.WithTimeout(ctx, time.Millisecond)
 	defer cancel()
 
@@ -582,7 +579,7 @@ func TestPinRecursiveFail(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// this one is time based... but shouldnt cause any issues
+	// this one is time based... but shouldn't cause any issues
 	mctx, cancel = context.WithTimeout(ctx, time.Second)
 	defer cancel()
 	err = p.Pin(mctx, a, true, "")
@@ -732,7 +729,7 @@ func TestLoadDirty(t *testing.T) {
 		t.Fatal("index should be deleted")
 	}
 
-	// Create new pinner on same datastore that was never flushed.  This should
+	// Create new pinner on same datastore that was never flushed. This should
 	// detect the dirty flag and repair the indexes.
 	p, err = New(ctx, dstore, dserv)
 	if err != nil {
@@ -950,7 +947,7 @@ func makeStore() (ds.Datastore, ipld.DAGService) {
 	return dstore, dserv
 }
 
-// BenchmarkLoadRebuild loads a pinner that has some number of saved pins, and
+// BenchmarkLoad loads a pinner that has some number of saved pins, and
 // compares the load time when rebuilding indexes to loading without rebuilding
 // indexes.
 func BenchmarkLoad(b *testing.B) {
@@ -995,8 +992,8 @@ func BenchmarkLoad(b *testing.B) {
 	})
 }
 
-// BenchmarkNthPins shows the time it takes to create/save 1 pin when a number
-// of other pins already exist.  Each run in the series shows performance for
+// BenchmarkNthPin shows the time it takes to create/save 1 pin when a number
+// of other pins already exist. Each run in the series shows performance for
 // creating a pin in a larger number of existing pins.
 func BenchmarkNthPin(b *testing.B) {
 	dstore, dserv := makeStore()
@@ -1044,8 +1041,8 @@ func benchmarkNthPin(b *testing.B, count int, pinner ipfspin.Pinner, dserv ipld.
 	}
 }
 
-// BenchmarkNPins demonstrates creating individual pins.  Each run in the
-// series shows performance for a larger number of individual pins.
+// BenchmarkNPins demonstrates creating individual pins. Each run in the series
+// shows performance for a larger number of individual pins.
 func BenchmarkNPins(b *testing.B) {
 	for count := 128; count < 16386; count <<= 1 {
 		b.Run(fmt.Sprint("PinDS-", count), func(b *testing.B) {
@@ -1270,7 +1267,7 @@ func TestCidIndex(t *testing.T) {
 	defer results.Close()
 
 	// Iterate all pins and check if the corresponding recursive or direct
-	// index is missing.  If the index is missing then create the index.
+	// index is missing. If the index is missing then create the index.
 	seen = false
 	for r := range results.Next() {
 		if seen {

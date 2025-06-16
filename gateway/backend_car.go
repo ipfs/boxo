@@ -11,7 +11,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/hashicorp/go-multierror"
 	"github.com/ipfs/boxo/files"
 	"github.com/ipfs/boxo/ipld/merkledag"
 	"github.com/ipfs/boxo/ipld/unixfs"
@@ -33,6 +32,7 @@ import (
 	"github.com/ipld/go-ipld-prime/traversal"
 	"github.com/multiformats/go-multicodec"
 	"github.com/prometheus/client_golang/prometheus"
+	"go.uber.org/multierr"
 )
 
 var ErrFetcherUnexpectedEOF = fmt.Errorf("failed to fetch IPLD data")
@@ -363,7 +363,7 @@ func (api *CarBackend) Get(ctx context.Context, path path.ImmutablePath, byteRan
 	if rangeCount > 0 {
 		r := byteRanges[0]
 		carParams.Range = &DagByteRange{
-			From: int64(r.From),
+			From: r.From,
 		}
 
 		// TODO: move to boxo or to loadRequestIntoSharedBlockstoreAndBlocksGateway after we pass params in a humane way
@@ -442,13 +442,25 @@ func loadTerminalEntity(ctx context.Context, c cid.Cid, blk blocks.Block, lsys *
 		}
 
 		f := files.NewBytesFile(blockData)
+		size := int64(len(blockData))
+		from := int64(0)
 		if params.Range != nil && params.Range.From != 0 {
-			if _, err := f.Seek(params.Range.From, io.SeekStart); err != nil {
+			from = params.Range.From
+			if from < 0 { // negative range from the end of file
+				if params.Range.To != nil {
+					return nil, fmt.Errorf("invalid car backend range: negative start without a nil end")
+				}
+				from = size + from
+				if from < 0 {
+					return nil, fmt.Errorf("invalid car backend range: negative start bigger than the file size")
+				}
+			}
+			if _, err := f.Seek(from, io.SeekStart); err != nil {
 				return nil, err
 			}
 		}
 
-		return NewGetResponseFromReader(f, int64(len(blockData))), nil
+		return NewGetResponseFromReader(f, size), nil
 	}
 
 	blockData, pbn, ufsFieldData, fieldNum, err := loadUnixFSBase(ctx, c, blk, lsys)
@@ -554,6 +566,15 @@ func loadTerminalEntity(ctx context.Context, c cid.Cid, blk blocks.Block, lsys *
 		if params.Range != nil {
 			from = params.Range.From
 			byteRange = *params.Range
+			if from < 0 { // negative range from the end of file
+				if params.Range.To != nil {
+					return nil, fmt.Errorf("invalid car backend range: negative start without a nil end")
+				}
+				from = fileSize + from
+				if from < 0 {
+					return nil, fmt.Errorf("invalid car backend range: negative start bigger than the file size")
+				}
+			}
 		}
 		_, err = f.Seek(from, io.SeekStart)
 		if err != nil {
@@ -571,8 +592,10 @@ func (api *CarBackend) GetAll(ctx context.Context, path path.ImmutablePath) (Con
 	return fetchWithPartialRetries(ctx, path, CarParams{Scope: DagScopeAll}, loadTerminalUnixFSElementWithRecursiveDirectories, api.metrics, api.fetchCAR, api.getBlockTimeout)
 }
 
-type loadTerminalElement[T any] func(ctx context.Context, c cid.Cid, blk blocks.Block, lsys *ipld.LinkSystem, params CarParams, getLsys lsysGetter) (T, error)
-type fetchCarFn = func(ctx context.Context, path path.ImmutablePath, params CarParams, cb DataCallback) error
+type (
+	loadTerminalElement[T any] func(ctx context.Context, c cid.Cid, blk blocks.Block, lsys *ipld.LinkSystem, params CarParams, getLsys lsysGetter) (T, error)
+	fetchCarFn                 = func(ctx context.Context, path path.ImmutablePath, params CarParams, cb DataCallback) error
+)
 
 type terminalPathType[T any] struct {
 	resp T
@@ -703,7 +726,7 @@ func fetchWithPartialRetries[T any](ctx context.Context, p path.ImmutablePath, i
 
 		if err != nil {
 			lsys := getCarLinksystem(func(ctx context.Context, cid cid.Cid) (blocks.Block, error) {
-				return nil, multierror.Append(ErrFetcherUnexpectedEOF, format.ErrNotFound{Cid: cid})
+				return nil, multierr.Append(ErrFetcherUnexpectedEOF, format.ErrNotFound{Cid: cid})
 			})
 			for {
 				select {
@@ -764,7 +787,6 @@ func (api *CarBackend) GetBlock(ctx context.Context, p path.ImmutablePath) (Cont
 		f = files.NewBytesFile(blockData)
 		return nil
 	})
-
 	if err != nil {
 		return ContentPathMetadata{}, nil, err
 	}
@@ -903,7 +925,6 @@ func (api *CarBackend) Head(ctx context.Context, p path.ImmutablePath) (ContentP
 		}
 		return nil
 	})
-
 	if err != nil {
 		return ContentPathMetadata{}, nil, err
 	}
@@ -930,7 +951,6 @@ func (api *CarBackend) ResolvePath(ctx context.Context, p path.ImmutablePath) (C
 
 		return err
 	})
-
 	if err != nil {
 		return ContentPathMetadata{}, err
 	}

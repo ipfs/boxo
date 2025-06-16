@@ -55,10 +55,6 @@ func WithScoreLedger(scoreLedger server.ScoreLedger) Option {
 	return Option{server.WithScoreLedger(scoreLedger)}
 }
 
-func WithPeerLedger(peerLedger server.PeerLedger) Option {
-	return Option{server.WithPeerLedger(peerLedger)}
-}
-
 func WithTargetMessageSize(tms int) Option {
 	return Option{server.WithTargetMessageSize(tms)}
 }
@@ -99,6 +95,14 @@ func WithTracer(tap tracer.Tracer) Option {
 	return Option{
 		option(func(bs *Bitswap) {
 			bs.tracer = tap
+		}),
+	}
+}
+
+func WithServerEnabled(enabled bool) Option {
+	return Option{
+		option(func(bs *Bitswap) {
+			bs.serverEnabled = enabled
 		}),
 	}
 }

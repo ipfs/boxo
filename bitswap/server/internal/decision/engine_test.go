@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/benbjohnson/clock"
+	"github.com/filecoin-project/go-clock"
 	wl "github.com/ipfs/boxo/bitswap/client/wantlist"
 	message "github.com/ipfs/boxo/bitswap/message"
 	pb "github.com/ipfs/boxo/bitswap/message/pb"
@@ -172,12 +172,7 @@ func TestPeerIsAddedToPeersWhenMessageSent(t *testing.T) {
 }
 
 func peerIsPartner(p peer.ID, e *Engine) bool {
-	for _, partner := range e.Peers() {
-		if partner == p {
-			return true
-		}
-	}
-	return false
+	return e.HasPeer(p)
 }
 
 func newEngineForTesting(
@@ -912,8 +907,7 @@ func TestSendReceivedBlocksToPeersThatWantThem(t *testing.T) {
 	_, env = getNextEnvelope(e, next, 5*time.Millisecond)
 	if env == nil {
 		t.Fatal("expected envelope")
-	}
-	if env.Peer != partner {
+	} else if env.Peer != partner {
 		t.Fatal("expected message to peer")
 	}
 	sentBlk := env.Message.Blocks()
@@ -947,8 +941,7 @@ func TestSendDontHave(t *testing.T) {
 	next, env := getNextEnvelope(e, next, 10*time.Millisecond)
 	if env == nil {
 		t.Fatal("expected envelope")
-	}
-	if env.Peer != partner {
+	} else if env.Peer != partner {
 		t.Fatal("expected message to peer")
 	}
 	if len(env.Message.Blocks()) > 0 {
@@ -978,8 +971,7 @@ func TestSendDontHave(t *testing.T) {
 	_, env = getNextEnvelope(e, next, 10*time.Millisecond)
 	if env == nil {
 		t.Fatal("expected envelope")
-	}
-	if env.Peer != partner {
+	} else if env.Peer != partner {
 		t.Fatal("expected message to peer")
 	}
 	if len(env.Message.Blocks()) != 2 {

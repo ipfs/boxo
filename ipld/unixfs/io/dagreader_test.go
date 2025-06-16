@@ -2,15 +2,13 @@ package io
 
 import (
 	"bytes"
+	context "context"
 	"io"
 	"strings"
 	"testing"
 
 	mdag "github.com/ipfs/boxo/ipld/merkledag"
 	"github.com/ipfs/boxo/ipld/unixfs"
-
-	context "context"
-
 	testu "github.com/ipfs/boxo/ipld/unixfs/test"
 )
 

@@ -120,44 +120,6 @@ type ScoreLedger interface {
 	Stop()
 }
 
-type PeerEntry struct {
-	Peer     peer.ID
-	Priority int32
-	WantType pb.Message_Wantlist_WantType
-}
-
-// PeerLedger is an external ledger dealing with peers and their want lists.
-type PeerLedger interface {
-	// Wants informs the ledger that [peer.ID] wants [wl.Entry].
-	// If peer ledger exceed internal limit, then the entry is not added
-	// and false is returned.
-	Wants(p peer.ID, e wl.Entry) bool
-
-	// CancelWant returns true if the [cid.Cid] was removed from the wantlist of [peer.ID].
-	CancelWant(p peer.ID, k cid.Cid) bool
-
-	// CancelWantWithType will not cancel WantBlock if we sent a HAVE message.
-	CancelWantWithType(p peer.ID, k cid.Cid, typ pb.Message_Wantlist_WantType)
-
-	// Peers returns all peers that want [cid.Cid].
-	Peers(k cid.Cid) []PeerEntry
-
-	// CollectPeerIDs returns all peers that the ledger has an active session with.
-	CollectPeerIDs() []peer.ID
-
-	// WantlistSizeForPeer returns the size of the wantlist for [peer.ID].
-	WantlistSizeForPeer(p peer.ID) int
-
-	// WantlistForPeer returns the wantlist for [peer.ID].
-	WantlistForPeer(p peer.ID) []wl.Entry
-
-	// ClearPeerWantlist clears the wantlist for [peer.ID].
-	ClearPeerWantlist(p peer.ID)
-
-	// PeerDisconnected informs the ledger that [peer.ID] is no longer connected.
-	PeerDisconnected(p peer.ID)
-}
-
 // Engine manages sending requested blocks to peers.
 type Engine struct {
 	// peerRequestQueue is a priority queue of requests received from peers.
@@ -185,7 +147,7 @@ type Engine struct {
 	lock sync.RWMutex // protects the fields immediately below
 
 	// peerLedger saves which peers are waiting for a Cid
-	peerLedger PeerLedger
+	peerLedger *peerLedger
 
 	// an external ledger dealing with peer scores
 	scoreLedger ScoreLedger
@@ -248,7 +210,7 @@ type TaskInfo struct {
 type TaskComparator func(ta, tb *TaskInfo) bool
 
 // PeerBlockRequestFilter is used to accept / deny requests for a CID coming from a PeerID
-// It should return true if the request should be fullfilled.
+// It should return true if the request should be fulfilled.
 type PeerBlockRequestFilter func(p peer.ID, c cid.Cid) bool
 
 type Option func(*Engine)
@@ -274,13 +236,6 @@ func WithTargetMessageSize(size int) Option {
 func WithScoreLedger(scoreledger ScoreLedger) Option {
 	return func(e *Engine) {
 		e.scoreLedger = scoreledger
-	}
-}
-
-// WithPeerLedger sets a custom [PeerLedger] to be used with this [Engine].
-func WithPeerLedger(peerLedger PeerLedger) Option {
-	return func(e *Engine) {
-		e.peerLedger = peerLedger
 	}
 }
 
@@ -412,10 +367,7 @@ func NewEngine(
 		opt(e)
 	}
 
-	// If peerLedger was not set by option, then create a default instance.
-	if e.peerLedger == nil {
-		e.peerLedger = NewDefaultPeerLedger(e.maxQueuedWantlistEntriesPerPeer)
-	}
+	e.peerLedger = newPeerLedger(e.maxQueuedWantlistEntriesPerPeer)
 
 	e.bsm = newBlockstoreManager(bs, e.bstoreWorkerCount, bmetrics.PendingBlocksGauge(ctx), bmetrics.ActiveBlocksGauge(ctx))
 
@@ -671,6 +623,12 @@ func (e *Engine) Peers() []peer.ID {
 	return e.peerLedger.CollectPeerIDs()
 }
 
+func (e *Engine) HasPeer(p peer.ID) bool {
+	e.lock.RLock()
+	defer e.lock.RUnlock()
+	return e.peerLedger.HasPeer(p)
+}
+
 // MessageReceived is called when a message is received from a remote peer.
 // For each item in the wantlist, add a want-have or want-block entry to the
 // request queue (this is later popped off by the workerTasks). Returns true
@@ -683,7 +641,7 @@ func (e *Engine) MessageReceived(ctx context.Context, p peer.ID, m bsmsg.BitSwap
 
 	wants, cancels, denials, err := e.splitWantsCancelsDenials(p, m)
 	if err != nil {
-		// This is a truely broken client, let's kill the connection.
+		// This is a truly broken client, let's kill the connection.
 		log.Warnw(err.Error(), "local", e.self, "remote", p)
 		return true
 	}
@@ -916,7 +874,7 @@ func (e *Engine) handleOverflow(ctx context.Context, p peer.ID, overflow, wants 
 	return wants
 }
 
-// Split the want-havek entries from the cancel and deny entries.
+// Split the want, cancel, and deny entries.
 func (e *Engine) splitWantsCancelsDenials(p peer.ID, m bsmsg.BitSwapMessage) ([]bsmsg.Entry, []bsmsg.Entry, []bsmsg.Entry, error) {
 	entries := m.Wantlist() // creates copy; safe to modify
 	if len(entries) == 0 {

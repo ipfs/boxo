@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	gopath "path"
 	"strconv"
 	"strings"
@@ -15,28 +16,38 @@ import (
 	"go.uber.org/zap"
 )
 
-// Resolving a UnixFS path involves determining if the provided `path.Path` exists and returning the `path.Resolved`
-// corresponding to that path. For UnixFS, path resolution is more involved.
+// Resolving a UnixFS path involves determining if the provided `path.Path`
+// exists and returning the `path.Resolved` corresponding to that path. For
+// UnixFS, path resolution is more involved.
 //
-// When a path under requested CID does not exist, Gateway will check if a `_redirects` file exists
-// underneath the root CID of the path, and apply rules defined there.
-// See sepcification introduced in: https://github.com/ipfs/specs/pull/290
+// When a path under requested CID does not exist, Gateway will check if a
+// `_redirects` file exists underneath the root CID of the path, and apply
+// rules defined there. See specification introduced in:
+// https://github.com/ipfs/specs/pull/290
 //
-// Scenario 1:
-// If a path exists, we always return the `path.Resolved` corresponding to that path, regardless of the existence of a `_redirects` file.
+// # Scenario 1:
 //
-// Scenario 2:
-// If a path does not exist, usually we should return a `nil` resolution path and an error indicating that the path
-// doesn't exist.  However, a `_redirects` file may exist and contain a redirect rule that redirects that path to a different path.
-// We need to evaluate the rule and perform the redirect if present.
+// If a path exists, we always return the `path.Resolved` corresponding to that
+// path, regardless of the existence of a `_redirects` file.
 //
-// Scenario 3:
-// Another possibility is that the path corresponds to a rewrite rule (i.e. a rule with a status of 200).
-// In this case, we don't perform a redirect, but do need to return a `path.Resolved` and `path.Path` corresponding to
-// the rewrite destination path.
+// # Scenario 2:
 //
-// Note that for security reasons, redirect rules are only processed when the request has origin isolation.
-// See https://github.com/ipfs/specs/pull/290 for more information.
+// If a path does not exist, usually we should return a `nil` resolution path
+// and an error indicating that the path doesn't exist. However, a `_redirects`
+// file may exist and contain a redirect rule that redirects that path to a
+// different path. We need to evaluate the rule and perform the redirect if
+// present.
+//
+// # Scenario 3:
+//
+// Another possibility is that the path corresponds to a rewrite rule (i.e. a
+// rule with a status of 200). In this case, we don't perform a redirect, but
+// do need to return a `path.Resolved` and `path.Path` corresponding to the
+// rewrite destination path.
+//
+// Note that for security reasons, redirect rules are only processed when the
+// request has origin isolation. See https://github.com/ipfs/specs/pull/290 for
+// more information.
 func (i *handler) serveRedirectsIfPresent(w http.ResponseWriter, r *http.Request, maybeResolvedImPath, immutableContentPath path.ImmutablePath, contentPath path.Path, logger *zap.SugaredLogger) (newContentPath path.ImmutablePath, continueProcessing bool, hadMatchingRule bool) {
 	// contentPath is the full ipfs path to the requested resource,
 	// regardless of whether path or subdomain resolution is used.
@@ -161,7 +172,26 @@ func (i *handler) handleRedirectsFileRules(w http.ResponseWriter, r *http.Reques
 
 			// Or redirect
 			if rule.Status >= 301 && rule.Status <= 308 {
-				http.Redirect(w, r, rule.To, rule.Status)
+				redirectURL := rule.To
+				// Preserve query parameters from the original request if they exist
+				if r.URL.RawQuery != "" {
+					u, err := url.Parse(rule.To)
+					if err != nil {
+						return false, "", err
+					}
+					// Merge original query parameters into target
+					originalQuery, _ := url.ParseQuery(r.URL.RawQuery)
+					targetQuery := u.Query()
+					for key, values := range originalQuery {
+						for _, value := range values {
+							targetQuery.Add(key, value)
+						}
+					}
+					// Set the merged query parameters back
+					u.RawQuery = targetQuery.Encode()
+					redirectURL = u.String()
+				}
+				http.Redirect(w, r, redirectURL, rule.Status)
 				return true, "", nil
 			}
 		}
@@ -171,13 +201,15 @@ func (i *handler) handleRedirectsFileRules(w http.ResponseWriter, r *http.Reques
 	return false, "", nil
 }
 
-// getRedirectRules fetches the _redirects file corresponding to a given path and returns the rules
-// Returns whether _redirects was found, the rules (if they exist) and if there was an error (other than a missing _redirects)
-// If there is an error returns (false, nil, err)
+// getRedirectRules fetches the _redirects file corresponding to a given path
+// and returns the rules Returns whether _redirects was found, the rules (if
+// they exist) and if there was an error (other than a missing _redirects) If
+// there is an error returns (false, nil, err)
 func (i *handler) getRedirectRules(r *http.Request, redirectsPath path.ImmutablePath) (bool, []redirects.Rule, error) {
-	// Check for _redirects file.
-	// Any path resolution failures are ignored and we just assume there's no _redirects file.
-	// Note that ignoring these errors also ensures that the use of the empty CID (bafkqaaa) in tests doesn't fail.
+	// Check for _redirects file. Any path resolution failures are ignored and
+	// we just assume there's no _redirects file. Note that ignoring these
+	// errors also ensures that the use of the empty CID (bafkqaaa) in tests
+	// doesn't fail.
 	_, redirectsFileGetResp, err := i.backend.Get(r.Context(), redirectsPath)
 	if err != nil {
 		if isErrNotFound(err) {

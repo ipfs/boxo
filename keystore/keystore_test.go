@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 	"testing"
 
 	ci "github.com/libp2p/go-libp2p/core/crypto"
@@ -21,10 +21,7 @@ func privKeyOrFatal(t *testing.T) ci.PrivKey {
 }
 
 func TestKeystoreBasics(t *testing.T) {
-	tdir, err := os.MkdirTemp("", "keystore-test")
-	if err != nil {
-		t.Fatal(err)
-	}
+	tdir := t.TempDir()
 
 	ks, err := NewFSKeystore(tdir)
 	if err != nil {
@@ -60,7 +57,7 @@ func TestKeystoreBasics(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	sort.Strings(l)
+	slices.Sort(l)
 	if l[0] != "bar" || l[1] != "foo" {
 		t.Fatal("wrong entries listed")
 	}
@@ -140,12 +137,7 @@ func TestKeystoreBasics(t *testing.T) {
 }
 
 func TestInvalidKeyFiles(t *testing.T) {
-	tdir, err := os.MkdirTemp("", "keystore-test")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	defer os.RemoveAll(tdir)
+	tdir := t.TempDir()
 
 	ks, err := NewFSKeystore(tdir)
 	if err != nil {
@@ -179,7 +171,7 @@ func TestInvalidKeyFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	sort.Strings(l)
+	slices.Sort(l)
 	if len(l) != 1 {
 		t.Fatal("wrong entry count")
 	}
@@ -198,10 +190,7 @@ func TestInvalidKeyFiles(t *testing.T) {
 }
 
 func TestNonExistingKey(t *testing.T) {
-	tdir, err := os.MkdirTemp("", "keystore-test")
-	if err != nil {
-		t.Fatal(err)
-	}
+	tdir := t.TempDir()
 
 	ks, err := NewFSKeystore(tdir)
 	if err != nil {
@@ -256,8 +245,8 @@ func assertDirContents(dir string, exp []string) error {
 		names = append(names, decodedName)
 	}
 
-	sort.Strings(names)
-	sort.Strings(exp)
+	slices.Sort(names)
+	slices.Sort(exp)
 	if len(names) != len(exp) {
 		return errors.New("directory had wrong number of entries in it")
 	}

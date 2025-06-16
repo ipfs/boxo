@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	fp "path/filepath"
 	"runtime"
@@ -56,10 +57,12 @@ func TestSingleFile(t *testing.T) {
 		func(t *testing.T, extractDir string) {
 			f, err := os.Open(fp.Join(extractDir, fileName))
 			assert.NoError(t, err)
+			t.Cleanup(func() {
+				assert.NoError(t, f.Close())
+			})
 			data, err := io.ReadAll(f)
 			assert.NoError(t, err)
 			assert.Equal(t, fileData, string(data))
-			assert.NoError(t, f.Close())
 		},
 		nil,
 	)
@@ -68,7 +71,7 @@ func TestSingleFile(t *testing.T) {
 func TestSingleFileWithMeta(t *testing.T) {
 	fileName := "file2..ext"
 	fileData := "file2 data"
-	mode := 0654
+	mode := 0o654
 	mtime := time.Now().Round(time.Second)
 
 	testTarExtraction(t, nil, []tarEntry{
@@ -79,10 +82,12 @@ func TestSingleFileWithMeta(t *testing.T) {
 			testMeta(t, path, mode, mtime)
 			f, err := os.Open(path)
 			assert.NoError(t, err)
+			t.Cleanup(func() {
+				assert.NoError(t, f.Close())
+			})
 			data, err := io.ReadAll(f)
 			assert.NoError(t, err)
 			assert.Equal(t, fileData, string(data))
-			assert.NoError(t, f.Close())
 		},
 		nil,
 	)
@@ -96,9 +101,10 @@ func TestSingleDirectory(t *testing.T) {
 	},
 		func(t *testing.T, extractDir string) {
 			f, err := os.Open(extractDir)
-			if err != nil {
-				t.Fatal(err)
-			}
+			assert.NoError(t, err)
+			t.Cleanup(func() {
+				f.Close()
+			})
 			objs, err := f.Readdir(1)
 			if err == io.EOF && len(objs) == 0 {
 				return
@@ -111,7 +117,7 @@ func TestSingleDirectory(t *testing.T) {
 
 func TestSingleDirectoryWithMeta(t *testing.T) {
 	dirName := "dir2..sfx"
-	mode := 0765
+	mode := 0o765
 	mtime := time.Now().Round(time.Second)
 
 	testTarExtraction(t, nil, []tarEntry{
@@ -123,6 +129,9 @@ func TestSingleDirectoryWithMeta(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			t.Cleanup(func() {
+				f.Close()
+			})
 			objs, err := f.Readdir(1)
 			if err == io.EOF && len(objs) == 0 {
 				return
@@ -300,13 +309,19 @@ func TestFilesAndFoldersWithMetadata(t *testing.T) {
 
 	entries := []tarEntry{
 		&dirTarEntry{path: "root", mtime: tm.Add(5 * time.Second)},
-		&dirTarEntry{path: "root/childdir", mode: 03775},
-		&fileTarEntry{path: "root/childdir/file1", buf: []byte("some data"), mode: 04744,
-			mtime: tm.Add(10 * time.Second)},
-		&fileTarEntry{path: "root/childdir/file2", buf: []byte("some data"), mode: 0560,
-			mtime: tm.Add(10 * time.Second)},
-		&fileTarEntry{path: "root/childdir/file3", buf: []byte("some data"), mode: 06540,
-			mtime: tm.Add(10 * time.Second)},
+		&dirTarEntry{path: "root/childdir", mode: 0o3775},
+		&fileTarEntry{
+			path: "root/childdir/file1", buf: []byte("some data"), mode: 0o4744,
+			mtime: tm.Add(10 * time.Second),
+		},
+		&fileTarEntry{
+			path: "root/childdir/file2", buf: []byte("some data"), mode: 0o560,
+			mtime: tm.Add(10 * time.Second),
+		},
+		&fileTarEntry{
+			path: "root/childdir/file3", buf: []byte("some data"), mode: 0o6540,
+			mtime: tm.Add(10 * time.Second),
+		},
 	}
 
 	testTarExtraction(t, nil, entries, func(t *testing.T, extractDir string) {
@@ -321,36 +336,36 @@ func TestFilesAndFoldersWithMetadata(t *testing.T) {
 					assert.Equal(t, tm.Add(5*time.Second), fi.ModTime())
 				case 1: // childdir
 					if runtime.GOOS != "windows" {
-						assert.Equal(t, 0775, int(fi.Mode()&0xFFF))
+						assert.Equal(t, 0o775, int(fi.Mode()&0xFFF))
 						assert.Equal(t, os.ModeSetgid, fi.Mode()&os.ModeSetgid)
 						assert.Equal(t, os.ModeSticky, fi.Mode()&os.ModeSticky)
 					} else {
-						assert.Equal(t, 0777, int(fi.Mode()&0xFFF))
+						assert.Equal(t, 0o777, int(fi.Mode()&0xFFF))
 					}
 				case 2: // file1
 					assert.Equal(t, tm.Add(10*time.Second), fi.ModTime())
 					if runtime.GOOS != "windows" {
-						assert.Equal(t, 0744, int(fi.Mode()&0xFFF))
+						assert.Equal(t, 0o744, int(fi.Mode()&0xFFF))
 						assert.Equal(t, os.ModeSetuid, fi.Mode()&os.ModeSetuid)
 					} else {
-						assert.Equal(t, 0666, int(fi.Mode()&0xFFF))
+						assert.Equal(t, 0o666, int(fi.Mode()&0xFFF))
 					}
 				case 3: // file2
 					assert.Equal(t, tm.Add(10*time.Second), fi.ModTime())
 					if runtime.GOOS != "windows" {
-						assert.Equal(t, 0560, int(fi.Mode()&0xFFF))
+						assert.Equal(t, 0o560, int(fi.Mode()&0xFFF))
 						assert.Equal(t, 0, int(fi.Mode()&os.ModeSetuid))
 					} else {
-						assert.Equal(t, 0666, int(fi.Mode()&0xFFF))
+						assert.Equal(t, 0o666, int(fi.Mode()&0xFFF))
 					}
 				case 4: // file3
 					assert.Equal(t, tm.Add(10*time.Second), fi.ModTime())
 					if runtime.GOOS != "windows" {
-						assert.Equal(t, 0540, int(fi.Mode()&0xFFF))
+						assert.Equal(t, 0o540, int(fi.Mode()&0xFFF))
 						assert.Equal(t, os.ModeSetgid, fi.Mode()&os.ModeSetgid)
 						assert.Equal(t, os.ModeSetuid, fi.Mode()&os.ModeSetuid)
 					} else {
-						assert.Equal(t, 0444, int(fi.Mode()&0xFFF))
+						assert.Equal(t, 0o444, int(fi.Mode()&0xFFF))
 					}
 				default:
 					assert.Fail(t, "has more than 5 entries", path)
@@ -415,7 +430,7 @@ func TestDeferredUpdate(t *testing.T) {
 	entries := []tarEntry{
 		&dirTarEntry{path: "root", mtime: add5()},
 		&dirTarEntry{path: "root/a", mtime: add5()},
-		&dirTarEntry{path: "root/a/beta", mtime: add5(), mode: 0500},
+		&dirTarEntry{path: "root/a/beta", mtime: add5(), mode: 0o500},
 		&dirTarEntry{path: "root/a/beta/centauri", mtime: add5()},
 		&dirTarEntry{path: "root/a/beta/lima", mtime: add5()},
 		&dirTarEntry{path: "root/a/beta/papa", mtime: add5()},
@@ -440,7 +455,6 @@ func TestDeferredUpdate(t *testing.T) {
 		assert.NoError(t, err)
 	},
 		nil)
-
 }
 
 func TestInternalSymlinkTraverse(t *testing.T) {
@@ -486,6 +500,9 @@ func TestLastElementOverwrite(t *testing.T) {
 		// This file will reside outside of the extraction directory root.
 		f, err := os.Create(fp.Join(rootDir, "outside-ref"))
 		assert.NoError(t, err)
+		t.Cleanup(func() {
+			f.Close()
+		})
 		n, err := f.WriteString(originalData)
 		assert.NoError(t, err)
 		assert.Equal(t, len(originalData), n)
@@ -511,15 +528,15 @@ func TestLastElementOverwrite(t *testing.T) {
 const tarOutRoot = "tar-out-root"
 
 func testTarExtraction(t *testing.T, setup func(t *testing.T, rootDir string), tarEntries []tarEntry, check func(t *testing.T, extractDir string), extractError error) {
-	var err error
-
 	// Directory structure.
 	// FIXME: We can't easily work on a MemFS since we would need to replace
 	//  all the `os` calls in the extractor so using a temporary dir.
-	rootDir, err := os.MkdirTemp("", "tar-extraction-test")
-	assert.NoError(t, err)
+	rootDir := t.TempDir()
+	t.Cleanup(func() {
+		chmodRecursive(t, rootDir)
+	})
 	extractDir := fp.Join(rootDir, tarOutRoot)
-	err = os.MkdirAll(extractDir, 0o755)
+	err := os.MkdirAll(extractDir, 0o755)
 	assert.NoError(t, err)
 
 	if setup != nil {
@@ -537,11 +554,23 @@ func testTarExtraction(t *testing.T, setup func(t *testing.T, rootDir string), t
 	}
 }
 
-func testExtract(t *testing.T, tarFile string, extractDir string, expectedError error) {
-	var err error
+func chmodRecursive(t *testing.T, path string) {
+	t.Helper()
+	err := fp.WalkDir(path, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		return os.Chmod(path, fs.FileMode(0o700))
+	})
+	if err != nil {
+		t.Log("ERROR:", err)
+	}
+}
 
+func testExtract(t *testing.T, tarFile string, extractDir string, expectedError error) {
 	tarReader, err := os.Open(tarFile)
 	assert.NoError(t, err)
+	defer tarReader.Close()
 
 	extractor := &Extractor{Path: extractDir}
 	err = extractor.Extract(tarReader)
@@ -555,11 +584,11 @@ func testMeta(t *testing.T, path string, mode int, now time.Time) {
 	m := files.ModePermsToUnixPerms(fi.Mode())
 	if runtime.GOOS == "windows" {
 		if fi.IsDir() {
-			mode = 0777
-		} else if mode&0220 != 0 {
-			mode = 0666
-		} else if mode&0440 != 0 {
-			mode = 0444
+			mode = 0o777
+		} else if mode&0o220 != 0 {
+			mode = 0o666
+		} else if mode&0o440 != 0 {
+			mode = 0o444
 		}
 	}
 	assert.Equal(t, mode, int(m))

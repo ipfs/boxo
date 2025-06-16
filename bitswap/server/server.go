@@ -2,9 +2,8 @@ package server
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"sort"
+	"slices"
 	"sync"
 	"time"
 
@@ -81,7 +80,7 @@ func New(ctx context.Context, network bsnet.BitSwapNetwork, bstore blockstore.Bl
 	s.engine = decision.NewEngine(
 		ctx,
 		bstore,
-		network.ConnectionManager(),
+		network,
 		network.Self(),
 		s.engineOptions...,
 	)
@@ -125,14 +124,6 @@ func WithTaskComparator(comparator decision.TaskComparator) Option {
 // Configures the engine to use the given score decision logic.
 func WithScoreLedger(scoreLedger decision.ScoreLedger) Option {
 	o := decision.WithScoreLedger(scoreLedger)
-	return func(bs *Server) {
-		bs.engineOptions = append(bs.engineOptions, o)
-	}
-}
-
-// WithPeerLedger configures the engine with a custom [decision.PeerLedger].
-func WithPeerLedger(peerLedger decision.PeerLedger) Option {
-	o := decision.WithPeerLedger(peerLedger)
 	return func(bs *Server) {
 		bs.engineOptions = append(bs.engineOptions, o)
 	}
@@ -264,10 +255,7 @@ func (bs *Server) startWorkers(ctx context.Context) {
 func (bs *Server) taskWorker(ctx context.Context, id int) {
 	defer bs.waitWorkers.Done()
 
-	log := log.With("ID", id)
-	defer log.Debug("bitswap task worker shutting down...")
 	for {
-		log.Debug("Bitswap.TaskWorker.Loop")
 		select {
 		case nextEnvelope := <-bs.engine.Outbox():
 			select {
@@ -383,7 +371,7 @@ func (bs *Server) Stat() (Stat, error) {
 	for i, p := range peers {
 		peersStr[i] = p.String()
 	}
-	sort.Strings(peersStr)
+	slices.Sort(peersStr)
 	s.Peers = peersStr
 
 	return s, nil
@@ -407,7 +395,7 @@ func (bs *Server) NotifyNewBlock(ctx context.Context, blk blocks.Block) error {
 func (bs *Server) NotifyNewBlocks(ctx context.Context, blks ...blocks.Block) error {
 	select {
 	case <-bs.closing:
-		return errors.New("bitswap is closed")
+		return nil
 	default:
 	}
 
@@ -419,7 +407,7 @@ func (bs *Server) NotifyNewBlocks(ctx context.Context, blks ...blocks.Block) err
 
 func (bs *Server) ReceiveMessage(ctx context.Context, p peer.ID, incoming message.BitSwapMessage) {
 	// This call records changes to wantlists, blocks received,
-	// and number of bytes transfered.
+	// and number of bytes transferred.
 	mustKillConnection := bs.engine.MessageReceived(ctx, p, incoming)
 	if mustKillConnection {
 		bs.network.DisconnectFrom(ctx, p)
@@ -433,7 +421,7 @@ func (bs *Server) ReceiveMessage(ctx context.Context, p peer.ID, incoming messag
 }
 
 // ReceivedBlocks notify the decision engine that a peer is well behaving
-// and gave us usefull data, potentially increasing it's score and making us
+// and gave us useful data, potentially increasing it's score and making us
 // send them more data in exchange.
 func (bs *Server) ReceivedBlocks(from peer.ID, blks []blocks.Block) {
 	bs.engine.ReceivedBlocks(from, blks)

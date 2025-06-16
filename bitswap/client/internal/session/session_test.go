@@ -24,12 +24,15 @@ const blockSize = 4
 
 type mockSessionMgr struct {
 	lk            sync.Mutex
+	sim           *bssim.SessionInterestManager
 	removeSession bool
 	cancels       []cid.Cid
 }
 
-func newMockSessionMgr() *mockSessionMgr {
-	return &mockSessionMgr{}
+func newMockSessionMgr(sim *bssim.SessionInterestManager) *mockSessionMgr {
+	return &mockSessionMgr{
+		sim: sim,
+	}
 }
 
 func (msm *mockSessionMgr) removeSessionCalled() bool {
@@ -54,6 +57,7 @@ func (msm *mockSessionMgr) CancelSessionWants(sid uint64, wants []cid.Cid) {
 	msm.lk.Lock()
 	defer msm.lk.Unlock()
 	msm.cancels = append(msm.cancels, wants...)
+	msm.sim.RemoveSessionWants(sid, wants)
 }
 
 func newFakeSessionPeerManager() *bsspm.SessionPeerManager {
@@ -145,6 +149,7 @@ func (pm *fakePeerManager) UnregisterSession(uint64)              {}
 func (pm *fakePeerManager) SendWants(context.Context, peer.ID, []cid.Cid, []cid.Cid) bool {
 	return true
 }
+
 func (pm *fakePeerManager) BroadcastWantHaves(ctx context.Context, cids []cid.Cid) {
 	select {
 	case pm.wantReqs <- wantReq{cids}:
@@ -163,8 +168,8 @@ func TestSessionGetBlocks(t *testing.T) {
 	notif := notifications.New()
 	defer notif.Shutdown()
 	id := random.SequenceNext()
-	sm := newMockSessionMgr()
-	session := New(ctx, sm, id, fspm, fpf, sim, fpm, bpm, notif, time.Second, delay.Fixed(time.Minute), "")
+	sm := newMockSessionMgr(sim)
+	session := New(ctx, sm, id, fspm, fpf, sim, fpm, bpm, notif, time.Second, delay.Fixed(time.Minute), "", nil)
 	blks := random.BlocksOfSize(broadcastLiveWantsLimit*2, blockSize)
 	var cids []cid.Cid
 	for _, block := range blks {
@@ -243,8 +248,8 @@ func TestSessionFindMorePeers(t *testing.T) {
 	notif := notifications.New()
 	defer notif.Shutdown()
 	id := random.SequenceNext()
-	sm := newMockSessionMgr()
-	session := New(ctx, sm, id, fspm, fpf, sim, fpm, bpm, notif, time.Second, delay.Fixed(time.Minute), "")
+	sm := newMockSessionMgr(sim)
+	session := New(ctx, sm, id, fspm, fpf, sim, fpm, bpm, notif, time.Second, delay.Fixed(time.Minute), "", nil)
 	session.SetBaseTickDelay(200 * time.Microsecond)
 	blks := random.BlocksOfSize(broadcastLiveWantsLimit*2, blockSize)
 	var cids []cid.Cid
@@ -287,7 +292,7 @@ func TestSessionFindMorePeers(t *testing.T) {
 		// Make sure the first block is not included because it has already
 		// been received
 		for _, c := range receivedWantReq.cids {
-			require.False(t, c.Equals(cids[0]), "should not braodcast block that was already received")
+			require.False(t, c.Equals(cids[0]), "should not broadcast block that was already received")
 		}
 	case <-ctx.Done():
 		t.Fatal("Never rebroadcast want list")
@@ -313,8 +318,8 @@ func TestSessionOnPeersExhausted(t *testing.T) {
 	notif := notifications.New()
 	defer notif.Shutdown()
 	id := random.SequenceNext()
-	sm := newMockSessionMgr()
-	session := New(ctx, sm, id, fspm, fpf, sim, fpm, bpm, notif, time.Second, delay.Fixed(time.Minute), "")
+	sm := newMockSessionMgr(sim)
+	session := New(ctx, sm, id, fspm, fpf, sim, fpm, bpm, notif, time.Second, delay.Fixed(time.Minute), "", nil)
 	blks := random.BlocksOfSize(broadcastLiveWantsLimit+5, blockSize)
 	var cids []cid.Cid
 	for _, block := range blks {
@@ -350,8 +355,8 @@ func TestSessionFailingToGetFirstBlock(t *testing.T) {
 	notif := notifications.New()
 	defer notif.Shutdown()
 	id := random.SequenceNext()
-	sm := newMockSessionMgr()
-	session := New(ctx, sm, id, fspm, fpf, sim, fpm, bpm, notif, 10*time.Millisecond, delay.Fixed(100*time.Millisecond), "")
+	sm := newMockSessionMgr(sim)
+	session := New(ctx, sm, id, fspm, fpf, sim, fpm, bpm, notif, 10*time.Millisecond, delay.Fixed(100*time.Millisecond), "", nil)
 	blks := random.BlocksOfSize(4, blockSize)
 	var cids []cid.Cid
 	for _, block := range blks {
@@ -448,11 +453,11 @@ func TestSessionCtxCancelClosesGetBlocksChannel(t *testing.T) {
 	notif := notifications.New()
 	defer notif.Shutdown()
 	id := random.SequenceNext()
-	sm := newMockSessionMgr()
+	sm := newMockSessionMgr(sim)
 
 	// Create a new session with its own context
 	sessctx, sesscancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
-	session := New(sessctx, sm, id, fspm, fpf, sim, fpm, bpm, notif, time.Second, delay.Fixed(time.Minute), "")
+	session := New(sessctx, sm, id, fspm, fpf, sim, fpm, bpm, notif, time.Second, delay.Fixed(time.Minute), "", nil)
 
 	timerCtx, timerCancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
 	defer timerCancel()
@@ -491,12 +496,12 @@ func TestSessionOnShutdownCalled(t *testing.T) {
 	notif := notifications.New()
 	defer notif.Shutdown()
 	id := random.SequenceNext()
-	sm := newMockSessionMgr()
+	sm := newMockSessionMgr(sim)
 
 	// Create a new session with its own context
 	sessctx, sesscancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer sesscancel()
-	session := New(sessctx, sm, id, fspm, fpf, sim, fpm, bpm, notif, time.Second, delay.Fixed(time.Minute), "")
+	session := New(sessctx, sm, id, fspm, fpf, sim, fpm, bpm, notif, time.Second, delay.Fixed(time.Minute), "", nil)
 
 	// Shutdown the session
 	session.Shutdown()
@@ -518,8 +523,8 @@ func TestSessionReceiveMessageAfterCtxCancel(t *testing.T) {
 	notif := notifications.New()
 	defer notif.Shutdown()
 	id := random.SequenceNext()
-	sm := newMockSessionMgr()
-	session := New(ctx, sm, id, fspm, fpf, sim, fpm, bpm, notif, time.Second, delay.Fixed(time.Minute), "")
+	sm := newMockSessionMgr(sim)
+	session := New(ctx, sm, id, fspm, fpf, sim, fpm, bpm, notif, time.Second, delay.Fixed(time.Minute), "", nil)
 	blks := random.BlocksOfSize(2, blockSize)
 	cids := []cid.Cid{blks[0].Cid(), blks[1].Cid()}
 

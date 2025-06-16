@@ -23,9 +23,9 @@ func TestToSubdomainURL(t *testing.T) {
 
 	backend.namesys["/ipns/dnslink.long-name.example.com"] = newMockNamesysItem(path.FromCid(testCID), 0)
 	backend.namesys["/ipns/dnslink.too-long.f1siqrebi3vir8sab33hu5vcy008djegvay6atmz91ojesyjs8lx350b7y7i1nvyw2haytfukfyu2f2x4tocdrfa0zgij6p4zpl4u5o.example.com"] = newMockNamesysItem(path.FromCid(testCID), 0)
-	httpRequest := httptest.NewRequest("GET", "http://127.0.0.1:8080", nil)
-	httpsRequest := httptest.NewRequest("GET", "https://https-request-stub.example.com", nil)
-	httpsProxiedRequest := httptest.NewRequest("GET", "http://proxied-https-request-stub.example.com", nil)
+	httpRequest := httptest.NewRequest(http.MethodGet, "http://127.0.0.1:8080", nil)
+	httpsRequest := httptest.NewRequest(http.MethodGet, "https://https-request-stub.example.com", nil)
+	httpsProxiedRequest := httptest.NewRequest(http.MethodGet, "http://proxied-https-request-stub.example.com", nil)
 	httpsProxiedRequest.Header.Set("X-Forwarded-Proto", "https")
 
 	for _, test := range []struct {
@@ -118,13 +118,13 @@ func TestToDNSLinkFQDN(t *testing.T) {
 
 func TestIsHTTPSRequest(t *testing.T) {
 	t.Parallel()
-	httpRequest := httptest.NewRequest("GET", "http://127.0.0.1:8080", nil)
-	httpsRequest := httptest.NewRequest("GET", "https://https-request-stub.example.com", nil)
-	httpsProxiedRequest := httptest.NewRequest("GET", "http://proxied-https-request-stub.example.com", nil)
+	httpRequest := httptest.NewRequest(http.MethodGet, "http://127.0.0.1:8080", nil)
+	httpsRequest := httptest.NewRequest(http.MethodGet, "https://https-request-stub.example.com", nil)
+	httpsProxiedRequest := httptest.NewRequest(http.MethodGet, "http://proxied-https-request-stub.example.com", nil)
 	httpsProxiedRequest.Header.Set("X-Forwarded-Proto", "https")
-	httpProxiedRequest := httptest.NewRequest("GET", "http://proxied-http-request-stub.example.com", nil)
+	httpProxiedRequest := httptest.NewRequest(http.MethodGet, "http://proxied-http-request-stub.example.com", nil)
 	httpProxiedRequest.Header.Set("X-Forwarded-Proto", "http")
-	oddballRequest := httptest.NewRequest("GET", "foo://127.0.0.1:8080", nil)
+	oddballRequest := httptest.NewRequest(http.MethodGet, "foo://127.0.0.1:8080", nil)
 	for _, test := range []struct {
 		in  *http.Request
 		out bool
@@ -313,12 +313,14 @@ func TestKnownSubdomainDetails(t *testing.T) {
 	}
 }
 
-const testInlinedDNSLinkA = "example-com"
-const testInlinedDNSLinkB = "docs-ipfs-tech"
-const testInlinedDNSLinkC = "en-wikipedia--on--ipfs-org"
-const testDNSLinkA = "example.com"
-const testDNSLinkB = "docs.ipfs.tech"
-const testDNSLinkC = "en.wikipedia-on-ipfs.org"
+const (
+	testInlinedDNSLinkA = "example-com"
+	testInlinedDNSLinkB = "docs-ipfs-tech"
+	testInlinedDNSLinkC = "en-wikipedia--on--ipfs-org"
+	testDNSLinkA        = "example.com"
+	testDNSLinkB        = "docs.ipfs.tech"
+	testDNSLinkC        = "en.wikipedia-on-ipfs.org"
+)
 
 func inlineDNSLinkSimple(fqdn string) (dnsLabel string, err error) {
 	dnsLabel = strings.ReplaceAll(fqdn, "-", "--")
@@ -328,6 +330,7 @@ func inlineDNSLinkSimple(fqdn string) (dnsLabel string, err error) {
 	}
 	return dnsLabel, nil
 }
+
 func uninlineDNSLinkSimple(dnsLabel string) (fqdn string) {
 	fqdn = strings.ReplaceAll(dnsLabel, "--", "@") // @ placeholder is unused in DNS labels
 	fqdn = strings.ReplaceAll(fqdn, "-", ".")
@@ -342,6 +345,7 @@ func BenchmarkUninlineDNSLinkSimple(b *testing.B) {
 		_ = uninlineDNSLinkSimple(testInlinedDNSLinkC)
 	}
 }
+
 func BenchmarkUninlineDNSLink(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		_ = UninlineDNSLink(testInlinedDNSLinkA)
@@ -357,10 +361,130 @@ func BenchmarkInlineDNSLinkSimple(b *testing.B) {
 		_, _ = inlineDNSLinkSimple(testDNSLinkC)
 	}
 }
+
 func BenchmarkInlineDNSLink(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		_, _ = InlineDNSLink(testDNSLinkA)
 		_, _ = InlineDNSLink(testDNSLinkB)
 		_, _ = InlineDNSLink(testDNSLinkC)
+	}
+}
+
+// Test function for hasDNSLinkRecord with local IP addresses
+func TestHasDNSLinkRecordWithLocalIP(t *testing.T) {
+	t.Parallel()
+
+	// Create test environment
+	backend, _ := newMockBackend(t, "fixtures.car")
+	// Add some DNSLink records to mock backend
+	testCID2, _ := cid.Decode("QmUNLLsPACCz1vLxQVkXqqLX5R1X345qqfHbsf67hvA3Nn")
+	backend.namesys["/ipns/example.com"] = newMockNamesysItem(path.FromCid(testCID2), 0)
+
+	ctx := httptest.NewRequest(http.MethodGet, "http://example.com", nil).Context()
+
+	// Test local IP addresses
+	localIPs := []string{
+		"127.0.0.1",
+		"8.8.8.8",
+		"192.168.100.22:8080",
+		"::1",
+		"[::1]:8080",
+		"0:0:0:0:0:0:0:1",
+		"fe80::a89c:baff:fece:8c94",
+	}
+
+	for _, ip := range localIPs {
+		t.Run(ip, func(t *testing.T) {
+			// For local IP addresses, hasDNSLinkRecord should always return false
+			result := hasDNSLinkRecord(ctx, backend, ip)
+			require.False(t, result, "Local IP %s should not attempt DNSLink lookup", ip)
+		})
+	}
+
+	// Test valid domain name
+	t.Run("example.com", func(t *testing.T) {
+		result := hasDNSLinkRecord(ctx, backend, "example.com")
+		require.True(t, result, "example.com should have a valid DNSLink record")
+	})
+}
+
+func TestValidateSubdomainsForIP(t *testing.T) {
+	t.Parallel()
+
+	// Test cases
+	tests := []struct {
+		name          string
+		hostname      string
+		useSubdomains bool
+		shouldSkip    bool
+	}{
+		{
+			name:          "IP with subdomains enabled",
+			hostname:      "127.0.0.1:8080",
+			useSubdomains: true,
+			shouldSkip:    true,
+		},
+		{
+			name:          "IPv6 with subdomains enabled",
+			hostname:      "[::1]:8080",
+			useSubdomains: true,
+			shouldSkip:    true,
+		},
+		{
+			name:          "IP without port with subdomains enabled",
+			hostname:      "192.168.1.1",
+			useSubdomains: true,
+			shouldSkip:    true,
+		},
+		{
+			name:          "Domain with subdomains enabled",
+			hostname:      "example.com:8080",
+			useSubdomains: true,
+			shouldSkip:    false,
+		},
+		{
+			name:          "IP with subdomains disabled",
+			hostname:      "10.0.0.1:8080",
+			useSubdomains: false,
+			shouldSkip:    false,
+		},
+		{
+			name:          "IPv6 without port with subdomains enabled",
+			hostname:      "::1",
+			useSubdomains: true,
+			shouldSkip:    true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Create test gateway config
+			gw := &PublicGateway{
+				UseSubdomains: tt.useSubdomains,
+			}
+
+			// Prepare gateways map
+			gateways := make(map[string]*PublicGateway)
+			gateways[tt.hostname] = gw
+
+			// Run the validation
+			validatedGateways := prepareHostnameGateways(gateways)
+
+			// Check if gateway was skipped by looking in both exact and wildcard maps
+			_, existsExact := validatedGateways.exact[tt.hostname]
+			existsWildcard := false
+			for re := range validatedGateways.wildcard {
+				if re.MatchString(tt.hostname) {
+					existsWildcard = true
+					break
+				}
+			}
+			exists := existsExact || existsWildcard
+			if tt.shouldSkip {
+				assert.False(t, exists, "Gateway with UseSubdomains=true should be skipped for IP address")
+			} else {
+				assert.True(t, exists, "Gateway should not be skipped")
+			}
+		})
 	}
 }

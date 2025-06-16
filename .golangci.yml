@@ -1,0 +1,27 @@
+version: "2"
+
+run:
+  timeout: 10m
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+
+linters:
+  enable:
+    - ineffassign
+    - misspell
+    - unconvert
+    - unused
+    - usestdlibvars
+
+  disable:
+    - errcheck
+
+formatters:
+  enable:
+    - gci
+    - gofumpt
+
+severity:
+  default: warning

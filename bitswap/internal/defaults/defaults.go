@@ -10,6 +10,9 @@ const (
 	// broadcasting outstanding wants for the first time.
 	ProvSearchDelay = time.Second
 
+	// Maximum number of providers that are looked up per find request by the
+	// default bitswap client. 0 value means unlimited.
+	BitswapClientDefaultMaxProviders = 10
 	// Number of concurrent workers in decision engine that process requests to the blockstore
 	BitswapEngineBlockstoreWorkerCount = 128
 	// the total number of simultaneous threads sending outgoing messages

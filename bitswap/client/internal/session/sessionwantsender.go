@@ -4,7 +4,7 @@ import (
 	"context"
 
 	bsbpm "github.com/ipfs/boxo/bitswap/client/internal/blockpresencemanager"
-
+	bspm "github.com/ipfs/boxo/bitswap/client/internal/peermanager"
 	cid "github.com/ipfs/go-cid"
 	peer "github.com/libp2p/go-libp2p/core/peer"
 )
@@ -94,8 +94,6 @@ type sessionWantSender struct {
 	wants map[cid.Cid]*wantInfo
 	// Keeps track of how many consecutive DONT_HAVEs a peer has sent
 	peerConsecutiveDontHaves map[peer.ID]int
-	// Tracks which peers we have send want-block to
-	swbt *sentWantBlocksTracker
 	// Tracks the number of blocks each peer sent us
 	peerRspTrkr *peerResponseTracker
 	// Sends wants to peers
@@ -110,10 +108,12 @@ type sessionWantSender struct {
 	onSend onSendFn
 	// Called when all peers explicitly don't have a block
 	onPeersExhausted onPeersExhaustedFn
+	// Tracks number of haves received.
+	havesReceivedGauge bspm.Gauge
 }
 
 func newSessionWantSender(sid uint64, pm PeerManager, spm SessionPeerManager, canceller SessionWantsCanceller,
-	bpm *bsbpm.BlockPresenceManager, onSend onSendFn, onPeersExhausted onPeersExhaustedFn,
+	bpm *bsbpm.BlockPresenceManager, onSend onSendFn, onPeersExhausted onPeersExhaustedFn, havesReceivedGauge bspm.Gauge,
 ) sessionWantSender {
 	ctx, cancel := context.WithCancel(context.Background())
 	sws := sessionWantSender{
@@ -124,7 +124,6 @@ func newSessionWantSender(sid uint64, pm PeerManager, spm SessionPeerManager, ca
 		changes:                  make(chan change, changesBufferSize),
 		wants:                    make(map[cid.Cid]*wantInfo),
 		peerConsecutiveDontHaves: make(map[peer.ID]int),
-		swbt:                     newSentWantBlocksTracker(),
 		peerRspTrkr:              newPeerResponseTracker(),
 
 		pm:               pm,
@@ -133,6 +132,8 @@ func newSessionWantSender(sid uint64, pm PeerManager, spm SessionPeerManager, ca
 		bpm:              bpm,
 		onSend:           onSend,
 		onPeersExhausted: onPeersExhausted,
+
+		havesReceivedGauge: havesReceivedGauge,
 	}
 
 	return sws
@@ -220,12 +221,7 @@ func (sws *sessionWantSender) addChangeNonBlocking(c change) {
 	case sws.changes <- c:
 	default:
 		// changes channel is full, so add change in a go routine instead
-		go func() {
-			select {
-			case sws.changes <- c:
-			case <-sws.ctx.Done():
-			}
-		}()
+		go sws.addChange(c)
 	}
 }
 
@@ -326,14 +322,15 @@ func (sws *sessionWantSender) processAvailability(availability map[peer.ID]bool)
 			if wasAvailable {
 				stateChange = true
 				newlyUnavailable = append(newlyUnavailable, p)
+				// Remove count of first responses from peer.
+				sws.peerRspTrkr.remove(p)
 			}
 		}
 
 		// If the state has changed
 		if stateChange {
 			sws.updateWantsPeerAvailability(p, isNowAvailable)
-			// Reset the count of consecutive DONT_HAVEs received from the
-			// peer
+			// Reset count of consecutive DONT_HAVEs received from the peer.
 			delete(sws.peerConsecutiveDontHaves, p)
 		}
 	}
@@ -410,14 +407,10 @@ func (sws *sessionWantSender) processUpdates(updates []update) []cid.Cid {
 			// Update the block presence for the peer
 			sws.updateWantBlockPresence(c, upd.from)
 
-			// Check if the DONT_HAVE is in response to a want-block
-			// (could also be in response to want-have)
-			if sws.swbt.haveSentWantBlockTo(upd.from, c) {
-				// If we were waiting for a response from this peer, clear
-				// sentTo so that we can send the want to another peer
-				if sentTo, ok := sws.getWantSentTo(c); ok && sentTo == upd.from {
-					sws.setWantSentTo(c, "")
-				}
+			// If we were waiting for a response from this peer, clear
+			// sentTo so that we can send the want to another peer
+			if sentTo, ok := sws.getWantSentTo(c); ok && sentTo == upd.from {
+				sws.setWantSentTo(c, "")
 			}
 		}
 	}
@@ -581,11 +574,6 @@ func (sws *sessionWantSender) sendNextWants(newlyAvailable []peer.ID) {
 func (sws *sessionWantSender) sendWants(sends allWants) {
 	// For each peer we're sending a request to
 	for p, snd := range sends {
-		// Piggyback some other want-haves onto the request to the peer
-		for _, c := range sws.getPiggybackWantHaves(p, snd.wantBlocks) {
-			snd.wantHaves.Add(c)
-		}
-
 		// Send the wants to the peer.
 		// Note that the PeerManager ensures that we don't sent duplicate
 		// want-haves / want-blocks to a peer, and that want-blocks take
@@ -599,24 +587,7 @@ func (sws *sessionWantSender) sendWants(sends allWants) {
 		}
 		// Inform the session that we've sent the wants
 		sws.onSend(p, wblks, whaves)
-
-		// Record which peers we send want-block to
-		sws.swbt.addSentWantBlocksTo(p, wblks)
 	}
-}
-
-// getPiggybackWantHaves gets the want-haves that should be piggybacked onto
-// a request that we are making to send want-blocks to a peer
-func (sws *sessionWantSender) getPiggybackWantHaves(p peer.ID, wantBlocks *cid.Set) []cid.Cid {
-	var whs []cid.Cid
-	for c := range sws.wants {
-		// Don't send want-have if we're already sending a want-block
-		// (or have previously)
-		if !wantBlocks.Has(c) && !sws.swbt.haveSentWantBlockTo(p, c) {
-			whs = append(whs, c)
-		}
-	}
-	return whs
 }
 
 // newlyExhausted filters the list of keys for wants that have not already
@@ -668,6 +639,9 @@ func (sws *sessionWantSender) updateWantBlockPresence(c cid.Cid, p peer.ID) {
 	switch {
 	case sws.bpm.PeerHasBlock(p, c):
 		wi.setPeerBlockPresence(p, BPHave)
+		if sws.havesReceivedGauge != nil {
+			sws.havesReceivedGauge.Inc()
+		}
 	case sws.bpm.PeerDoesNotHaveBlock(p, c):
 		wi.setPeerBlockPresence(p, BPDontHave)
 	default:

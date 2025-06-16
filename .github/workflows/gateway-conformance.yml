@@ -22,7 +22,7 @@ jobs:
     steps:
       # 1. Download the gateway-conformance fixtures
       - name: Download gateway-conformance fixtures
-        uses: ipfs/gateway-conformance/.github/actions/extract-fixtures@v0.6
+        uses: ipfs/gateway-conformance/.github/actions/extract-fixtures@v0.8
         with:
           output: fixtures
           merged: true
@@ -46,8 +46,8 @@ jobs:
         run: boxo/examples/gateway/car-file/test-gateway -c fixtures/fixtures.car -p 8040 &
 
       # 4. Run the gateway-conformance tests
-      - name: Run gateway-conformance tests
-        uses: ipfs/gateway-conformance/.github/actions/test@v0.6
+      - name: Run gateway-conformance tests without IPNS and DNSLink
+        uses: ipfs/gateway-conformance/.github/actions/test@v0.8
         with:
           gateway-url: http://127.0.0.1:8040
           subdomain-url: http://example.net:8040
@@ -84,7 +84,7 @@ jobs:
     steps:
       # 1. Download the gateway-conformance fixtures
       - name: Download gateway-conformance fixtures
-        uses: ipfs/gateway-conformance/.github/actions/extract-fixtures@v0.6
+        uses: ipfs/gateway-conformance/.github/actions/extract-fixtures@v0.8
         with:
           output: fixtures
           merged: true
@@ -113,8 +113,8 @@ jobs:
         run: boxo/examples/gateway/proxy-blocks/test-gateway -g http://127.0.0.1:8030 -p 8040 &
 
       # 4. Run the gateway-conformance tests
-      - name: Run gateway-conformance tests
-        uses: ipfs/gateway-conformance/.github/actions/test@v0.6
+      - name: Run gateway-conformance tests without IPNS and DNSLink
+        uses: ipfs/gateway-conformance/.github/actions/test@v0.8
         with:
           gateway-url: http://127.0.0.1:8040 # we test gateway that is backed by a remote block gateway
           subdomain-url: http://example.net:8040
@@ -152,7 +152,7 @@ jobs:
     steps:
       # 1. Download the gateway-conformance fixtures
       - name: Download gateway-conformance fixtures
-        uses: ipfs/gateway-conformance/.github/actions/extract-fixtures@v0.6
+        uses: ipfs/gateway-conformance/.github/actions/extract-fixtures@v0.8
         with:
           output: fixtures
           merged: true
@@ -181,8 +181,8 @@ jobs:
         run: boxo/examples/gateway/proxy-car/test-gateway -g http://127.0.0.1:8030 -p 8040 &
 
       # 4. Run the gateway-conformance tests
-      - name: Run gateway-conformance tests
-        uses: ipfs/gateway-conformance/.github/actions/test@v0.6
+      - name: Run gateway-conformance tests without IPNS and DNSLink
+        uses: ipfs/gateway-conformance/.github/actions/test@v0.8
         with:
           gateway-url: http://127.0.0.1:8040 # we test gateway that is backed by a remote car gateway
           subdomain-url: http://example.net:8040

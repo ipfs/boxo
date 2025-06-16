@@ -2,9 +2,10 @@ package bitswap
 
 import (
 	"context"
+	"slices"
 
-	bsnet "github.com/ipfs/boxo/bitswap/network"
-
+	iface "github.com/ipfs/boxo/bitswap/network"
+	bsnet "github.com/ipfs/boxo/bitswap/network/bsnet"
 	tnet "github.com/libp2p/go-libp2p-testing/net"
 	"github.com/libp2p/go-libp2p/core/peer"
 	mockpeernet "github.com/libp2p/go-libp2p/p2p/net/mock"
@@ -19,7 +20,7 @@ func StreamNet(ctx context.Context, net mockpeernet.Mocknet) (Network, error) {
 	return &peernet{net}, nil
 }
 
-func (pn *peernet) Adapter(p tnet.Identity, opts ...bsnet.NetOpt) bsnet.BitSwapNetwork {
+func (pn *peernet) Adapter(p tnet.Identity, opts ...bsnet.NetOpt) iface.BitSwapNetwork {
 	client, err := pn.Mocknet.AddPeer(p.PrivateKey(), p.Address())
 	if err != nil {
 		panic(err.Error())
@@ -29,12 +30,7 @@ func (pn *peernet) Adapter(p tnet.Identity, opts ...bsnet.NetOpt) bsnet.BitSwapN
 }
 
 func (pn *peernet) HasPeer(p peer.ID) bool {
-	for _, member := range pn.Mocknet.Peers() {
-		if p == member {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(pn.Mocknet.Peers(), p)
 }
 
 var _ Network = (*peernet)(nil)
