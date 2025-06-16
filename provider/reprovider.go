@@ -15,6 +15,7 @@ import (
 	"github.com/ipfs/go-datastore"
 	"github.com/ipfs/go-datastore/namespace"
 	logging "github.com/ipfs/go-log/v2"
+	metrics "github.com/ipfs/go-metrics-interface"
 	"github.com/multiformats/go-multihash"
 )
 
@@ -66,6 +67,9 @@ type reprovider struct {
 	avgReprovideDuration, lastReprovideDuration time.Duration
 	lastRun                                     time.Time
 
+	provideCounter   metrics.Counter
+	reprovideCounter metrics.Counter
+
 	throughputCallback ThroughputCallback
 	// throughputProvideCurrentCount counts how many provides has been done since the last call to throughputCallback
 	throughputReprovideCurrentCount uint
@@ -107,12 +111,15 @@ var (
 //
 // If provider casts to [Ready], it will wait until [Ready.Ready] is true.
 func New(ds datastore.Batching, opts ...Option) (System, error) {
+	ctx := metrics.CtxScope(context.Background(), "provider")
 	s := &reprovider{
 		allowlist:             verifcid.DefaultAllowlist,
 		reprovideInterval:     DefaultReproviderInterval,
 		maxReprovideBatchSize: math.MaxUint,
 		provideWorkerCount:    defaultProvideWorkerCount,
 		keyPrefix:             DefaultKeyPrefix,
+		provideCounter:        metrics.NewCtx(ctx, "reprovider_provide_count", "Number of provides since node is running").Counter(),
+		reprovideCounter:      metrics.NewCtx(ctx, "reprovider_reprovide_count", "Number of reprovides since node is running").Counter(),
 	}
 
 	var err error
@@ -264,6 +271,8 @@ func (s *reprovider) provideWorker() {
 	provideFunc := func(ctx context.Context, c cid.Cid) {
 		if err := s.rsys.Provide(ctx, c, true); err != nil {
 			log.Errorf("failed to provide %s: %s", c, err)
+		} else {
+			s.provideCounter.Inc()
 		}
 	}
 
@@ -472,6 +481,8 @@ func (s *reprovider) Reprovide(ctx context.Context) error {
 		s.lastReprovideDuration = dur
 		s.lastRun = time.Now()
 		s.statLk.Unlock()
+
+		s.reprovideCounter.Add(float64(len(keys)))
 
 		// persist last reprovide time to disk to avoid unnecessary reprovides on restart
 		if err := s.ds.Put(s.ctx, lastReprovideKey, storeTime(s.lastRun)); err != nil {
