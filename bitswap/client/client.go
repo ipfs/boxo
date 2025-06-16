@@ -180,7 +180,7 @@ func BroadcastControlPeeredPeers(enable bool) Option {
 // anyway, even though broadcast control logic has determined that they are
 // not broadcast targets. Setting this to a non-zero value ensures at least
 // this number of random peers receives a broadcast. This may be helpful in
-// cases where peers that are not receiving broadcasts my have wanted blocks.
+// cases where peers that are not receiving broadcasts may have wanted blocks.
 // Default is 0 (no random broadcasts).
 func BroadcastControlMaxRandomPeers(n int) Option {
 	return func(bs *Client) {
