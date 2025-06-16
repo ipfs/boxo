@@ -377,7 +377,7 @@ func (bs *Server) Stat() (Stat, error) {
 	return s, nil
 }
 
-// NotifyNewBlock announces the existence of block to this bitswap service. The
+// NotifyNewBlock announces the existence of a block to this bitswap service. The
 // service will potentially notify its peers.
 // Bitswap itself doesn't store new blocks. It's the caller responsibility to ensure
 // that those blocks are available in the blockstore before calling this function.
