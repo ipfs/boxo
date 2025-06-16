@@ -779,7 +779,7 @@ const maximumHamtWidth = 1 << 10 // FIXME: Spec this and decide of a correct val
 
 func newChilder(ds ipld.DAGService, size int) (*childer, error) {
 	if size > maximumHamtWidth {
-		return nil, fmt.Errorf("hamt witdh (%d) exceed maximum allowed (%d)", size, maximumHamtWidth)
+		return nil, fmt.Errorf("hamt width (%d) exceed maximum allowed (%d)", size, maximumHamtWidth)
 	}
 	bf, err := bitfield.NewBitfield(size)
 	if err != nil {
