@@ -31,16 +31,16 @@ import (
 
 var log = logging.Logger("httpnet")
 
-var ErrNoHTTPAddresses = errors.New("AddrInfo does not contain any valid HTTP addresses")
-var ErrNoSuccess = errors.New("connection failed to all HTTP endpoints")
-var ErrNotConnected = errors.New("no HTTP connection has been setup to this peer")
+var (
+	ErrNoHTTPAddresses = errors.New("AddrInfo does not contain any valid HTTP addresses")
+	ErrNoSuccess       = errors.New("none of the peer HTTP endpoints responded successfully to request")
+	ErrNotConnected    = errors.New("no HTTP connection has been setup to this peer")
+)
 
 var _ network.BitSwapNetwork = (*Network)(nil)
 
-var (
-	// DefaultUserAgent is sent as a header in all requests.
-	DefaultUserAgent = defaultUserAgent() // Usually will result in a "boxo@commitID"
-)
+// DefaultUserAgent is sent as a header in all requests.
+var DefaultUserAgent = defaultUserAgent() // Usually will result in a "boxo@commitID"
 
 // Defaults for the configurable options.
 const (
@@ -349,7 +349,6 @@ func (ht *Network) Stop() {
 // Ping triggers a ping to the given peer and returns the latency.
 func (ht *Network) Ping(ctx context.Context, p peer.ID) ping.Result {
 	return ht.pinger.ping(ctx, p)
-
 }
 
 // Latency returns the EWMA latency for the given peer.
@@ -524,7 +523,7 @@ func (ht *Network) connectToURL(ctx context.Context, p peer.ID, u network.Parsed
 
 	// probe success.
 	// FIXME: Storacha returns 410 for our probe.
-	if resp.StatusCode == 200 || resp.StatusCode == 204 || resp.StatusCode == 410 {
+	if resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusNoContent || resp.StatusCode == http.StatusGone {
 		return nil
 	}
 
