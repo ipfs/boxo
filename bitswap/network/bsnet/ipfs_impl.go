@@ -11,7 +11,6 @@ import (
 	bsmsg "github.com/ipfs/boxo/bitswap/message"
 	iface "github.com/ipfs/boxo/bitswap/network"
 	"github.com/ipfs/boxo/bitswap/network/bsnet/internal"
-
 	logging "github.com/ipfs/go-log/v2"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
@@ -272,6 +271,10 @@ func (bsnet *impl) Ping(ctx context.Context, p peer.ID) ping.Result {
 
 func (bsnet *impl) Latency(p peer.ID) time.Duration {
 	return bsnet.host.Peerstore().LatencyEWMA(p)
+}
+
+func (bsnet *impl) Host() host.Host {
+	return bsnet.host
 }
 
 // Indicates whether the given protocol supports HAVE / DONT_HAVE messages

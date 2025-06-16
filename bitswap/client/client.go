@@ -137,6 +137,69 @@ func WithDefaultProviderQueryManager(defaultProviderQueryManager bool) Option {
 	}
 }
 
+// BroadcastControlEnable enables or disables broadcast reduction logic.
+// Setting this to false restores the previous broadcast behavior of sending
+// broadcasts to all peers, and ignores all other BroadcastControl options.
+// Default is false (disabled).
+func BroadcastControlEnable(enable bool) Option {
+	return func(bs *Client) {
+		bs.bcastControl.Enable = enable
+	}
+}
+
+// BroadcastControlMaxPeers sets a hard limit on the number of peers to send
+// broadcasts to. A value of 0 means no broadcasts are sent. A value of -1
+// means there is no limit. Default is -1 (unlimited).
+func BroadcastControlMaxPeers(limit int) Option {
+	return func(bs *Client) {
+		bs.bcastControl.MaxPeers = limit
+	}
+}
+
+// BroadcastControlLocalPeers enables or disables broadcast control for peers
+// on the local network. If false, than always broadcast to peers on the local
+// network. If true, apply broadcast control to local peers. Default is false
+// (always broadcast to local peers).
+func BroadcastControlLocalPeers(enable bool) Option {
+	return func(bs *Client) {
+		bs.bcastControl.LocalPeers = enable
+	}
+}
+
+// BroadcastControlPeeredPeers enables or disables broadcast control for peers
+// configured for peering. If false, than always broadcast to peers configured
+// for peering. If true, apply broadcast control to peered peers. Default is
+// false (always broadcast to peered peers).
+func BroadcastControlPeeredPeers(enable bool) Option {
+	return func(bs *Client) {
+		bs.bcastControl.PeeredPeers = enable
+	}
+}
+
+// BroadcastControlMaxRandomPeers sets the number of peers to broadcast to
+// anyway, even though broadcast control logic has determined that they are
+// not broadcast targets. Setting this to a non-zero value ensures at least
+// this number of random peers receives a broadcast. This may be helpful in
+// cases where peers that are not receiving broadcasts may have wanted blocks.
+// Default is 0 (no random broadcasts).
+func BroadcastControlMaxRandomPeers(n int) Option {
+	return func(bs *Client) {
+		bs.bcastControl.MaxRandomPeers = n
+	}
+}
+
+// BroadcastControlSendToPendingPeers, enables or disables sending broadcasts
+// to any peers to which there is a pending message to send. When enabled, this
+// sends broadcasts to many more peers, but does so in a way that does not
+// increase the number of separate broadcast messages. There is still the
+// increased cost of the recipients having to process and respond to the
+// broadcasts. Default is false.
+func BroadcastControlSendToPendingPeers(enable bool) Option {
+	return func(bs *Client) {
+		bs.bcastControl.SendToPendingPeers = enable
+	}
+}
+
 type BlockReceivedNotifier interface {
 	// ReceivedBlocks notifies the decision engine that a peer is well-behaving
 	// and gave us useful data, potentially increasing its score and making us
@@ -166,15 +229,28 @@ func New(parent context.Context, network bsnet.BitSwapNetwork, providerFinder ro
 		counters:                    new(counters),
 		dupMetric:                   bmetrics.DupHist(ctx),
 		allMetric:                   bmetrics.AllHist(ctx),
+		havesReceivedGauge:          bmetrics.HavesReceivedGauge(ctx),
+		blocksReceivedGauge:         bmetrics.BlocksReceivedGauge(ctx),
 		provSearchDelay:             defaults.ProvSearchDelay,
 		rebroadcastDelay:            delay.Fixed(defaults.RebroadcastDelay),
 		simulateDontHavesOnTimeout:  true,
 		defaultProviderQueryManager: true,
+
+		bcastControl: bspm.BroadcastControl{
+			MaxPeers: -1,
+		},
 	}
 
 	// apply functional options before starting and running bitswap
 	for _, option := range options {
 		option(bs)
+	}
+
+	if bs.bcastControl.Enable {
+		if bs.bcastControl.NeedHost() {
+			bs.bcastControl.Host = network.Host()
+		}
+		bs.bcastControl.SkipGauge = bmetrics.BroadcastSkipGauge(ctx)
 	}
 
 	// onDontHaveTimeout is called when a want-block is sent to a peer that
@@ -201,7 +277,7 @@ func New(parent context.Context, network bsnet.BitSwapNetwork, providerFinder ro
 
 	sim := bssim.New()
 	bpm := bsbpm.New()
-	pm := bspm.New(ctx, peerQueueFactory)
+	pm := bspm.New(ctx, peerQueueFactory, bs.bcastControl)
 
 	if bs.providerFinder != nil && bs.defaultProviderQueryManager {
 		// network can do dialing.
@@ -237,7 +313,7 @@ func New(parent context.Context, network bsnet.BitSwapNetwork, providerFinder ro
 		} else if providerFinder != nil {
 			sessionProvFinder = providerFinder
 		}
-		return bssession.New(sessctx, sessmgr, id, spm, sessionProvFinder, sim, pm, bpm, notif, provSearchDelay, rebroadcastDelay, self)
+		return bssession.New(sessctx, sessmgr, id, spm, sessionProvFinder, sim, pm, bpm, notif, provSearchDelay, rebroadcastDelay, self, bs.havesReceivedGauge)
 	}
 	sessionPeerManagerFactory := func(ctx context.Context, id uint64) bssession.SessionPeerManager {
 		return bsspm.New(id, network)
@@ -285,6 +361,9 @@ type Client struct {
 	dupMetric metrics.Histogram
 	allMetric metrics.Histogram
 
+	havesReceivedGauge  bspm.Gauge
+	blocksReceivedGauge bspm.Gauge
+
 	// External statistics interface
 	tracer tracer.Tracer
 
@@ -311,6 +390,9 @@ type Client struct {
 	skipDuplicatedBlocksStats bool
 
 	perPeerSendDelay time.Duration
+
+	// Broadcast control configuration.
+	bcastControl bspm.BroadcastControl
 }
 
 type counters struct {
@@ -382,6 +464,10 @@ func (bs *Client) receiveBlocksFrom(ctx context.Context, from peer.ID, blks []bl
 	case <-bs.closing:
 		return errors.New("bitswap is closed")
 	default:
+	}
+
+	if len(blks) != 0 || len(haves) != 0 {
+		bs.pm.MarkBroadcastTarget(from)
 	}
 
 	wanted, notWanted := bs.sim.SplitWantedUnwanted(blks)
@@ -484,6 +570,7 @@ func (bs *Client) updateReceiveCounters(blocks []blocks.Block) {
 			c.dupBlocksRecvd++
 			c.dupDataRecvd += uint64(blkLen)
 		}
+		bs.blocksReceivedGauge.Inc()
 	}
 }
 

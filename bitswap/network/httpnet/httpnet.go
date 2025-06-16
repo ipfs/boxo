@@ -357,6 +357,10 @@ func (ht *Network) Latency(p peer.ID) time.Duration {
 	return ht.pinger.latency(p)
 }
 
+func (ht *Network) Host() host.Host {
+	return ht.host
+}
+
 func (ht *Network) senderURLs(p peer.ID) []*senderURL {
 	pi := ht.host.Peerstore().PeerInfo(p)
 	urls := network.ExtractURLsFromPeer(pi)
