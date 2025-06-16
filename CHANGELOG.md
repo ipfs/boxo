@@ -16,6 +16,12 @@ The following emojis are used to highlight certain changes:
 
 ### Added
 
+- `bitswap/client`: New metrics:
+  - `ipfs_bitswap_wanthaves_broadcast`: Count of want-haves broadcasts
+  - `ipfs_bitswap_haves_received`:  Count of total have responses
+  - `ipfs_bitswap_bcast_skips_total{`: Count of broadcasts skipped as part of spam reduction logic (see "Changed" below)
+  - `ipfs_bitswap_unique_blocks_received`: Count of non-duplicate blocks recieved
+
 ### Changed
 
 - `bitswap/client`: Added an opt-in ability to reduce bitswap broadcast volume by limiting broadcasts to peers that have previously responded as having wanted blocks and peers on local network. The following bitswap client options are available to configure the behavior of broadcast reduction:
