@@ -437,7 +437,6 @@ func TestConnectErrors(t *testing.T) {
 	if !strings.Contains(err.Error(), "denylist") {
 		t.Error("wrong error")
 	}
-
 }
 
 func TestSendMessage(t *testing.T) {

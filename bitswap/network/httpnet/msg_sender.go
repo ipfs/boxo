@@ -190,11 +190,11 @@ func (sender *httpMsgSender) tryURL(ctx context.Context, u *senderURL, entry bsm
 
 	var method string
 
-	switch {
-	case entry.WantType == pb.Message_Wantlist_Block:
-		method = "GET"
-	case entry.WantType == pb.Message_Wantlist_Have:
-		method = "HEAD"
+	switch entry.WantType {
+	case pb.Message_Wantlist_Block:
+		method = http.MethodGet
+	case pb.Message_Wantlist_Have:
+		method = http.MethodHead
 	default:
 		panic("unknown bitswap entry type")
 	}
@@ -204,7 +204,7 @@ func (sender *httpMsgSender) tryURL(ctx context.Context, u *senderURL, entry bsm
 	// is worse than downloading some extra bytes.  We do abort if the
 	// context WAS already cancelled before making the request.
 	if err := ctx.Err(); err != nil {
-		log.Debugf("aborted before sending: %s %q", method, u.ParsedURL.URL)
+		log.Debugf("aborted before sending: %s %q", method, u.URL)
 		return nil, &senderError{
 			Type: typeContext,
 			Err:  err,
