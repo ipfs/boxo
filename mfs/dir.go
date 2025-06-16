@@ -74,7 +74,6 @@ func NewEmptyDirectory(ctx context.Context, name string, parent parent, dserv ip
 		uio.WithStat(opts.Mode, opts.ModTime),
 		uio.WithCidBuilder(opts.CidBuilder),
 	)
-
 	if err != nil {
 		return nil, err
 	}
@@ -335,7 +334,7 @@ func (d *Directory) MkdirWithOpts(name string, opts MkdirOpts) (*Directory, erro
 		}
 	}
 
-	// hector: no idea why this option is overriden, but it must be to
+	// hector: no idea why this option is overridden, but it must be to
 	// keep backwards compatibility. CidBuilder from the options is
 	// manually set in `Mkdir` (ops.go) though.
 	opts.CidBuilder = d.GetCidBuilder()

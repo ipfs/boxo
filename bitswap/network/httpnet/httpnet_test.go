@@ -27,9 +27,11 @@ import (
 	manet "github.com/multiformats/go-multiaddr/net"
 )
 
-var errorCid = cid.MustParse("bafkreiachshsblgr5kv3mzbgfgmvuhllwe2f6fasm6mykzwsi4l7odq464")   // "errorcid"
-var slowCid = cid.MustParse("bafkreidhph5i4jevaun4eqjxolqgn3rfpoknj35ocyos3on57iriwpaujm")    // "slowcid"
-var backoffCid = cid.MustParse("bafkreid6g5qrufgqj46djic7ntjnppaj5bg4urppjoyywrxwegvltrmqbu") // "backoff"
+var (
+	errorCid   = cid.MustParse("bafkreiachshsblgr5kv3mzbgfgmvuhllwe2f6fasm6mykzwsi4l7odq464") // "errorcid"
+	slowCid    = cid.MustParse("bafkreidhph5i4jevaun4eqjxolqgn3rfpoknj35ocyos3on57iriwpaujm") // "slowcid"
+	backoffCid = cid.MustParse("bafkreid6g5qrufgqj46djic7ntjnppaj5bg4urppjoyywrxwegvltrmqbu") // "backoff"
+)
 
 var _ network.Receiver = (*mockRecv)(nil)
 
@@ -92,7 +94,6 @@ func (recv *mockRecv) waitDisconnected(seconds int) error {
 }
 
 func (recv *mockRecv) ReceiveError(err error) {
-
 }
 
 func (recv *mockRecv) PeerConnected(p peer.ID) {
@@ -113,7 +114,6 @@ func mockReceiver(t *testing.T) *mockRecv {
 		waitConnectedCh:    make(chan struct{}, 1),
 		waitDisconnectedCh: make(chan struct{}, 1),
 	}
-
 }
 
 func mockNet(t *testing.T) mocknet.Mocknet {
@@ -169,7 +169,6 @@ func makeMessage(wantlist []cid.Cid, wantType pb.Message_Wantlist_WantType, send
 			wantType,
 			sendDontHave,
 		)
-
 	}
 	return msg
 }
@@ -248,7 +247,7 @@ func (h *Handler) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 	}
 
 	rw.WriteHeader(http.StatusOK)
-	if r.Method == "HEAD" {
+	if r.Method == http.MethodHead {
 		return
 	}
 
@@ -397,7 +396,6 @@ func TestBestURL(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error since only urls failed too many times")
 	}
-
 }
 
 func TestConnectErrors(t *testing.T) {
@@ -439,7 +437,6 @@ func TestConnectErrors(t *testing.T) {
 	if !strings.Contains(err.Error(), "denylist") {
 		t.Error("wrong error")
 	}
-
 }
 
 func TestSendMessage(t *testing.T) {
@@ -534,7 +531,6 @@ func TestSendMessageWithPartialResponse(t *testing.T) {
 			t.Error("block should not have been received")
 		}
 	}
-
 }
 
 func TestSendMessageSendHavesAndDontHaves(t *testing.T) {

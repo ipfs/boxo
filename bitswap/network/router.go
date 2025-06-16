@@ -210,6 +210,7 @@ func (rt *router) Protect(p peer.ID, tag string) {
 	}
 	rt.Bitswap.Protect(p, tag)
 }
+
 func (rt *router) Unprotect(p peer.ID, tag string) bool {
 	pi := rt.Peerstore.PeerInfo(p)
 	htaddrs, _ := SplitHTTPAddrs(pi)

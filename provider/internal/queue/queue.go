@@ -20,7 +20,7 @@ import (
 var log = logging.Logger("provider.queue")
 
 const (
-	// batchSize is the limit on number of CIDs kept in memory at which ther
+	// batchSize is the limit on number of CIDs kept in memory at which there
 	// are all written to the datastore.
 	batchSize = 16 * 1024
 	// dedupCacheSize is the size of the LRU cache used to deduplicate CIDs in

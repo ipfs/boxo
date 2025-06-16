@@ -11,12 +11,11 @@ import (
 
 	"github.com/ipfs/boxo/provider/internal/queue"
 	"github.com/ipfs/boxo/verifcid"
-	metrics "github.com/ipfs/go-metrics-interface"
-
 	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-datastore"
 	"github.com/ipfs/go-datastore/namespace"
 	logging "github.com/ipfs/go-log/v2"
+	metrics "github.com/ipfs/go-metrics-interface"
 	"github.com/multiformats/go-multihash"
 )
 
