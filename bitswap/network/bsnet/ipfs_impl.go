@@ -273,6 +273,10 @@ func (bsnet *impl) Latency(p peer.ID) time.Duration {
 	return bsnet.host.Peerstore().LatencyEWMA(p)
 }
 
+func (bsnet *impl) Host() host.Host {
+	return bsnet.host
+}
+
 // Indicates whether the given protocol supports HAVE / DONT_HAVE messages
 func (bsnet *impl) SupportsHave(proto protocol.ID) bool {
 	switch proto {
