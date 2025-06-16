@@ -38,7 +38,7 @@ const (
 	provideDelayWarnDuration = 15 * time.Second
 )
 
-var log = logging.Logger("provider.batched")
+var log = logging.Logger("provider")
 
 type reprovider struct {
 	ctx     context.Context
@@ -269,6 +269,7 @@ func (s *reprovider) provideWorker() {
 	provCh := s.q.Dequeue()
 
 	provideFunc := func(ctx context.Context, c cid.Cid) {
+		log.Debugf("provider worker: providing %s", c)
 		if err := s.rsys.Provide(ctx, c, true); err != nil {
 			log.Errorf("failed to provide %s: %s", c, err)
 		} else {
@@ -375,7 +376,7 @@ func (s *reprovider) waitUntilProvideSystemReady() {
 				ticker = time.NewTicker(time.Minute)
 				defer ticker.Stop()
 			}
-			log.Debugf("reprovider system not ready")
+			log.Infof("reprovider system not ready, waiting 1m")
 			select {
 			case <-ticker.C:
 			case <-s.ctx.Done():
@@ -462,16 +463,16 @@ func (s *reprovider) Reprovide(ctx context.Context) error {
 
 		s.waitUntilProvideSystemReady()
 
-		log.Debugf("starting reprovide of %d keys", len(keys))
+		log.Infof("starting reprovide of %d keys", len(keys))
 		start := time.Now()
 		err := doProvideMany(s.ctx, s.rsys, keys)
 		if err != nil {
-			log.Debugf("reproviding failed %v", err)
+			log.Errorf("reproviding failed %v", err)
 			continue
 		}
 		dur := time.Since(start)
 		recentAvgProvideDuration := dur / time.Duration(len(keys))
-		log.Debugf("finished reproviding %d keys. It took %v with an average of %v per provide", len(keys), dur, recentAvgProvideDuration)
+		log.Infof("finished reproviding %d keys. It took %v with an average of %v per provide", len(keys), dur, recentAvgProvideDuration)
 
 		totalProvideTime := time.Duration(s.totalReprovides) * s.avgReprovideDuration
 		s.statLk.Lock()
@@ -549,6 +550,7 @@ func doProvideMany(ctx context.Context, r Provide, keys []multihash.Multihash) e
 	}
 
 	for _, k := range keys {
+		log.Debugf("providing %s", k)
 		if err := r.Provide(ctx, cid.NewCidV1(cid.Raw, k), true); err != nil {
 			return err
 		}
