@@ -430,10 +430,23 @@ func (bs *Client) GetBlocks(ctx context.Context, keys []cid.Cid) (<-chan blocks.
 // Bitswap itself doesn't store new blocks. It's the caller responsibility to ensure
 // that those blocks are available in the blockstore before calling this function.
 func (bs *Client) NotifyNewBlock(ctx context.Context, blk blocks.Block) error {
-	// Call to the variadic to avoid code duplication.
-	// This is actually fine to do because no calls is virtual the compiler is able
-	// to see that the slice does not leak and the slice is stack allocated.
-	return bs.NotifyNewBlocks(ctx, blk)
+	ctx, span := internal.StartSpan(ctx, "NotifyNewBlock")
+	defer span.End()
+
+	select {
+	case <-bs.closing:
+		return nil
+	default:
+	}
+
+	// Send the block key to any sessions that wants it.
+	bs.sm.ReceiveFrom(ctx, "", []cid.Cid{blk.Cid()}, nil, nil)
+
+	// Publish the block to any Bitswap clients that had requested blocks.
+	var zero peer.ID
+	bs.notif.PublishBlock(zero, blk)
+
+	return nil
 }
 
 // NotifyNewBlocks announces the existence of blocks to this bitswap service.
@@ -508,9 +521,7 @@ func (bs *Client) receiveBlocksFrom(ctx context.Context, from peer.ID, blks []bl
 	// Publish the block to any Bitswap clients that had requested blocks.
 	// (the sessions use this pubsub mechanism to inform clients of incoming
 	// blocks)
-	for _, b := range wanted {
-		bs.notif.Publish(from, b)
-	}
+	bs.notif.Publish(from, wanted...)
 }
 
 // ReceiveMessage is called by the network interface when a new message is

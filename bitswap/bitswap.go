@@ -100,7 +100,7 @@ func (bs *Bitswap) NotifyNewBlock(ctx context.Context, blk blocks.Block) error {
 		return multierr.Combine(
 			bs.Client.NotifyNewBlock(ctx, blk),
 			bs.Server.NotifyNewBlock(ctx, blk),
-		}
+		)
 	}
 	return bs.Client.NotifyNewBlock(ctx, blk)
 }
