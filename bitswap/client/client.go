@@ -498,9 +498,7 @@ func (bs *Client) receiveBlocksFrom(ctx context.Context, from peer.ID, blks []bl
 	// Publish the block to any Bitswap clients that had requested blocks.
 	// (the sessions use this pubsub mechanism to inform clients of incoming
 	// blocks)
-	for _, b := range wanted {
-		bs.notif.Publish(from, b)
-	}
+	bs.notif.Publish(from, wanted...)
 }
 
 // ReceiveMessage is called by the network interface when a new message is
