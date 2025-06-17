@@ -16,6 +16,19 @@ The following emojis are used to highlight certain changes:
 
 ### Added
 
+### Changed
+
+### Removed
+
+### Fixed
+
+### Security
+
+
+## [v0.32.0]
+
+### Added
+
 - `provider` includes metrics on the number of keys provided so far
 (`ipfs.boxo.provider.provideCount`) and the number of keys reprovided so far
 (`ipfs.boxo.provider.reprovideCount`)
@@ -44,8 +57,6 @@ The following emojis are used to highlight certain changes:
 ### Fixed
 
 - `gateway`: Fixed suffix range-requests and updated tests to [gateway-conformance v0.8](https://github.com/ipfs/gateway-conformance/releases/tag/v0.8.0) [#922](https://github.com/ipfs/boxo/pull/922)
-
-### Security
 
 
 ## [v0.31.0]
