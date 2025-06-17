@@ -30,8 +30,8 @@ The following emojis are used to highlight certain changes:
 ### Added
 
 - `provider` includes metrics on the number of keys provided so far
-(`ipfs.boxo.provider.provideCount`) and the number of keys reprovided so far
-(`ipfs.boxo.provider.reprovideCount`)
+(`reprovider_provide_count`) and the number of keys reprovided so far
+(`reprovider_reprovide_count`)
 [#944](https://github.com/ipfs/boxo/pull/944)
 - `bitswap/client`: New metrics:
   - `ipfs_bitswap_wanthaves_broadcast`: Count of want-haves broadcasts
