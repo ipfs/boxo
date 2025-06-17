@@ -81,10 +81,8 @@ func (n *ProtoNode) marshalImmutable() (*immutableProtoNode, error) {
 					qp.ListEntry(la, qp.Map(3, func(ma ipld.MapAssembler) {
 						qp.MapEntry(ma, "Hash", qp.Link(cidlink.Link{Cid: link.Cid}))
 						qp.MapEntry(ma, "Name", qp.String(link.Name))
-						sz := int64(link.Size)
-						if sz < 0 { // overflow, >MaxInt64 is almost certainly an error
-							sz = 0
-						}
+						// overflow, >MaxInt64 is almost certainly an error
+						sz := max(int64(link.Size), 0)
 						qp.MapEntry(ma, "Tsize", qp.Int(sz))
 					}))
 				}
