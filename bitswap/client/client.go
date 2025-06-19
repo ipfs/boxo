@@ -100,6 +100,16 @@ func WithTracer(tap tracer.Tracer) Option {
 	}
 }
 
+// WithTraceBlock, if enabled is true, configures the client's GetBLock and
+// GetBlocks functions to returns a
+// [github.com/ipfs/boxo/bitswap/client/traceability.Block] assertable
+// [blocks.Block].
+func WithTraceBlock(enable bool) Option {
+	return func(bs *Client) {
+		bs.traceBlock = enable
+	}
+}
+
 func WithBlockReceivedNotifier(brn BlockReceivedNotifier) Option {
 	return func(bs *Client) {
 		bs.blockReceivedNotifier = brn
@@ -317,7 +327,7 @@ func New(parent context.Context, network bsnet.BitSwapNetwork, providerFinder ro
 	sessionPeerManagerFactory := func(ctx context.Context, id uint64) bssession.SessionPeerManager {
 		return bsspm.New(id, network)
 	}
-	notif := notifications.New()
+	notif := notifications.New(bs.traceBlock)
 	sm = bssm.New(ctx, sessionFactory, sim, sessionPeerManagerFactory, bpm, pm, notif, network.Self())
 
 	bs.sm = sm
@@ -366,6 +376,11 @@ type Client struct {
 	// External statistics interface
 	tracer tracer.Tracer
 
+	// Enable GetBLock to return
+	// [github.com/ipfs/boxo/bitswap/client/traceability.Block] assertable
+	// [blocks.Block].
+	traceBlock bool
+
 	// the SessionManager routes requests to interested sessions
 	sm *bssm.SessionManager
 
@@ -404,7 +419,10 @@ type counters struct {
 
 // GetBlock attempts to retrieve a particular block from peers within the
 // deadline enforced by the context.
-// It returns a [github.com/ipfs/boxo/bitswap/client/traceability.Block] assertable [blocks.Block].
+//
+// If [WithTraceBlock] option is set true, then returns a
+// [github.com/ipfs/boxo/bitswap/client/traceability.Block] assertable
+// [blocks.Block].
 func (bs *Client) GetBlock(ctx context.Context, k cid.Cid) (blocks.Block, error) {
 	ctx, span := internal.StartSpan(ctx, "GetBlock", trace.WithAttributes(attribute.String("Key", k.String())))
 	defer span.End()
@@ -414,7 +432,10 @@ func (bs *Client) GetBlock(ctx context.Context, k cid.Cid) (blocks.Block, error)
 // GetBlocks returns a channel where the caller may receive blocks that
 // correspond to the provided |keys|. Returns an error if BitSwap is unable to
 // begin this request within the deadline enforced by the context.
-// It returns a [github.com/ipfs/boxo/bitswap/client/traceability.Block] assertable [blocks.Block].
+//
+// If [WithTraceBlock] option is set true, then returns a
+// [github.com/ipfs/boxo/bitswap/client/traceability.Block] assertable
+// [blocks.Block].
 //
 // NB: Your request remains open until the context expires. To conserve
 // resources, provide a context with a reasonably short deadline (ie. not one
