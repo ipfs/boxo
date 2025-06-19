@@ -241,7 +241,6 @@ func New(host host.Host, opts ...Option) network.BitSwapNetwork {
 		opt(htnet)
 	}
 
-	// TODO: take allowlist into account!
 	htnet.metrics = newMetrics(htnet.allowlist)
 
 	reqTracker := newRequestTracker()
