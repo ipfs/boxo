@@ -369,7 +369,7 @@ func (sender *httpMsgSender) tryURL(ctx context.Context, u *senderURL, entry bsm
 		// server issues, and simply return 404 when they cannot find
 		// the content but everything else is fine.
 		err := fmt.Errorf("%q -> %d: %q", req.URL, statusCode, string(body))
-		log.Error(err)
+		log.Warn(err)
 		retryAfter := resp.Header.Get("Retry-After")
 		cooldownUntil, ok := parseRetryAfter(retryAfter)
 		if ok { // it means we should retry, so we will retry.
@@ -391,7 +391,7 @@ func (sender *httpMsgSender) tryURL(ctx context.Context, u *senderURL, entry bsm
 	// it fails MaxRetries, we will fully disconnect.
 	default:
 		err := fmt.Errorf("%q -> %d: %q", req.URL, statusCode, string(body))
-		log.Error(err)
+		log.Warn(err)
 		sender.ht.cooldownTracker.setByDuration(req.URL.Host, sender.opts.SendErrorBackoff)
 		u.cooldown.Store(time.Now().Add(sender.opts.SendErrorBackoff))
 		return nil, &senderError{
@@ -522,7 +522,7 @@ WANTLIST_LOOP:
 				// error handling
 				switch result.err.Type {
 				case typeFatal:
-					log.Errorf("fatal error. Disconnecting from %s: %s", sender.peer, result.err.Err)
+					log.Warnf("disconnecting from %s: %s", sender.peer, result.err.Err)
 					sender.ht.DisconnectFrom(ctx, sender.peer)
 					err = result.err
 					// continue processing responses as workers
