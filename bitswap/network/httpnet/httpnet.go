@@ -660,7 +660,11 @@ func (ht *Network) httpWorker(i int) {
 						continue // retry again ignoring current url
 					case typeContext:
 					case typeFatal:
-						log.Error(err)
+						// noop. Return result. tryURL
+						// never returns
+						// typeFatal. Error logging
+						// happens in the result
+						// collector
 					case typeServer:
 						u.serverErrors.Add(1)
 						continue // retry until bestURL forces abort
@@ -690,7 +694,7 @@ func buildRequest(ctx context.Context, u network.ParsedURL, method string, cid s
 		nil,
 	)
 	if err != nil {
-		log.Error(err)
+		log.Error("error building request:", err)
 		return nil, err
 	}
 
