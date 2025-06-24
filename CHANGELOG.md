@@ -16,6 +16,8 @@ The following emojis are used to highlight certain changes:
 
 ### Added
 
+- `gateway`: Implemented a configurable limit for concurrent in-flight HTTP requests. Returns HTTP 503 Service Unavailable with Retry-After header when the limit is reached. Includes a default limit to protect against traffic spikes when exposed without a reverse proxy. [#881](https://github.com/ipfs/boxo/issues/881)
+
 ### Changed
 
 - upgrade to `go-libp2p` [v0.42.0](https://github.com/libp2p/go-libp2p/releases/tag/v0.42.0)
