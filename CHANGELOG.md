@@ -19,6 +19,7 @@ The following emojis are used to highlight certain changes:
 ### Changed
 
 - `bitswap/client` The bitswap client's [`traceability.Block`](https://github.com/ipfs/boxo/blob/main/bitswap/client/traceability/block.go) is now disabled by default. It is only used for testing an debugging and is not needed for typical operation. Using it costs additional allocation. To enable `traceability.Block`, use the bitswap client option `WithTraceBlock(true)`.
+- upgrade to `go-libp2p` [v0.42.0](https://github.com/libp2p/go-libp2p/releases/tag/v0.42.0)
 
 ### Removed
 
