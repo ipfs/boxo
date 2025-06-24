@@ -31,7 +31,7 @@
 - [Consuming](#consuming)
   - [Getting started](#getting-started)
   - [Migrating to Boxo](#migrating-to-boxo)
-  - [What is the deprecation and breaking change policy?](#what-is-the-deprecation-and-breaking-change-policy)
+  - [Deprecations and Breaking Changes](#deprecations-and-breaking-changes)
 - [Development](#development)
   - [Should I add my IPFS component to Boxo?](#should-i-add-my-ipfs-component-to-boxo)
   - [Release Process](#release-process)
@@ -42,7 +42,7 @@
   - [What are some projects that depend on this project?](#what-are-some-projects-that-depend-on-this-project)
   - [Governance and Access](#governance-and-access)
   - [Why is this named "Boxo"?](#why-is-this-named-boxo)
-  - [Additional FAQs](#additional-faqs)
+  - [Additional Docs and FAQs](#additional-docs-and-faqs)
   - [License](#license)
 
 <!-- /TOC -->
@@ -120,7 +120,7 @@ We recommend upgrading to v0.8.0 first, and _then_ upgrading to the latest Boxo 
 
 If you encounter any challenges, please [open an issue](https://github.com/ipfs/boxo/issues/new/choose) and Boxo maintainers will help you.
 
-### Deprecations & Breaking Changes
+### Deprecations and Breaking Changes
 
 See [RELEASE.md](./RELEASE.md).
 
@@ -182,7 +182,7 @@ See [CODEOWNERS](./docs/CODEOWNERS) for the current maintainers list. Governance
 
 See https://github.com/ipfs/boxo/issues/215. 
 
-### Additional Docs & FAQs
+### Additional Docs and FAQs
 
 See [the wiki](https://github.com/ipfs/boxo/wiki).
 

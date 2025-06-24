@@ -27,9 +27,11 @@ import (
 	manet "github.com/multiformats/go-multiaddr/net"
 )
 
-var errorCid = cid.MustParse("bafkreiachshsblgr5kv3mzbgfgmvuhllwe2f6fasm6mykzwsi4l7odq464")   // "errorcid"
-var slowCid = cid.MustParse("bafkreidhph5i4jevaun4eqjxolqgn3rfpoknj35ocyos3on57iriwpaujm")    // "slowcid"
-var backoffCid = cid.MustParse("bafkreid6g5qrufgqj46djic7ntjnppaj5bg4urppjoyywrxwegvltrmqbu") // "backoff"
+var (
+	errorCid   = cid.MustParse("bafkreiachshsblgr5kv3mzbgfgmvuhllwe2f6fasm6mykzwsi4l7odq464") // "errorcid"
+	slowCid    = cid.MustParse("bafkreidhph5i4jevaun4eqjxolqgn3rfpoknj35ocyos3on57iriwpaujm") // "slowcid"
+	backoffCid = cid.MustParse("bafkreid6g5qrufgqj46djic7ntjnppaj5bg4urppjoyywrxwegvltrmqbu") // "backoff"
+)
 
 var _ network.Receiver = (*mockRecv)(nil)
 
@@ -92,7 +94,6 @@ func (recv *mockRecv) waitDisconnected(seconds int) error {
 }
 
 func (recv *mockRecv) ReceiveError(err error) {
-
 }
 
 func (recv *mockRecv) PeerConnected(p peer.ID) {
@@ -113,7 +114,6 @@ func mockReceiver(t *testing.T) *mockRecv {
 		waitConnectedCh:    make(chan struct{}, 1),
 		waitDisconnectedCh: make(chan struct{}, 1),
 	}
-
 }
 
 func mockNet(t *testing.T) mocknet.Mocknet {
@@ -131,7 +131,9 @@ func mockNetwork(t *testing.T, recv network.Receiver, opts ...Option) (*Network,
 	if err != nil {
 		t.Fatal(err)
 	}
-	opts = append(opts, WithInsecureSkipVerify(true))
+
+	// allow ovewrite of default options by prepending them
+	opts = append([]Option{WithInsecureSkipVerify(true)}, opts...)
 	htnet := New(h, opts...)
 	htnet.Start(recv)
 	return htnet.(*Network), mn
@@ -167,7 +169,6 @@ func makeMessage(wantlist []cid.Cid, wantType pb.Message_Wantlist_WantType, send
 			wantType,
 			sendDontHave,
 		)
-
 	}
 	return msg
 }
@@ -246,7 +247,7 @@ func (h *Handler) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 	}
 
 	rw.WriteHeader(http.StatusOK)
-	if r.Method == "HEAD" {
+	if r.Method == http.MethodHead {
 		return
 	}
 
@@ -282,20 +283,25 @@ func srvMultiaddr(t *testing.T, srv *httptest.Server) multiaddr.Multiaddr {
 	return maddr.Encapsulate(httpma)
 }
 
-func connectToPeer(t *testing.T, ctx context.Context, htnet *Network, remote host.Host, srvs ...*httptest.Server) {
+func connectToPeer(t *testing.T, ctx context.Context, htnet *Network, remote host.Host, srvs ...*httptest.Server) error {
 	var addrs []multiaddr.Multiaddr
 	for _, srv := range srvs {
 		addrs = append(addrs, srvMultiaddr(t, srv))
 	}
 
-	err := htnet.Connect(
+	return htnet.Connect(
 		ctx,
 		peer.AddrInfo{
 			ID:    remote.ID(),
 			Addrs: addrs,
 		},
 	)
-	if err != nil {
+}
+
+func mustConnectToPeer(t *testing.T, ctx context.Context, htnet *Network, remote host.Host, srvs ...*httptest.Server) {
+	t.Helper()
+
+	if err := connectToPeer(t, ctx, htnet, remote, srvs...); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -308,7 +314,7 @@ func TestBestURL(t *testing.T) {
 		t.Fatal(err)
 	}
 	msrv := makeServer(t, 0, 0)
-	connectToPeer(t, ctx, htnet, peer, msrv)
+	mustConnectToPeer(t, ctx, htnet, peer, msrv)
 
 	nms, err := htnet.NewMessageSender(
 		ctx,
@@ -390,7 +396,47 @@ func TestBestURL(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error since only urls failed too many times")
 	}
+}
 
+func TestConnectErrors(t *testing.T) {
+	ctx := context.Background()
+	recv := mockReceiver(t)
+	msrv := makeServer(t, 0, 0)
+
+	htnet, mn := mockNetwork(t, recv,
+		WithInsecureSkipVerify(false),
+	)
+	peer, err := mn.GenPeer()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = connectToPeer(t, ctx, htnet, peer, msrv)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	t.Log(err)
+	if !strings.Contains(err.Error(), "failed to verify") {
+		t.Error("wrong error")
+	}
+
+	htnet2, mn2 := mockNetwork(t, recv,
+		WithDenylist([]string{"127.0.0.1"}),
+	)
+
+	peer2, err := mn2.GenPeer()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = connectToPeer(t, ctx, htnet2, peer2, msrv)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	t.Log(err)
+	if !strings.Contains(err.Error(), "denylist") {
+		t.Error("wrong error")
+	}
 }
 
 func TestSendMessage(t *testing.T) {
@@ -402,7 +448,7 @@ func TestSendMessage(t *testing.T) {
 		t.Fatal(err)
 	}
 	msrv := makeServer(t, 0, 10)
-	connectToPeer(t, ctx, htnet, peer, msrv)
+	mustConnectToPeer(t, ctx, htnet, peer, msrv)
 
 	wl := makeCids(t, 0, 10)
 	msg := makeWantsMessage(wl)
@@ -431,7 +477,7 @@ func TestSendMessageWithFailingServer(t *testing.T) {
 	}
 	msrv := makeServer(t, 0, 0)
 	msrv2 := makeServer(t, 0, 10)
-	connectToPeer(t, ctx, htnet, peer, msrv, msrv2)
+	mustConnectToPeer(t, ctx, htnet, peer, msrv, msrv2)
 
 	wl := makeCids(t, 0, 10)
 	msg := makeWantsMessage(wl)
@@ -462,7 +508,7 @@ func TestSendMessageWithPartialResponse(t *testing.T) {
 		t.Fatal(err)
 	}
 	msrv := makeServer(t, 5, 10)
-	connectToPeer(t, ctx, htnet, peer, msrv)
+	mustConnectToPeer(t, ctx, htnet, peer, msrv)
 
 	wl := makeCids(t, 0, 10)
 	msg := makeWantsMessage(wl)
@@ -485,7 +531,6 @@ func TestSendMessageWithPartialResponse(t *testing.T) {
 			t.Error("block should not have been received")
 		}
 	}
-
 }
 
 func TestSendMessageSendHavesAndDontHaves(t *testing.T) {
@@ -497,7 +542,7 @@ func TestSendMessageSendHavesAndDontHaves(t *testing.T) {
 		t.Fatal(err)
 	}
 	msrv := makeServer(t, 0, 5)
-	connectToPeer(t, ctx, htnet, peer, msrv)
+	mustConnectToPeer(t, ctx, htnet, peer, msrv)
 
 	wl := makeCids(t, 0, 10)
 	msg := makeHavesMessage(wl)
@@ -545,8 +590,8 @@ func TestBackOff(t *testing.T) {
 	}
 
 	msrv := makeServer(t, 0, 1)
-	connectToPeer(t, ctx, htnet, peer, msrv)
-	connectToPeer(t, ctx, htnet, peer2, msrv)
+	mustConnectToPeer(t, ctx, htnet, peer, msrv)
+	mustConnectToPeer(t, ctx, htnet, peer2, msrv)
 
 	nms, err := htnet.NewMessageSender(ctx, peer.ID(), nil)
 	if err != nil {
@@ -598,7 +643,7 @@ func TestErrorTracking(t *testing.T) {
 	}
 
 	msrv := makeServer(t, 0, 0)
-	connectToPeer(t, ctx, htnet, peer, msrv)
+	mustConnectToPeer(t, ctx, htnet, peer, msrv)
 
 	err = recv.waitConnected(1)
 	if err != nil {

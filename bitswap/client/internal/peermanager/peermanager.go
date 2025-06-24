@@ -4,6 +4,7 @@ import (
 	"context"
 	"sync"
 
+	"github.com/ipfs/boxo/bitswap/client/internal/messagequeue"
 	cid "github.com/ipfs/go-cid"
 	logging "github.com/ipfs/go-log/v2"
 	"github.com/ipfs/go-metrics-interface"
@@ -18,6 +19,7 @@ type PeerQueue interface {
 	AddWants([]cid.Cid, []cid.Cid)
 	AddCancels([]cid.Cid)
 	ResponseReceived(ks []cid.Cid)
+	HasMessage() bool
 	Startup()
 	Shutdown()
 }
@@ -44,20 +46,25 @@ type PeerManager struct {
 	psLk         sync.RWMutex
 	sessions     map[uint64]Session
 	peerSessions map[peer.ID]map[uint64]struct{}
+
+	bcastGauge Gauge
 }
 
 // New creates a new PeerManager, given a context and a peerQueueFactory.
-func New(ctx context.Context, createPeerQueue PeerQueueFactory) *PeerManager {
+func New(ctx context.Context, createPeerQueue PeerQueueFactory, bcastControl BroadcastControl) *PeerManager {
 	wantGauge := metrics.NewCtx(ctx, "wantlist_total", "Number of items in wantlist.").Gauge()
 	wantBlockGauge := metrics.NewCtx(ctx, "want_blocks_total", "Number of want-blocks in wantlist.").Gauge()
+
 	return &PeerManager{
 		peerQueues:      make(map[peer.ID]PeerQueue),
-		pwm:             newPeerWantManager(wantGauge, wantBlockGauge),
+		pwm:             newPeerWantManager(wantGauge, wantBlockGauge, bcastControl),
 		createPeerQueue: createPeerQueue,
 		ctx:             ctx,
 
 		sessions:     make(map[uint64]Session),
 		peerSessions: make(map[peer.ID]map[uint64]struct{}),
+
+		bcastGauge: metrics.NewCtx(ctx, "wanthaves_broadcast", "Number of want-haves broadcast.").Gauge(),
 	}
 }
 
@@ -189,6 +196,10 @@ func (pm *PeerManager) getOrCreate(p peer.ID) PeerQueue {
 	pq, ok := pm.peerQueues[p]
 	if !ok {
 		pq = pm.createPeerQueue(pm.ctx, p)
+		mq, ok := pq.(*messagequeue.MessageQueue)
+		if ok {
+			mq.BcastInc = pm.bcastGauge.Inc
+		}
 		pq.Startup()
 		pm.peerQueues[p] = pq
 	}
@@ -225,6 +236,10 @@ func (pm *PeerManager) UnregisterSession(ses uint64) {
 	}
 
 	delete(pm.sessions, ses)
+}
+
+func (pm *PeerManager) MarkBroadcastTarget(from peer.ID) {
+	pm.pwm.markBroadcastTarget(from)
 }
 
 // signalAvailability is called when a peer's connectivity changes.

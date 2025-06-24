@@ -32,7 +32,7 @@ const (
 	// request can take.
 	DefaultSendTimeout = 5 * time.Second
 	// SendErrorBackoff specifies how long to wait between retries to the
-	// same endpoint after failure. It is overriden by Retry-After
+	// same endpoint after failure. It is overridden by Retry-After
 	// headers and must be at least 50ms.
 	DefaultSendErrorBackoff = time.Second
 )
@@ -176,7 +176,7 @@ func (err senderError) Error() string {
 	return err.Err.Error()
 }
 
-// tryURL attemps to make a request to the given URL using the given entry.
+// tryURL attempts to make a request to the given URL using the given entry.
 // Blocks, Haves etc. are recorded in the given response. cancellations are
 // processed. tryURL returns an error so that it can be decided what to do next:
 // i.e. retry, or move to next item in wantlist, or abort completely.
@@ -190,11 +190,11 @@ func (sender *httpMsgSender) tryURL(ctx context.Context, u *senderURL, entry bsm
 
 	var method string
 
-	switch {
-	case entry.WantType == pb.Message_Wantlist_Block:
-		method = "GET"
-	case entry.WantType == pb.Message_Wantlist_Have:
-		method = "HEAD"
+	switch entry.WantType {
+	case pb.Message_Wantlist_Block:
+		method = http.MethodGet
+	case pb.Message_Wantlist_Have:
+		method = http.MethodHead
 	default:
 		panic("unknown bitswap entry type")
 	}
@@ -204,7 +204,7 @@ func (sender *httpMsgSender) tryURL(ctx context.Context, u *senderURL, entry bsm
 	// is worse than downloading some extra bytes.  We do abort if the
 	// context WAS already cancelled before making the request.
 	if err := ctx.Err(); err != nil {
-		log.Debugf("aborted before sending: %s %q", method, u.ParsedURL.URL)
+		log.Debugf("aborted before sending: %s %q", method, u.URL)
 		return nil, &senderError{
 			Type: typeContext,
 			Err:  err,
@@ -329,7 +329,7 @@ func (sender *httpMsgSender) tryURL(ctx context.Context, u *senderURL, entry bsm
 		}
 		log.Debugf("%s %q -> %d (%d bytes)", req.Method, req.URL, statusCode, len(body))
 
-		if req.Method == "HEAD" {
+		if req.Method == http.MethodHead {
 			return nil, nil
 		}
 		// GET
@@ -354,7 +354,7 @@ func (sender *httpMsgSender) tryURL(ctx context.Context, u *senderURL, entry bsm
 		// Retry-After. They are used to signal that a block cannot
 		// be fetched too, not only fatal server issues, which poses a
 		// difficult overlap. Current approach treats these errors as
-		// non fatal if they don't happen repeteadly:
+		// non fatal if they don't happen repeatedly:
 		// - By default we disconnect on server errors: MaxRetries = 1.
 		// - First try errors. We add default backoff if non specified.
 		// - Retry same CID. If it fails again, count that as server
@@ -364,12 +364,12 @@ func (sender *httpMsgSender) tryURL(ctx context.Context, u *senderURL, entry bsm
 
 		// In practice, our wantlists should be 1/3 elements. It
 		// doesn't make sense to tolerate 5 server errors for 3
-		// requests as we will repeteadly hit broken servers that way.
+		// requests as we will repeatedly hit broken servers that way.
 		// It is always better if endpoints keep these errors for
 		// server issues, and simply return 404 when they cannot find
 		// the content but everything else is fine.
 		err := fmt.Errorf("%q -> %d: %q", req.URL, statusCode, string(body))
-		log.Error(err)
+		log.Warn(err)
 		retryAfter := resp.Header.Get("Retry-After")
 		cooldownUntil, ok := parseRetryAfter(retryAfter)
 		if ok { // it means we should retry, so we will retry.
@@ -391,7 +391,7 @@ func (sender *httpMsgSender) tryURL(ctx context.Context, u *senderURL, entry bsm
 	// it fails MaxRetries, we will fully disconnect.
 	default:
 		err := fmt.Errorf("%q -> %d: %q", req.URL, statusCode, string(body))
-		log.Error(err)
+		log.Warn(err)
 		sender.ht.cooldownTracker.setByDuration(req.URL.Host, sender.opts.SendErrorBackoff)
 		u.cooldown.Store(time.Now().Add(sender.opts.SendErrorBackoff))
 		return nil, &senderError{
@@ -402,7 +402,7 @@ func (sender *httpMsgSender) tryURL(ctx context.Context, u *senderURL, entry bsm
 }
 
 // SendMsg performs an http request for the wanted cids per the msg's
-// Wantlist. It reads the response and records it in a reponse BitswapMessage
+// Wantlist. It reads the response and records it in a response BitswapMessage
 // which is forwarded to the receivers (in a separate goroutine).
 func (sender *httpMsgSender) SendMsg(ctx context.Context, msg bsmsg.BitSwapMessage) error {
 	// SendMsg gets called from MessageQueue and returning an error
@@ -522,7 +522,7 @@ WANTLIST_LOOP:
 				// error handling
 				switch result.err.Type {
 				case typeFatal:
-					log.Errorf("fatal error. Disconnecting from %s: %s", sender.peer, result.err.Err)
+					log.Warnf("disconnecting from %s: %s", sender.peer, result.err.Err)
 					sender.ht.DisconnectFrom(ctx, sender.peer)
 					err = result.err
 					// continue processing responses as workers
