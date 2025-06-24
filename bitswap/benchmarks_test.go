@@ -598,10 +598,7 @@ func unixfsFileFetchLarge(b *testing.B, bs *bitswap.Bitswap, ks []cid.Cid) {
 	for len(rest) > 0 {
 		var batch [][]cid.Cid
 		for i := 0; i < 5 && len(rest) > 0; i++ {
-			cnt := 10
-			if len(rest) < 10 {
-				cnt = len(rest)
-			}
+			cnt := min(len(rest), 10)
 			group := rest[:cnt]
 			rest = rest[cnt:]
 			batch = append(batch, group)
