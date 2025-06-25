@@ -170,6 +170,23 @@ func WithMaxDontHaveErrors(threshold int) Option {
 	}
 }
 
+// WithMetricsLabelsForHosts allows to label some metrics that support it
+// with the endpoint name that they relate to. For example, this allows
+// tracking respose statuses by endpoint. Using '*' means that all endpoints
+// are tracked. By default, no endpoints are tracked. Endpoints that are not
+// tracked are assigned the label "other". In a scenario where we are making
+// requests to many different endpoints, logging all of them with '*' can
+// cause the metric cardinality to grow accordingly, and end up affecting
+// the performance of the metrics collector (i.e. Prometheus).
+func WithMetricsLabelsForEndpoints(hosts []string) Option {
+	return func(net *Network) {
+		net.trackedEndpoints = make(map[string]struct{})
+		for _, h := range hosts {
+			net.trackedEndpoints[h] = struct{}{}
+		}
+	}
+}
+
 type Network struct {
 	// NOTE: Stats must be at the top of the heap allocation to ensure 64bit
 	// alignment.
@@ -200,6 +217,7 @@ type Network struct {
 	httpWorkers             int
 	allowlist               map[string]struct{}
 	denylist                map[string]struct{}
+	trackedEndpoints        map[string]struct{}
 
 	metrics      *metrics
 	httpRequests chan httpRequestInfo
@@ -241,7 +259,7 @@ func New(host host.Host, opts ...Option) network.BitSwapNetwork {
 		opt(htnet)
 	}
 
-	htnet.metrics = newMetrics(htnet.allowlist)
+	htnet.metrics = newMetrics(htnet.trackedEndpoints)
 
 	reqTracker := newRequestTracker()
 	htnet.requestTracker = reqTracker
