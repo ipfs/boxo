@@ -18,7 +18,7 @@ The following emojis are used to highlight certain changes:
 
 ### Changed
 
-* `DontHaveTimeoutConfig`'s default `MinTimeout` is changed from `0` to `200ms`.
+* `DontHaveTimeoutConfig`'s default `MinTimeout` is changed from `0` to `25ms`.
 
 ### Removed
 
