@@ -16,6 +16,8 @@ The following emojis are used to highlight certain changes:
 
 ### Added
 
+- option to `PublishOptions`(namesys) that allows for setting a custom sequence number for the IPNS record. [#962](https://github.com/ipfs/boxo/pull/962)
+
 ### Changed
 
 - upgrade to `go-libp2p` [v0.42.0](https://github.com/libp2p/go-libp2p/releases/tag/v0.42.0)

@@ -157,8 +157,13 @@ func (p *IPNSPublisher) updateRecord(ctx context.Context, k crypto.PrivKey, valu
 		return nil, err
 	}
 
+	opts := ProcessPublishOptions(options)
+
 	seq := uint64(0)
-	if rec != nil {
+
+	if opts.Sequence != nil {
+		seq = *opts.Sequence
+	} else if rec != nil {
 		seq, err = rec.Sequence()
 		if err != nil {
 			return nil, err
@@ -174,8 +179,6 @@ func (p *IPNSPublisher) updateRecord(ctx context.Context, k crypto.PrivKey, valu
 			seq++
 		}
 	}
-
-	opts := ProcessPublishOptions(options)
 
 	// Create record
 	r, err := ipns.NewRecord(k, value, seq, opts.EOL, opts.TTL, opts.IPNSOptions...)
