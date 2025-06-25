@@ -503,10 +503,7 @@ func walkGatewaySimpleSelector(ctx context.Context, lastCid cid.Cid, terminalBlk
 				if err != nil {
 					return err
 				}
-				from = fileLength + entityRange.From
-				if from < 0 {
-					from = 0
-				}
+				from = max(fileLength+entityRange.From, 0)
 				foundFileLength = true
 			}
 
