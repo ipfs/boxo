@@ -16,6 +16,8 @@ The following emojis are used to highlight certain changes:
 
 ### Added
 
+- option to `PublishOptions`(namesys) that allows for setting a custom sequence number for the IPNS record. [#962](https://github.com/ipfs/boxo/pull/962)
+
 ### Changed
 
 - `DontHaveTimeoutConfig`'s default `MinTimeout` is changed from `0` to `25ms`.
