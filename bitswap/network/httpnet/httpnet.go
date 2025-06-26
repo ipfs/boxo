@@ -127,7 +127,17 @@ func WithAllowlist(hosts []string) Option {
 		log.Infof("HTTP retrieval allowlist: %s", strings.Join(hosts, ", "))
 		net.allowlist = make(map[string]struct{})
 		for _, h := range hosts {
-			net.allowlist[h] = struct{}{}
+			if h == "" {
+				log.Error("empty string in allowlist. Ignoring...")
+				continue
+			}
+			if strings.Contains(h, " ") {
+				log.Errorf("allowlist item '%s' contains a whitespace. Ignoring...")
+				continue
+			}
+
+			// trim newlines
+			net.allowlist[strings.TrimSpace(h)] = struct{}{}
 		}
 	}
 }
@@ -137,7 +147,17 @@ func WithDenylist(hosts []string) Option {
 		log.Infof("HTTP retrieval denylist: %s", strings.Join(hosts, ", "))
 		net.denylist = make(map[string]struct{})
 		for _, h := range hosts {
-			net.denylist[h] = struct{}{}
+			if h == "" {
+				log.Error("empty string in denylist. Ignoring...")
+				continue
+			}
+			if strings.Contains(h, " ") {
+				log.Errorf("denylist item '%s' contains a whitespace. Ignoring...")
+				continue
+			}
+
+			// trim newlines
+			net.denylist[strings.TrimSpace(h)] = struct{}{}
 		}
 	}
 }
