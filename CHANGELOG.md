@@ -16,6 +16,8 @@ The following emojis are used to highlight certain changes:
 
 ### Added
 
+- `bitswap/network/httpnet`: New `WithMetricsLabelsForEndpoints` allows defining which hosts/endpoints can be used for labelling metrics that support such label. '*' enables this for all endpoints receiving HTTP requests, but may cause metric cardinality growth when too many endpoints exist. These labels allow tracking, for example, number or requests per response status AND endpoint used. Non-labelled request hosts are labelled with same value: `other`.
+
 ### Changed
 
 - `DontHaveTimeoutConfig`'s default `MinTimeout` is changed from `0` to `25ms`.

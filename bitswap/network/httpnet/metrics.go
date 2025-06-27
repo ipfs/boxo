@@ -56,7 +56,9 @@ func status(ctx context.Context) imetrics.CounterVec {
 }
 
 type metrics struct {
-	trackedEndpoints map[string]struct{}
+	trackedEndpoints   map[string]struct{}
+	trackAllEndpoints  bool // avoid unnecessary map-lookups
+	trackSomeEndpoints bool // avoid unnecessary map-lookups
 
 	RequestsInFlight    imetrics.Gauge
 	RequestsTotal       imetrics.Counter
@@ -74,7 +76,12 @@ type metrics struct {
 func newMetrics(endpoints map[string]struct{}) *metrics {
 	ctx := imetrics.CtxScope(context.Background(), "exchange_httpnet")
 
+	_, trackAll := endpoints["*"]
+	trackSome := len(endpoints) > 0 && !trackAll
+
 	return &metrics{
+		trackAllEndpoints:   trackAll,
+		trackSomeEndpoints:  trackSome,
 		trackedEndpoints:    endpoints,
 		RequestsInFlight:    requestsInFlight(ctx),
 		RequestsTotal:       requestsTotal(ctx),
@@ -93,10 +100,17 @@ func newMetrics(endpoints map[string]struct{}) *metrics {
 
 func (m *metrics) updateStatusCounter(method string, statusCode int, host string) {
 	m.RequestsTotal.Inc()
-	// Track all for the moment.
-	// if _, ok := m.trackedEndpoints[host]; !ok {
-	// 	host = "other"
-	// }
+	// Set host == other if we are:
+	// - not tracking all hosts
+	//   - not tracking any hosts
+	//   - the host is not among those we are tracking
+	if !m.trackAllEndpoints {
+		if !m.trackSomeEndpoints {
+			host = "other"
+		} else if _, ok := m.trackedEndpoints[host]; !ok {
+			host = "other"
+		}
+	}
 
 	var statusStr string
 
