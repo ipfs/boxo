@@ -120,23 +120,44 @@ func WithInsecureSkipVerify(b bool) Option {
 }
 
 // WithAllowlist sets the hostnames that we are allowed to connect to via
-// HTTP. Additionally, http response status metrics are tagged for each of
-// these hosts.
+// HTTP.
 func WithAllowlist(hosts []string) Option {
 	return func(net *Network) {
 		log.Infof("HTTP retrieval allowlist: %s", strings.Join(hosts, ", "))
 		net.allowlist = make(map[string]struct{})
 		for _, h := range hosts {
+			h = strings.TrimSpace(h)
+			if h == "" {
+				log.Error("empty string in allowlist. Ignoring...")
+				continue
+			}
+			if strings.Contains(h, " ") {
+				log.Errorf("allowlist item '%s' contains a whitespace. Ignoring...")
+				continue
+			}
+
 			net.allowlist[h] = struct{}{}
 		}
 	}
 }
 
+// WithDenylist sets the hostnames that we are prohibited to connect to via
+// HTTP.
 func WithDenylist(hosts []string) Option {
 	return func(net *Network) {
 		log.Infof("HTTP retrieval denylist: %s", strings.Join(hosts, ", "))
 		net.denylist = make(map[string]struct{})
 		for _, h := range hosts {
+			h = strings.TrimSpace(h)
+			if h == "" {
+				log.Error("empty string in denylist. Ignoring...")
+				continue
+			}
+			if strings.Contains(h, " ") {
+				log.Errorf("denylist item '%s' contains a whitespace. Ignoring...")
+				continue
+			}
+
 			net.denylist[h] = struct{}{}
 		}
 	}
