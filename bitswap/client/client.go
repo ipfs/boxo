@@ -426,6 +426,29 @@ func (bs *Client) GetBlocks(ctx context.Context, keys []cid.Cid) (<-chan blocks.
 	return session.GetBlocks(ctx, keys)
 }
 
+// NotifyNewBlock announces the existence of blocks to this bitswap service.
+// Bitswap itself doesn't store new blocks. It's the caller responsibility to ensure
+// that those blocks are available in the blockstore before calling this function.
+func (bs *Client) NotifyNewBlock(ctx context.Context, blk blocks.Block) error {
+	ctx, span := internal.StartSpan(ctx, "NotifyNewBlock")
+	defer span.End()
+
+	select {
+	case <-bs.closing:
+		return nil
+	default:
+	}
+
+	// Send the block key to any sessions that wants it.
+	bs.sm.ReceiveFrom(ctx, "", []cid.Cid{blk.Cid()}, nil, nil)
+
+	// Publish the block to any Bitswap clients that had requested blocks.
+	var zero peer.ID
+	bs.notif.PublishBlock(zero, blk)
+
+	return nil
+}
+
 // NotifyNewBlocks announces the existence of blocks to this bitswap service.
 // Bitswap itself doesn't store new blocks. It's the caller responsibility to ensure
 // that those blocks are available in the blockstore before calling this function.
