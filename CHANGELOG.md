@@ -16,9 +16,12 @@ The following emojis are used to highlight certain changes:
 
 ### Added
 
+- `bitswap/network/httpnet`: New `WithMetricsLabelsForEndpoints` allows defining which hosts/endpoints can be used for labelling metrics that support such label. '*' enables this for all endpoints receiving HTTP requests, but may cause metric cardinality growth when too many endpoints exist. These labels allow tracking, for example, number or requests per response status AND endpoint used. Non-labelled request hosts are labelled with same value: `other`.
+
 ### Changed
 
 - `bitswap/client` The bitswap client's [`traceability.Block`](https://github.com/ipfs/boxo/blob/main/bitswap/client/traceability/block.go) is now disabled by default. It is only used for testing an debugging and is not needed for typical operation. Using it costs additional allocation. To enable `traceability.Block`, use the bitswap client option `WithTraceBlock(true)`.
+- `DontHaveTimeoutConfig`'s default `MinTimeout` is changed from `0` to `25ms`.
 - upgrade to `go-libp2p` [v0.42.0](https://github.com/libp2p/go-libp2p/releases/tag/v0.42.0)
 
 ### Removed

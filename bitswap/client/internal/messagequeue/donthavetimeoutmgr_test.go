@@ -88,6 +88,7 @@ func TestDontHaveTimeoutMgrTimeout(t *testing.T) {
 	cfg := DefaultDontHaveTimeoutConfig()
 	cfg.PingLatencyMultiplier = latMultiplier
 	cfg.MaxExpectedWantProcessTime = expProcessTime
+	cfg.MinTimeout = 10 * time.Millisecond
 	cfg.timeoutsSignal = timeoutsTriggered
 	cfg.clock = clock
 	dhtm := newDontHaveTimeoutMgr(pc, tr.onTimeout, cfg)
@@ -160,6 +161,7 @@ func TestDontHaveTimeoutMgrCancel(t *testing.T) {
 	cfg := DefaultDontHaveTimeoutConfig()
 	cfg.PingLatencyMultiplier = latMultiplier
 	cfg.MaxExpectedWantProcessTime = expProcessTime
+	cfg.MinTimeout = 10 * time.Millisecond
 	cfg.timeoutsSignal = timeoutsTriggered
 	cfg.clock = clock
 	dhtm := newDontHaveTimeoutMgr(pc, tr.onTimeout, cfg)
@@ -201,6 +203,7 @@ func TestDontHaveTimeoutWantCancelWant(t *testing.T) {
 	cfg := DefaultDontHaveTimeoutConfig()
 	cfg.PingLatencyMultiplier = latMultiplier
 	cfg.MaxExpectedWantProcessTime = expProcessTime
+	cfg.MinTimeout = 10 * time.Millisecond
 	cfg.timeoutsSignal = timeoutsTriggered
 	cfg.clock = clock
 	dhtm := newDontHaveTimeoutMgr(pc, tr.onTimeout, cfg)
@@ -258,6 +261,8 @@ func TestDontHaveTimeoutRepeatedAddPending(t *testing.T) {
 	cfg := DefaultDontHaveTimeoutConfig()
 	cfg.PingLatencyMultiplier = latMultiplier
 	cfg.MaxExpectedWantProcessTime = expProcessTime
+	cfg.MinTimeout = 10 * time.Millisecond
+
 	cfg.timeoutsSignal = timeoutsTriggered
 	cfg.clock = clock
 	dhtm := newDontHaveTimeoutMgr(pc, tr.onTimeout, cfg)
@@ -298,6 +303,8 @@ func TestDontHaveTimeoutMgrMessageLatency(t *testing.T) {
 	cfg.PingLatencyMultiplier = latMultiplier
 	cfg.MessageLatencyMultiplier = msgLatencyMultiplier
 	cfg.MaxExpectedWantProcessTime = expProcessTime
+	cfg.MinTimeout = 10 * time.Millisecond
+
 	cfg.timeoutsSignal = timeoutsTriggered
 	cfg.clock = clock
 	dhtm := newDontHaveTimeoutMgr(pc, tr.onTimeout, cfg)
@@ -350,6 +357,8 @@ func TestDontHaveTimeoutMgrMessageLatencyMax(t *testing.T) {
 	cfg := DefaultDontHaveTimeoutConfig()
 	cfg.MessageLatencyMultiplier = msgLatencyMultiplier
 	cfg.MaxTimeout = testMaxTimeout
+	cfg.MinTimeout = 10 * time.Millisecond
+
 	cfg.timeoutsSignal = timeoutsTriggered
 	cfg.clock = clock
 	dhtm := newDontHaveTimeoutMgr(pc, tr.onTimeout, cfg)
@@ -392,6 +401,7 @@ func TestDontHaveTimeoutMgrUsesDefaultTimeoutIfPingError(t *testing.T) {
 	cfg.DontHaveTimeout = defaultTimeout
 	cfg.PingLatencyMultiplier = latMultiplier
 	cfg.MaxExpectedWantProcessTime = expProcessTime
+	cfg.MinTimeout = 10 * time.Millisecond
 	cfg.timeoutsSignal = timeoutsTriggered
 	cfg.clock = clock
 	dhtm := newDontHaveTimeoutMgr(pc, tr.onTimeout, cfg)
@@ -438,6 +448,8 @@ func TestDontHaveTimeoutMgrUsesDefaultTimeoutIfLatencyLonger(t *testing.T) {
 	cfg.DontHaveTimeout = defaultTimeout
 	cfg.PingLatencyMultiplier = latMultiplier
 	cfg.MaxExpectedWantProcessTime = expProcessTime
+	cfg.MinTimeout = 10 * time.Millisecond
+
 	cfg.timeoutsSignal = timeoutsTriggered
 	cfg.clock = clock
 	dhtm := newDontHaveTimeoutMgr(pc, tr.onTimeout, cfg)
@@ -482,6 +494,7 @@ func TestDontHaveTimeoutNoTimeoutAfterShutdown(t *testing.T) {
 	cfg := DefaultDontHaveTimeoutConfig()
 	cfg.PingLatencyMultiplier = latMultiplier
 	cfg.MaxExpectedWantProcessTime = expProcessTime
+	cfg.MinTimeout = 10 * time.Millisecond
 	cfg.timeoutsSignal = timeoutsTriggered
 	cfg.clock = clock
 	dhtm := newDontHaveTimeoutMgr(pc, tr.onTimeout, cfg)
