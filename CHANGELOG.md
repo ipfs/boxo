@@ -17,9 +17,11 @@ The following emojis are used to highlight certain changes:
 ### Added
 
 - option to `PublishOptions`(namesys) that allows for setting a custom sequence number for the IPNS record. [#962](https://github.com/ipfs/boxo/pull/962)
+- `bitswap/network/httpnet`: New `WithMetricsLabelsForEndpoints` allows defining which hosts/endpoints can be used for labelling metrics that support such label. '*' enables this for all endpoints receiving HTTP requests, but may cause metric cardinality growth when too many endpoints exist. These labels allow tracking, for example, number or requests per response status AND endpoint used. Non-labelled request hosts are labelled with same value: `other`.
 
 ### Changed
 
+- `DontHaveTimeoutConfig`'s default `MinTimeout` is changed from `0` to `25ms`.
 - upgrade to `go-libp2p` [v0.42.0](https://github.com/libp2p/go-libp2p/releases/tag/v0.42.0)
 
 ### Removed
