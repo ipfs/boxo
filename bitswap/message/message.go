@@ -7,7 +7,6 @@ import (
 
 	"github.com/ipfs/boxo/bitswap/client/wantlist"
 	pb "github.com/ipfs/boxo/bitswap/message/pb"
-	u "github.com/ipfs/boxo/util"
 	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
 	pool "github.com/libp2p/go-buffer-pool"
@@ -122,24 +121,6 @@ func (e *Entry) ToPB() *pb.Message_Wantlist_Entry {
 	}
 }
 
-var MaxEntrySize = maxEntrySize()
-
-func maxEntrySize() int {
-	var maxInt32 int32 = (1 << 31) - 1
-
-	c := cid.NewCidV0(u.Hash([]byte("cid")))
-	e := Entry{
-		Entry: wantlist.Entry{
-			Cid:      c,
-			Priority: maxInt32,
-			WantType: pb.Message_Wantlist_Have,
-		},
-		SendDontHave: true, // true takes up more space than false
-		Cancel:       true,
-	}
-	return e.Size()
-}
-
 type impl struct {
 	full           bool
 	wantlist       map[cid.Cid]*Entry
@@ -149,11 +130,7 @@ type impl struct {
 }
 
 // New returns a new, empty bitswap message
-func New(full bool) BitSwapMessage {
-	return newMsg(full)
-}
-
-func newMsg(full bool) *impl {
+func New(full bool) *impl {
 	return &impl{
 		full:           full,
 		wantlist:       make(map[cid.Cid]*Entry),
@@ -164,17 +141,23 @@ func newMsg(full bool) *impl {
 
 // Clone the message fields
 func (m *impl) Clone() BitSwapMessage {
-	msg := newMsg(m.full)
-	for k := range m.wantlist {
-		msg.wantlist[k] = m.wantlist[k]
+	msg := &impl{
+		full:           m.full,
+		wantlist:       make(map[cid.Cid]*Entry, len(m.wantlist)),
+		blocks:         make(map[cid.Cid]blocks.Block, len(m.blocks)),
+		blockPresences: make(map[cid.Cid]pb.Message_BlockPresenceType, len(m.blockPresences)),
+		pendingBytes:   m.pendingBytes,
 	}
-	for k := range m.blocks {
-		msg.blocks[k] = m.blocks[k]
+
+	for k, v := range m.wantlist {
+		msg.wantlist[k] = v
 	}
-	for k := range m.blockPresences {
-		msg.blockPresences[k] = m.blockPresences[k]
+	for k, v := range m.blocks {
+		msg.blocks[k] = v
 	}
-	msg.pendingBytes = m.pendingBytes
+	for k, v := range m.blockPresences {
+		msg.blockPresences[k] = v
+	}
 	return msg
 }
 
@@ -190,7 +173,7 @@ func (m *impl) Reset(full bool) {
 var errCidMissing = errors.New("missing cid")
 
 func newMessageFromProto(pbm *pb.Message) (BitSwapMessage, error) {
-	m := newMsg(pbm.Wantlist != nil && pbm.Wantlist.Full)
+	m := New(pbm.Wantlist != nil && pbm.Wantlist.Full)
 
 	if pbm.Wantlist != nil {
 		for _, e := range pbm.Wantlist.Entries {
