@@ -28,8 +28,23 @@ func New(base exchange.Interface, provider provider.Provider) *Exchange {
 	}
 }
 
+// NotifyNewBlock calls NotifyNewBlock on the underlying provider and
+// then provider.Provide for the block.
+func (ex *Exchange) NotifyNewBlock(ctx context.Context, block blocks.Block) error {
+	// Notify blocks on the underlying exchange.
+	err := ex.Interface.NotifyNewBlock(ctx, block)
+	if err != nil {
+		return err
+	}
+
+	if err = ex.provider.Provide(ctx, block.Cid(), true); err != nil {
+		return err
+	}
+	return nil
+}
+
 // NotifyNewBlocks calls NotifyNewBlocks on the underlying provider and
-// provider.Provide for every block after that.
+// then provider.Provide for every block.
 func (ex *Exchange) NotifyNewBlocks(ctx context.Context, blocks ...blocks.Block) error {
 	// Notify blocks on the underlying exchange.
 	err := ex.Interface.NotifyNewBlocks(ctx, blocks...)
