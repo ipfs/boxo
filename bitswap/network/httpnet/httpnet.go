@@ -120,23 +120,44 @@ func WithInsecureSkipVerify(b bool) Option {
 }
 
 // WithAllowlist sets the hostnames that we are allowed to connect to via
-// HTTP. Additionally, http response status metrics are tagged for each of
-// these hosts.
+// HTTP.
 func WithAllowlist(hosts []string) Option {
 	return func(net *Network) {
 		log.Infof("HTTP retrieval allowlist: %s", strings.Join(hosts, ", "))
 		net.allowlist = make(map[string]struct{})
 		for _, h := range hosts {
+			h = strings.TrimSpace(h)
+			if h == "" {
+				log.Error("empty string in allowlist. Ignoring...")
+				continue
+			}
+			if strings.Contains(h, " ") {
+				log.Errorf("allowlist item '%s' contains a whitespace. Ignoring...")
+				continue
+			}
+
 			net.allowlist[h] = struct{}{}
 		}
 	}
 }
 
+// WithDenylist sets the hostnames that we are prohibited to connect to via
+// HTTP.
 func WithDenylist(hosts []string) Option {
 	return func(net *Network) {
 		log.Infof("HTTP retrieval denylist: %s", strings.Join(hosts, ", "))
 		net.denylist = make(map[string]struct{})
 		for _, h := range hosts {
+			h = strings.TrimSpace(h)
+			if h == "" {
+				log.Error("empty string in denylist. Ignoring...")
+				continue
+			}
+			if strings.Contains(h, " ") {
+				log.Errorf("denylist item '%s' contains a whitespace. Ignoring...")
+				continue
+			}
+
 			net.denylist[h] = struct{}{}
 		}
 	}
@@ -170,6 +191,23 @@ func WithMaxDontHaveErrors(threshold int) Option {
 	}
 }
 
+// WithMetricsLabelsForHosts allows to label some metrics that support it
+// with the endpoint name that they relate to. For example, this allows
+// tracking respose statuses by endpoint. Using '*' means that all endpoints
+// are tracked. By default, no endpoints are tracked. Endpoints that are not
+// tracked are assigned the label "other". In a scenario where we are making
+// requests to many different endpoints, logging all of them with '*' can
+// cause the metric cardinality to grow accordingly, and end up affecting
+// the performance of the metrics collector (i.e. Prometheus).
+func WithMetricsLabelsForEndpoints(hosts []string) Option {
+	return func(net *Network) {
+		net.trackedEndpoints = make(map[string]struct{})
+		for _, h := range hosts {
+			net.trackedEndpoints[h] = struct{}{}
+		}
+	}
+}
+
 type Network struct {
 	// NOTE: Stats must be at the top of the heap allocation to ensure 64bit
 	// alignment.
@@ -200,6 +238,7 @@ type Network struct {
 	httpWorkers             int
 	allowlist               map[string]struct{}
 	denylist                map[string]struct{}
+	trackedEndpoints        map[string]struct{}
 
 	metrics      *metrics
 	httpRequests chan httpRequestInfo
@@ -241,8 +280,7 @@ func New(host host.Host, opts ...Option) network.BitSwapNetwork {
 		opt(htnet)
 	}
 
-	// TODO: take allowlist into account!
-	htnet.metrics = newMetrics(htnet.allowlist)
+	htnet.metrics = newMetrics(htnet.trackedEndpoints)
 
 	reqTracker := newRequestTracker()
 	htnet.requestTracker = reqTracker
@@ -660,7 +698,11 @@ func (ht *Network) httpWorker(i int) {
 						continue // retry again ignoring current url
 					case typeContext:
 					case typeFatal:
-						log.Error(err)
+						// noop. Return result. tryURL
+						// never returns
+						// typeFatal. Error logging
+						// happens in the result
+						// collector
 					case typeServer:
 						u.serverErrors.Add(1)
 						continue // retry until bestURL forces abort
@@ -690,7 +732,7 @@ func buildRequest(ctx context.Context, u network.ParsedURL, method string, cid s
 		nil,
 	)
 	if err != nil {
-		log.Error(err)
+		log.Error("error building request:", err)
 		return nil, err
 	}
 

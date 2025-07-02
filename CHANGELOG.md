@@ -17,10 +17,26 @@ The following emojis are used to highlight certain changes:
 ### Added
 🛠 - New non variadic `NotifyNewBlock` function. This changes the `blockservice.Interface`. The new function avoids allocating a slice on each call when called with one block.
 
-- `provider` includes metrics on the number of keys provided so far
-(`ipfs.boxo.provider.provideCount`) and the number of keys reprovided so far
-(`ipfs.boxo.provider.reprovideCount`)
-[#944](https://github.com/ipfs/boxo/pull/944)
+- `bitswap/network/httpnet`: New `WithMetricsLabelsForEndpoints` allows defining which hosts/endpoints can be used for labelling metrics that support such label. '*' enables this for all endpoints receiving HTTP requests, but may cause metric cardinality growth when too many endpoints exist. These labels allow tracking, for example, number or requests per response status AND endpoint used. Non-labelled request hosts are labelled with same value: `other`.
+
+### Changed
+
+- `DontHaveTimeoutConfig`'s default `MinTimeout` is changed from `0` to `25ms`.
+- upgrade to `go-libp2p` [v0.42.0](https://github.com/libp2p/go-libp2p/releases/tag/v0.42.0)
+
+### Removed
+
+### Fixed
+
+### Security
+
+- fix panic when incoming Bitswap protobuf message does not contain `Wantlist` [#961](https://github.com/ipfs/boxo/pull/961)
+
+## [v0.32.0]
+
+### Added
+
+- `provider` includes metrics on the number of keys provided so far(`reprovider_provide_count`) and the number of keys reprovided so far (`reprovider_reprovide_count`) [#944](https://github.com/ipfs/boxo/pull/944)
 - `bitswap/client`: New metrics:
   - `ipfs_bitswap_wanthaves_broadcast`: Count of want-haves broadcasts
   - `ipfs_bitswap_haves_received`:  Count of total have responses
@@ -45,8 +61,6 @@ The following emojis are used to highlight certain changes:
 ### Fixed
 
 - `gateway`: Fixed suffix range-requests and updated tests to [gateway-conformance v0.8](https://github.com/ipfs/gateway-conformance/releases/tag/v0.8.0) [#922](https://github.com/ipfs/boxo/pull/922)
-
-### Security
 
 
 ## [v0.31.0]
