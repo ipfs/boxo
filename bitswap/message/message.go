@@ -190,16 +190,19 @@ func (m *impl) Reset(full bool) {
 var errCidMissing = errors.New("missing cid")
 
 func newMessageFromProto(pbm *pb.Message) (BitSwapMessage, error) {
-	m := newMsg(pbm.Wantlist.Full)
-	for _, e := range pbm.Wantlist.Entries {
-		if len(e.Block) == 0 {
-			return nil, errCidMissing
+	m := newMsg(pbm.Wantlist != nil && pbm.Wantlist.Full)
+
+	if pbm.Wantlist != nil {
+		for _, e := range pbm.Wantlist.Entries {
+			if len(e.Block) == 0 {
+				return nil, errCidMissing
+			}
+			c, err := cid.Cast(e.Block)
+			if err != nil {
+				return nil, err
+			}
+			m.addEntry(c, e.Priority, e.Cancel, e.WantType, e.SendDontHave)
 		}
-		c, err := cid.Cast(e.Block)
-		if err != nil {
-			return nil, err
-		}
-		m.addEntry(c, e.Priority, e.Cancel, e.WantType, e.SendDontHave)
 	}
 
 	// deprecated
