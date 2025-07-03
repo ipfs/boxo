@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"io"
+	"maps"
 
 	"github.com/ipfs/boxo/bitswap/client/wantlist"
 	pb "github.com/ipfs/boxo/bitswap/message/pb"
@@ -141,24 +142,13 @@ func New(full bool) *impl {
 
 // Clone the message fields
 func (m *impl) Clone() BitSwapMessage {
-	msg := &impl{
+	return &impl{
 		full:           m.full,
-		wantlist:       make(map[cid.Cid]*Entry, len(m.wantlist)),
-		blocks:         make(map[cid.Cid]blocks.Block, len(m.blocks)),
-		blockPresences: make(map[cid.Cid]pb.Message_BlockPresenceType, len(m.blockPresences)),
+		wantlist:       maps.Clone(m.wantlist),
+		blocks:         maps.Clone(m.blocks),
+		blockPresences: maps.Clone(m.blockPresences),
 		pendingBytes:   m.pendingBytes,
 	}
-
-	for k, v := range m.wantlist {
-		msg.wantlist[k] = v
-	}
-	for k, v := range m.blocks {
-		msg.blocks[k] = v
-	}
-	for k, v := range m.blockPresences {
-		msg.blockPresences[k] = v
-	}
-	return msg
 }
 
 // Reset the values in the message back to defaults, so it can be reused
@@ -245,41 +235,35 @@ func (m *impl) Empty() bool {
 func (m *impl) FillWantlist(out []Entry) []Entry {
 	if cap(out) < len(m.wantlist) {
 		out = make([]Entry, len(m.wantlist))
+	} else {
+		out = out[:0]
 	}
-	var i int
 	for _, e := range m.wantlist {
-		out[i] = *e
-		i++
+		out = append(out, *e)
 	}
 	return out
 }
 
 func (m *impl) Wantlist() []Entry {
-	out := make([]Entry, len(m.wantlist))
-	var i int
+	out := make([]Entry, 0, len(m.wantlist))
 	for _, e := range m.wantlist {
-		out[i] = *e
-		i++
+		out = append(out, *e)
 	}
 	return out
 }
 
 func (m *impl) Blocks() []blocks.Block {
-	bs := make([]blocks.Block, len(m.blocks))
-	var i int
+	bs := make([]blocks.Block, 0, len(m.blocks))
 	for _, block := range m.blocks {
-		bs[i] = block
-		i++
+		bs = append(bs, block)
 	}
 	return bs
 }
 
 func (m *impl) BlockPresences() []BlockPresence {
-	bps := make([]BlockPresence, len(m.blockPresences))
-	var i int
+	bps := make([]BlockPresence, 0, len(m.blockPresences))
 	for c, t := range m.blockPresences {
-		bps[i] = BlockPresence{c, t}
-		i++
+		bps = append(bps, BlockPresence{c, t})
 	}
 	return bps
 }
