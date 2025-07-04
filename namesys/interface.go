@@ -187,6 +187,10 @@ type PublishOptions struct {
 	// creating a new record to publish. With this options, you can further customize
 	// the way IPNS Records are created.
 	IPNSOptions []ipns.Option
+
+	// Sequence number defines the sequence number stored in an IPNS record. See
+	// https://github.com/ipfs/kubo/issues/10796.
+	Sequence *uint64
 }
 
 // DefaultPublishOptions returns the default options for publishing an IPNS Record.
@@ -211,6 +215,13 @@ func PublishWithEOL(eol time.Time) PublishOption {
 func PublishWithTTL(ttl time.Duration) PublishOption {
 	return func(o *PublishOptions) {
 		o.TTL = ttl
+	}
+}
+
+// PublishWithSequence sets [PublishOptions.Sequence].
+func PublishWithSequence(seq uint64) PublishOption {
+	return func(o *PublishOptions) {
+		o.Sequence = &seq
 	}
 }
 
