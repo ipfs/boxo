@@ -27,6 +27,7 @@ The following emojis are used to highlight certain changes:
 ### Removed
 
 ### Fixed
+- `bitswap/client`: Fix sending extra wants [#968](https://github.com/ipfs/boxo/pull/968)
 
 ### Security
 
