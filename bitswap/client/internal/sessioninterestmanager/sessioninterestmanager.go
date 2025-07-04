@@ -1,6 +1,7 @@
 package sessioninterestmanager
 
 import (
+	"slices"
 	"sync"
 
 	blocks "github.com/ipfs/go-block-format"
@@ -21,8 +22,8 @@ func New() *SessionInterestManager {
 	}
 }
 
-// When the client asks the session for blocks, the session calls
-// RecordSessionInterest() with those cids.
+// RecordSessionInteres records CIDs that a session is interested in. This is
+// called when the client asks the session for blocks.
 func (sim *SessionInterestManager) RecordSessionInterest(ses uint64, ks []cid.Cid) {
 	sim.lk.Lock()
 	defer sim.lk.Unlock()
@@ -38,8 +39,8 @@ func (sim *SessionInterestManager) RecordSessionInterest(ses uint64, ks []cid.Ci
 	}
 }
 
-// When the session shuts down it calls RemoveSessionInterest().
-// Returns the keys that no session is interested in any more.
+// RemoveSession removes the keys that no session is interested in any more.
+// This is called when the session shuts down.
 func (sim *SessionInterestManager) RemoveSession(ses uint64) []cid.Cid {
 	sim.lk.Lock()
 	defer sim.lk.Unlock()
@@ -64,7 +65,8 @@ func (sim *SessionInterestManager) RemoveSession(ses uint64) []cid.Cid {
 	return deletedKs
 }
 
-// When the session receives blocks, it calls RemoveSessionWants().
+// RemoveSessionWants is called when the session receives blocks, to remove the
+// session's interest in CIDs.
 func (sim *SessionInterestManager) RemoveSessionWants(ses uint64, ks []cid.Cid) []cid.Cid {
 	sim.lk.Lock()
 	defer sim.lk.Unlock()
@@ -92,8 +94,8 @@ func (sim *SessionInterestManager) RemoveSessionWants(ses uint64, ks []cid.Cid) 
 	return deletedKs
 }
 
-// The session calls FilterSessionInterested() to filter the sets of keys for
-// those that the session is interested in
+// FilterSessionInterested is called by the session to filter the sets of keys
+// for those that the session is interested in.
 func (sim *SessionInterestManager) FilterSessionInterested(ses uint64, ksets ...[]cid.Cid) [][]cid.Cid {
 	kres := make([][]cid.Cid, len(ksets))
 
@@ -117,8 +119,8 @@ func (sim *SessionInterestManager) FilterSessionInterested(ses uint64, ksets ...
 	return kres
 }
 
-// When bitswap receives blocks it calls SplitWantedUnwanted() to discard
-// unwanted blocks
+// SplitWantedUnwanted is called when bitswap receives blocks, to discard
+// unwanted blocks.
 func (sim *SessionInterestManager) SplitWantedUnwanted(blks []blocks.Block) ([]blocks.Block, []blocks.Block) {
 	// Get the wanted block keys as a set
 	wantedKs := cid.NewSet()
@@ -151,8 +153,10 @@ func (sim *SessionInterestManager) SplitWantedUnwanted(blks []blocks.Block) ([]b
 	return wantedBlks, notWantedBlks
 }
 
-// When the SessionManager receives a message it calls InterestedSessions() to
-// find out which sessions are interested in the message.
+// InterestedSessions returns a list of sessions that are interested in any of
+// the CIDs in the given sets of CIDs. This is called when SessionManager
+// receives a message, to find out which sessions are interested in the
+// message.
 func (sim *SessionInterestManager) InterestedSessions(keySets ...[]cid.Cid) []uint64 {
 	sesSet := make(map[uint64]struct{})
 
@@ -177,30 +181,22 @@ func (sim *SessionInterestManager) InterestedSessions(keySets ...[]cid.Cid) []ui
 	return ses
 }
 
-// Filters only the keys that are wanted by at least one session.
+// FilterInterests keeps only keys that are wanted by at least one session.
 //
 // IMPORTANT: FilterInterests filters the given Cid slices in place, modifying
 // their contents. If the caller needs to preserve a copy of the lists it
 // should make a copy before calling FilterInterests.
 func (sim *SessionInterestManager) FilterInterests(keySets ...[]cid.Cid) [][]cid.Cid {
-	result := keySets[:0]
-
 	sim.lk.RLock()
 	defer sim.lk.RUnlock()
 
-	// For each set of keys
-	for _, ks := range keySets {
-		// The set of keys wanted by at least one session
-		wanted := ks[:0]
-
-		// For each key in the set
-		for _, c := range ks {
-			// If any session wants the key
-			if _, ok := sim.wants[c]; ok {
-				wanted = append(wanted, c)
-			}
-		}
-		result = append(result, wanted)
+	// For each set of keys.
+	for i, ks := range keySets {
+		keySets[i] = slices.DeleteFunc(ks, func(c cid.Cid) bool {
+			// If any session wants the key, keep it.
+			_, ok := sim.wants[c]
+			return !ok
+		})
 	}
-	return result
+	return keySets
 }
