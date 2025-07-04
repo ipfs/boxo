@@ -262,11 +262,11 @@ func (m *impl) Empty() bool {
 func (m *impl) FillWantlist(out []Entry) []Entry {
 	if cap(out) < len(m.wantlist) {
 		out = make([]Entry, len(m.wantlist))
+	} else {
+		out = out[:0]
 	}
-	var i int
 	for _, e := range m.wantlist {
-		out[i] = *e
-		i++
+		out = append(out, *e)
 	}
 	return out
 }
