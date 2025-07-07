@@ -37,6 +37,29 @@ var (
 	DefaultProtocolFilter = []string{"unknown", "transport-bitswap"} // IPIP-484
 )
 
+// normalizeBaseURL removes duplicate /routing/v1 paths from the base URL
+// to prevent URLs like /routing/v1/routing/v1/providers when baseURL ends with /routing/v1
+func normalizeBaseURL(baseURL string) (string, error) {
+	// Remove trailing slashes first
+	baseURL = strings.TrimRight(baseURL, "/")
+
+	// Check if baseURL ends with /routing/v1 and remove it
+	if strings.HasSuffix(baseURL, "/routing/v1") {
+		baseURL = strings.TrimSuffix(baseURL, "/routing/v1")
+	}
+
+	// After deduplication, check if there's any path remaining
+	u, err := gourl.Parse(baseURL)
+	if err != nil {
+		return "", err
+	}
+	if u.Path != "" && u.Path != "/" {
+		return "", errors.New("only /routing/v1 URLs are supported")
+	}
+
+	return baseURL, nil
+}
+
 const (
 	mediaTypeJSON       = "application/json"
 	mediaTypeNDJSON     = "application/x-ndjson"
@@ -177,8 +200,13 @@ func WithStreamResultsRequired() Option {
 // New creates a content routing API client.
 // The Provider and identity parameters are option. If they are nil, the [client.ProvideBitswap] method will not function.
 func New(baseURL string, opts ...Option) (*Client, error) {
+	normalizedURL, err := normalizeBaseURL(baseURL)
+	if err != nil {
+		return nil, err
+	}
+
 	client := &Client{
-		baseURL:        baseURL,
+		baseURL:        normalizedURL,
 		httpClient:     newDefaultHTTPClient(defaultUserAgent),
 		clock:          clock.New(),
 		accepts:        strings.Join([]string{mediaTypeNDJSON, mediaTypeJSON}, ","),
