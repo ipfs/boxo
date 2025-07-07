@@ -575,7 +575,7 @@ func TestWantlistCleanup(t *testing.T) {
 	time.Sleep(time.Millisecond * 50)
 
 	if len(bswap.GetWantHaves()) > 0 {
-		t.Fatal("should not have anyting in wantlist")
+		t.Fatal("should not have anything in wantlist")
 	}
 
 	// Once context times out, keys should be removed from wantlist
@@ -590,7 +590,7 @@ func TestWantlistCleanup(t *testing.T) {
 	time.Sleep(time.Millisecond * 50)
 
 	if len(bswap.GetWantHaves()) > 0 {
-		t.Fatal("should not have anyting in wantlist")
+		t.Fatal("should not have anything in wantlist")
 	}
 
 	// Send want for single block, with no timeout
