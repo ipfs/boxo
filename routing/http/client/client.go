@@ -43,10 +43,8 @@ func normalizeBaseURL(baseURL string) (string, error) {
 	// Remove trailing slashes first
 	baseURL = strings.TrimRight(baseURL, "/")
 
-	// Check if baseURL ends with /routing/v1 and remove it
-	if strings.HasSuffix(baseURL, "/routing/v1") {
-		baseURL = strings.TrimSuffix(baseURL, "/routing/v1")
-	}
+	// Remove /routing/v1 suffix if present
+	baseURL = strings.TrimSuffix(baseURL, "/routing/v1")
 
 	// After deduplication, check if there's any path remaining
 	u, err := gourl.Parse(baseURL)
