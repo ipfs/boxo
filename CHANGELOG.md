@@ -26,9 +26,11 @@ The following emojis are used to highlight certain changes:
 ### Removed
 
 ### Fixed
+- `bitswap/client`: Fix sending extra wants [#968](https://github.com/ipfs/boxo/pull/968)
 
 ### Security
 
+- fix panic when incoming Bitswap protobuf message does not contain `Wantlist` [#961](https://github.com/ipfs/boxo/pull/961)
 
 ## [v0.32.0]
 
