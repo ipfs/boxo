@@ -16,7 +16,8 @@ import (
 	"github.com/ipfs/go-datastore/namespace"
 	logging "github.com/ipfs/go-log/v2"
 	metrics "github.com/ipfs/go-metrics-interface"
-	"github.com/multiformats/go-multihash"
+	"github.com/libp2p/go-libp2p-kad-dht/provider"
+	mh "github.com/multiformats/go-multihash"
 )
 
 const (
@@ -80,14 +81,17 @@ type reprovider struct {
 	keyPrefix datastore.Key
 }
 
-var _ System = (*reprovider)(nil)
+var (
+	_ System            = (*reprovider)(nil)
+	_ provider.Provider = (*reprovider)(nil)
+)
 
 type Provide interface {
 	Provide(context.Context, cid.Cid, bool) error
 }
 
 type ProvideMany interface {
-	ProvideMany(ctx context.Context, keys []multihash.Multihash) error
+	ProvideMany(ctx context.Context, keys []mh.Multihash) error
 }
 
 type Ready interface {
@@ -445,7 +449,7 @@ func (s *reprovider) Reprovide(ctx context.Context) error {
 			return errors.New("failed to reprovide: shutting down")
 		}
 
-		keys := make([]multihash.Multihash, 0, len(cids))
+		keys := make([]mh.Multihash, 0, len(cids))
 		for c := range cids {
 			// hash security
 			if err := verifcid.ValidateCid(s.allowlist, c); err != nil {
@@ -544,7 +548,7 @@ func (s *reprovider) Stat() (ReproviderStats, error) {
 	}, nil
 }
 
-func doProvideMany(ctx context.Context, r Provide, keys []multihash.Multihash) error {
+func doProvideMany(ctx context.Context, r Provide, keys []mh.Multihash) error {
 	if many, ok := r.(ProvideMany); ok {
 		return many.ProvideMany(ctx, keys)
 	}
@@ -556,4 +560,36 @@ func doProvideMany(ctx context.Context, r Provide, keys []multihash.Multihash) e
 		}
 	}
 	return nil
+}
+
+// StartProviding doesn't keep track of which keys have been provided so far.
+// It simply calls InstantProvide to provide the given keys to the network, and
+// returns instantly.
+func (r *reprovider) StartProviding(keys ...mh.Multihash) {
+	go r.InstantProvide(context.Background(), keys...)
+}
+
+// StopProviding is a no op, since reprovider isn't tracking the keys to be
+// reprovided over time.
+func (r *reprovider) StopProviding(keys ...mh.Multihash) {}
+
+// InstantProvide provides the given keys to the network without waiting.
+//
+// If an error is returned by the Provide operation, don't try to provide the
+// remaining keys, and return the error.
+func (r *reprovider) InstantProvide(ctx context.Context, keys ...mh.Multihash) error {
+	for _, k := range keys {
+		err := r.Provide(ctx, cid.NewCidV1(cid.Raw, k), true)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// ForceProvide is an alias for InstantProvide, it provides the given keys to
+// the network, but doesn't track which keys should be reprovided since
+// reprovider doesn't hold such a state.
+func (r *reprovider) ForceProvide(ctx context.Context, keys ...mh.Multihash) error {
+	return r.InstantProvide(ctx, keys...)
 }
