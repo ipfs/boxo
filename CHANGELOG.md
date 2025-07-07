@@ -20,7 +20,7 @@ The following emojis are used to highlight certain changes:
 
 ### Changed
 
-- `DontHaveTimeoutConfig`'s default `MinTimeout` is changed from `0` to `25ms`.
+- `DontHaveTimeoutConfig`'s default `MinTimeout` is changed from `0` to `50ms` [#959](https://github.com/ipfs/boxo/pull/959) [#965](https://github.com/ipfs/boxo/pull/965).
 - upgrade to `go-libp2p` [v0.42.0](https://github.com/libp2p/go-libp2p/releases/tag/v0.42.0)
 
 ### Removed
