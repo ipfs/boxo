@@ -50,7 +50,7 @@ type DontHaveTimeoutConfig struct {
 func DefaultDontHaveTimeoutConfig() *DontHaveTimeoutConfig {
 	cfg := DontHaveTimeoutConfig{
 		DontHaveTimeout:            5 * time.Second,
-		MinTimeout:                 25 * time.Millisecond,
+		MinTimeout:                 50 * time.Millisecond,
 		MaxExpectedWantProcessTime: 2 * time.Second,
 		PingLatencyMultiplier:      3,
 		MessageLatencyAlpha:        0.5,
