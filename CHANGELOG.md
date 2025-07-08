@@ -39,7 +39,7 @@ The following emojis are used to highlight certain changes:
 ### Removed
 
 ### Fixed
-- `bitswap/client`: Fix sending extra wants [#968](https://github.com/ipfs/boxo/pull/968)
+- `bitswap/client`: Fix sending extra wants [#968](https://github.com/ipfs/boxo/pull/968) + [#975](https://github.com/ipfs/boxo/pull/975)
 - `routing/http/client`: Improve URL handling for delegated routing endpoints [#971](https://github.com/ipfs/boxo/pull/971)
 
 ### Security
