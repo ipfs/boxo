@@ -16,6 +16,19 @@ The following emojis are used to highlight certain changes:
 
 ### Added
 
+### Changed
+
+### Removed
+
+### Fixed
+
+### Security
+
+
+## [v0.33.0]
+
+### Added
+
 - `bitswap/network/httpnet`: New `WithMetricsLabelsForEndpoints` allows defining which hosts/endpoints can be used for labelling metrics that support such label. '*' enables this for all endpoints receiving HTTP requests, but may cause metric cardinality growth when too many endpoints exist. These labels allow tracking, for example, number or requests per response status AND endpoint used. Non-labelled request hosts are labelled with same value: `other`.
 
 ### Changed
@@ -26,12 +39,13 @@ The following emojis are used to highlight certain changes:
 ### Removed
 
 ### Fixed
-- `bitswap/client`: Fix sending extra wants [#968](https://github.com/ipfs/boxo/pull/968)
+- `bitswap/client`: Fix sending extra wants [#968](https://github.com/ipfs/boxo/pull/968) + [#975](https://github.com/ipfs/boxo/pull/975)
 - `routing/http/client`: Improve URL handling for delegated routing endpoints [#971](https://github.com/ipfs/boxo/pull/971)
 
 ### Security
 
 - fix panic when incoming Bitswap protobuf message does not contain `Wantlist` [#961](https://github.com/ipfs/boxo/pull/961)
+
 
 ## [v0.32.0]
 
