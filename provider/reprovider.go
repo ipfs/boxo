@@ -593,3 +593,12 @@ func (r *reprovider) InstantProvide(ctx context.Context, keys ...mh.Multihash) e
 func (r *reprovider) ForceProvide(ctx context.Context, keys ...mh.Multihash) error {
 	return r.InstantProvide(ctx, keys...)
 }
+
+// NewProvider creates a new [provider.Provider] by casting the result of New()
+func NewProvider(ds datastore.Batching, opts ...Option) (provider.Provider, error) {
+	system, err := New(ds, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return system.(*reprovider), nil
+}
