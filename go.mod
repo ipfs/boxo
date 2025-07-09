@@ -53,7 +53,6 @@ require (
 	github.com/multiformats/go-multistream v0.6.1
 	github.com/polydawn/refmt v0.89.0
 	github.com/prometheus/client_golang v1.22.0
-	github.com/samber/lo v1.51.0
 	github.com/slok/go-http-metrics v0.13.0
 	github.com/spaolacci/murmur3 v1.1.0
 	github.com/stretchr/testify v1.10.0
