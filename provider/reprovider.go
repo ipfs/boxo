@@ -546,11 +546,12 @@ func (s *reprovider) Stat() (ReproviderStats, error) {
 
 func doProvideMany(ctx context.Context, r Provide, keys []multihash.Multihash) error {
 	if many, ok := r.(ProvideMany); ok {
+		log.Debugf("reprovider: provideMany (%d keys)", len(keys))
 		return many.ProvideMany(ctx, keys)
 	}
 
 	for _, k := range keys {
-		log.Debugf("providing %s", k)
+		log.Debugf("reprovider: providing %s", k)
 		if err := r.Provide(ctx, cid.NewCidV1(cid.Raw, k), true); err != nil {
 			return err
 		}

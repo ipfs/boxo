@@ -13,6 +13,7 @@ import (
 	format "github.com/ipfs/go-ipld-format"
 	legacy "github.com/ipfs/go-ipld-legacy"
 	dagpb "github.com/ipld/go-codec-dagpb"
+
 	// blank import is used to register the IPLD raw codec
 	_ "github.com/ipld/go-ipld-prime/codec/raw"
 	basicnode "github.com/ipld/go-ipld-prime/node/basic"
@@ -169,16 +170,16 @@ func (n *dagService) Session(ctx context.Context) format.NodeGetter {
 	}
 }
 
-// FetchGraph fetches all nodes that are children of the given node
-func FetchGraph(ctx context.Context, root cid.Cid, serv format.DAGService) error {
-	return FetchGraphWithDepthLimit(ctx, root, -1, serv)
+// FetchGraph fetches all nodes that are children of the given node.
+func FetchGraph(ctx context.Context, root cid.Cid, serv format.DAGService, opts ...WalkOption) error {
+	return FetchGraphWithDepthLimit(ctx, root, -1, serv, opts...)
 }
 
 // FetchGraphWithDepthLimit fetches all nodes that are children to the given
 // node down to the given depth. maxDepth=0 means "only fetch root",
 // maxDepth=1 means "fetch root and its direct children" and so on...
 // maxDepth=-1 means unlimited.
-func FetchGraphWithDepthLimit(ctx context.Context, root cid.Cid, depthLim int, serv format.DAGService) error {
+func FetchGraphWithDepthLimit(ctx context.Context, root cid.Cid, depthLim int, serv format.DAGService, opts ...WalkOption) error {
 	var ng format.NodeGetter = NewSession(ctx, serv)
 
 	set := make(map[cid.Cid]int)
@@ -204,10 +205,12 @@ func FetchGraphWithDepthLimit(ctx context.Context, root cid.Cid, depthLim int, s
 		return false
 	}
 
+	opts = append(opts, Concurrent())
+
 	// If we have a ProgressTracker, we wrap the visit function to handle it
 	v, _ := ctx.Value(progressContextKey).(*ProgressTracker)
 	if v == nil {
-		return WalkDepth(ctx, GetLinksDirect(ng), root, visit, Concurrent())
+		return WalkDepth(ctx, GetLinksDirect(ng), root, visit, opts...)
 	}
 
 	visitProgress := func(c cid.Cid, depth int) bool {
@@ -217,7 +220,7 @@ func FetchGraphWithDepthLimit(ctx context.Context, root cid.Cid, depthLim int, s
 		}
 		return false
 	}
-	return WalkDepth(ctx, GetLinksDirect(ng), root, visitProgress, Concurrent())
+	return WalkDepth(ctx, GetLinksDirect(ng), root, visitProgress, opts...)
 }
 
 // GetMany gets many nodes from the DAG at once.
@@ -300,6 +303,7 @@ type walkOptions struct {
 	SkipRoot     bool
 	Concurrency  int
 	ErrorHandler func(c cid.Cid, err error) error
+	Provider     Provide
 }
 
 // WalkOption is a setter for walkOptions
@@ -386,6 +390,17 @@ func OnError(handler func(c cid.Cid, err error) error) WalkOption {
 	}
 }
 
+type Provide interface {
+	Provide(context.Context, cid.Cid, bool) error
+}
+
+// WithProvider calls Provide() on every fetched node while traversing a DAG.
+func WithProvider(p Provide) WalkOption {
+	return func(walkOptions *walkOptions) {
+		walkOptions.Provider = p
+	}
+}
+
 // WalkGraph will walk the dag in order (depth first) starting at the given root.
 func Walk(ctx context.Context, getLinks GetLinks, c cid.Cid, visit func(cid.Cid) bool, options ...WalkOption) error {
 	visitDepth := func(c cid.Cid, depth int) bool {
@@ -424,6 +439,18 @@ func sequentialWalkDepth(ctx context.Context, getLinks GetLinks, root cid.Cid, d
 	}
 	if err != nil {
 		return err
+	}
+
+	// Sucessfully fetched "root".
+	// provide it when needed
+	if prov := options.Provider; prov != nil {
+		err := prov.Provide(ctx, root, true)
+		if err != nil && options.ErrorHandler != nil {
+			err = options.ErrorHandler(root, err)
+		}
+		if err != nil {
+			return err
+		}
 	}
 
 	for _, lnk := range links {
@@ -514,6 +541,21 @@ func parallelWalkDepth(ctx context.Context, getLinks GetLinks, root cid.Cid, vis
 						return
 					}
 
+					// Sucessfully fetched "ci".
+					// provide it when needed
+					if prov := options.Provider; prov != nil {
+						err := prov.Provide(ctx, ci, true)
+						if err != nil && options.ErrorHandler != nil {
+							err = options.ErrorHandler(root, err)
+						}
+						if err != nil {
+							select {
+							case errChan <- err:
+							case <-fetchersCtx.Done():
+							}
+							return
+						}
+					}
 					outLinks := linksDepth{
 						links: links,
 						depth: depth + 1,

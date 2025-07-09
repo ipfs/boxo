@@ -172,13 +172,6 @@ func (s *blockService) AddBlock(ctx context.Context, o blocks.Block) error {
 	}
 
 	logger.Debugf("BlockService.BlockAdded %s", c)
-
-	if s.exchange != nil {
-		if err := s.exchange.NotifyNewBlocks(ctx, o); err != nil {
-			logger.Errorf("NotifyNewBlocks: %s", err.Error())
-		}
-	}
-
 	return nil
 }
 

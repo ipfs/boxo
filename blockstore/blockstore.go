@@ -16,6 +16,7 @@ import (
 	dsq "github.com/ipfs/go-datastore/query"
 	ipld "github.com/ipfs/go-ipld-format"
 	logging "github.com/ipfs/go-log/v2"
+	"github.com/multiformats/go-multihash"
 )
 
 var logger = logging.Logger("blockstore")
@@ -141,6 +142,23 @@ func NoPrefix() Option {
 	}
 }
 
+type Provide interface {
+	Provide(context.Context, cid.Cid, bool) error
+}
+
+type ProvideMany interface {
+	ProvideMany(ctx context.Context, keys []multihash.Multihash) error
+}
+
+// Provider allows performing a Provide operation for every block written.
+func Provider(provider Provide) Option {
+	return Option{
+		func(bs *blockstore) {
+			bs.provider = provider
+		},
+	}
+}
+
 // NewBlockstore returns a default Blockstore implementation
 // using the provided datastore.Batching backend.
 func NewBlockstore(d ds.Batching, opts ...Option) Blockstore {
@@ -173,6 +191,7 @@ type blockstore struct {
 	rehash       atomic.Bool
 	writeThrough bool
 	noPrefix     bool
+	provider     Provide
 }
 
 func (bs *blockstore) HashOnRead(enabled bool) {
@@ -216,7 +235,15 @@ func (bs *blockstore) Put(ctx context.Context, block blocks.Block) error {
 			return nil // already stored.
 		}
 	}
-	return bs.datastore.Put(ctx, k, block.RawData())
+	if err := bs.datastore.Put(ctx, k, block.RawData()); err != nil {
+		return err
+	}
+
+	if bs.provider != nil {
+		logger.Debugf("blockstore: provide %s", block.Cid())
+		return bs.provider.Provide(ctx, block.Cid(), true)
+	}
+	return nil
 }
 
 func (bs *blockstore) PutMany(ctx context.Context, blocks []blocks.Block) error {
@@ -244,7 +271,15 @@ func (bs *blockstore) PutMany(ctx context.Context, blocks []blocks.Block) error 
 			return err
 		}
 	}
-	return t.Commit(ctx)
+	if err := t.Commit(ctx); err != nil {
+		return err
+	}
+
+	var hashes []multihash.Multihash
+	for _, block := range blocks {
+		hashes = append(hashes, block.Cid().Hash())
+	}
+	return doProvideManyHashes(ctx, bs.provider, hashes)
 }
 
 func (bs *blockstore) Has(ctx context.Context, k cid.Cid) (bool, error) {
@@ -350,4 +385,22 @@ func (bs *gclocker) PinLock(_ context.Context) Unlocker {
 
 func (bs *gclocker) GCRequested(_ context.Context) bool {
 	return atomic.LoadInt32(&bs.gcreq) > 0
+}
+
+func doProvideManyHashes(ctx context.Context, r Provide, keys []multihash.Multihash) error {
+	if r == nil {
+		return nil
+	}
+	if many, ok := r.(ProvideMany); ok {
+		logger.Debugf("reprovider: provideMany (%d keys)", len(keys))
+		return many.ProvideMany(ctx, keys)
+	}
+
+	for _, k := range keys {
+		logger.Debugf("reprovider: providing %s", k)
+		if err := r.Provide(ctx, cid.NewCidV1(cid.Raw, k), true); err != nil {
+			return err
+		}
+	}
+	return nil
 }
