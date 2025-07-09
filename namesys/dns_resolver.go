@@ -132,7 +132,7 @@ func workDomain(ctx context.Context, r *DNSResolver, name string, res chan Async
 	}
 
 	// Filter only the IPFS and IPNS paths.
-	slices.DeleteFunc(paths, func(item path.Path) bool {
+	paths = slices.DeleteFunc(paths, func(item path.Path) bool {
 		ns := item.Namespace()
 		return ns != path.IPFSNamespace && ns != path.IPNSNamespace
 	})
