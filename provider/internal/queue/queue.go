@@ -70,7 +70,7 @@ func New(ds datastore.Batching) *Queue {
 		dequeue: make(chan cid.Cid),
 		ds:      namespace.Wrap(ds, datastore.NewKey("/queue")),
 		enqueue: make(chan cid.Cid),
-		clear:   make(chan chan int),
+		clear:   make(chan chan<- int),
 	}
 
 	go q.worker(ctx)
