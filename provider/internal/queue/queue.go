@@ -57,6 +57,7 @@ type Queue struct {
 	dequeue   chan cid.Cid
 	ds        datastore.Batching
 	enqueue   chan cid.Cid
+	clear     chan chan int
 }
 
 // New creates a queue for cids.
@@ -69,6 +70,7 @@ func New(ds datastore.Batching) *Queue {
 		dequeue: make(chan cid.Cid),
 		ds:      namespace.Wrap(ds, datastore.NewKey("/queue")),
 		enqueue: make(chan cid.Cid),
+		clear:   make(chan chan int),
 	}
 
 	go q.worker(ctx)
@@ -110,6 +112,13 @@ func (q *Queue) Enqueue(c cid.Cid) (err error) {
 // Dequeue returns a channel that for reading entries from the queue,
 func (q *Queue) Dequeue() <-chan cid.Cid {
 	return q.dequeue
+}
+
+// Clear clears all queued records from memory and the datastore.
+func (q *Queue) Clear() int {
+	rsp := make(chan int)
+	q.clear <- rsp
+	return <-rsp
 }
 
 func makeCidString(c cid.Cid) string {
@@ -249,6 +258,26 @@ func (q *Queue) worker(ctx context.Context) {
 
 		case <-ctx.Done():
 			return
+
+		case rsp := <-q.clear:
+			var rmMemCount int
+			if c != cid.Undef {
+				rmMemCount = 1
+			}
+			c = cid.Undef
+			k = datastore.Key{}
+			idle = false
+			rmMemCount += inBuf.Len()
+			inBuf.Clear()
+			dedupCache.Purge()
+			rmDSCount, err := q.clearDatastore(ctx)
+			if err != nil {
+				log.Errorw("provider queue: cannot clear datastore", "err", err)
+			} else {
+				dsEmpty = true
+			}
+			log.Infow("cleared provider queue", "fromMemory", rmMemCount, "fromDatastore", rmDSCount)
+			rsp <- rmMemCount + rmDSCount
 		}
 
 		if commit {
@@ -265,6 +294,52 @@ func (q *Queue) worker(ctx context.Context) {
 			dsEmpty = false
 		}
 	}
+}
+
+func (q *Queue) clearDatastore(ctx context.Context) (int, error) {
+	qry := query.Query{
+		KeysOnly: true,
+	}
+	results, err := q.ds.Query(ctx, qry)
+	if err != nil {
+		return 0, fmt.Errorf("cannot query datastore: %w", err)
+	}
+	defer results.Close()
+
+	batch, err := q.ds.Batch(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("cannot create datastore batch: %w", err)
+	}
+
+	var rmCount, writeCount int
+	for result := range results.Next() {
+		if ctx.Err() != nil {
+			return 0, ctx.Err()
+		}
+		if writeCount >= batchSize {
+			writeCount = 0
+			if err = batch.Commit(ctx); err != nil {
+				return 0, fmt.Errorf("cannot commit datastore updates: %w", err)
+			}
+		}
+		if result.Error != nil {
+			return 0, fmt.Errorf("cannot read query result from datastore: %w", result.Error)
+		}
+		if err = batch.Delete(ctx, datastore.NewKey(result.Entry.Key)); err != nil {
+			return 0, fmt.Errorf("cannot delete key from datastore: %w", err)
+		}
+		rmCount++
+		writeCount++
+	}
+
+	if err = batch.Commit(ctx); err != nil {
+		return 0, fmt.Errorf("cannot commit datastore updated: %w", err)
+	}
+	if err = q.ds.Sync(ctx, datastore.NewKey("")); err != nil {
+		return 0, fmt.Errorf("cannot sync datastore: %w", err)
+	}
+
+	return rmCount, nil
 }
 
 func (q *Queue) getQueueHead(ctx context.Context) (*query.Entry, error) {
@@ -301,6 +376,7 @@ func (q *Queue) commitInput(ctx context.Context, counter uint64, cids *deque.Deq
 		}
 		counter++
 	}
+
 	cids.Clear()
 
 	if err = b.Commit(ctx); err != nil {
