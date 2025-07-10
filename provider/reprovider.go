@@ -399,7 +399,8 @@ func parseTime(b []byte) (time.Time, error) {
 	return time.Unix(0, tns), nil
 }
 
-// Clear removes all entries from the reprovider queue.
+// Clear removes all entries from the provide queue. Returns the number of CIDs
+// removed from the queue.
 func (s *reprovider) Clear() int {
 	return s.q.Clear()
 }

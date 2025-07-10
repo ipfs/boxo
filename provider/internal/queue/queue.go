@@ -114,7 +114,8 @@ func (q *Queue) Dequeue() <-chan cid.Cid {
 	return q.dequeue
 }
 
-// Clear clears all queued records from memory and the datastore.
+// Clear clears all queued records from memory and the datastore. Returns the
+// number of CIDs removed from the queue.
 func (q *Queue) Clear() int {
 	rsp := make(chan int)
 	q.clear <- rsp
@@ -325,7 +326,7 @@ func (q *Queue) clearDatastore(ctx context.Context) (int, error) {
 		if result.Error != nil {
 			return 0, fmt.Errorf("cannot read query result from datastore: %w", result.Error)
 		}
-		if err = batch.Delete(ctx, datastore.NewKey(result.Entry.Key)); err != nil {
+		if err = batch.Delete(ctx, datastore.NewKey(result.Key)); err != nil {
 			return 0, fmt.Errorf("cannot delete key from datastore: %w", err)
 		}
 		rmCount++
