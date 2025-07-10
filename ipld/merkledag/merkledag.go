@@ -13,10 +13,10 @@ import (
 	format "github.com/ipfs/go-ipld-format"
 	legacy "github.com/ipfs/go-ipld-legacy"
 	dagpb "github.com/ipld/go-codec-dagpb"
+	basicnode "github.com/ipld/go-ipld-prime/node/basic"
 
 	// blank import is used to register the IPLD raw codec
 	_ "github.com/ipld/go-ipld-prime/codec/raw"
-	basicnode "github.com/ipld/go-ipld-prime/node/basic"
 )
 
 var ipldLegacyDecoder *legacy.Decoder
@@ -441,7 +441,7 @@ func sequentialWalkDepth(ctx context.Context, getLinks GetLinks, root cid.Cid, d
 		return err
 	}
 
-	// Sucessfully fetched "root".
+	// Successfully fetched "root".
 	// provide it when needed
 	if prov := options.Provider; prov != nil {
 		err := prov.Provide(ctx, root, true)
@@ -541,7 +541,7 @@ func parallelWalkDepth(ctx context.Context, getLinks GetLinks, root cid.Cid, vis
 						return
 					}
 
-					// Sucessfully fetched "ci".
+					// Successfully fetched "ci".
 					// provide it when needed
 					if prov := options.Provider; prov != nil {
 						err := prov.Provide(ctx, ci, true)
