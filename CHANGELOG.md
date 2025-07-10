@@ -16,7 +16,7 @@ The following emojis are used to highlight certain changes:
 
 ### Added
 
-- `provider`: Add ability to clear (re)provide queue [#978](https://github.com/ipfs/boxo/pull/978)
+- `provider`: Add ability to clear provide queue [#978](https://github.com/ipfs/boxo/pull/978)
  
 ### Changed
 
