@@ -34,6 +34,7 @@ type Reprovider interface {
 // System defines the interface for interacting with the value
 // provider system
 type System interface {
+	Clear() int
 	Close() error
 	Stat() (ReproviderStats, error)
 	Provider

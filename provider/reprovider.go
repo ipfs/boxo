@@ -399,6 +399,11 @@ func parseTime(b []byte) (time.Time, error) {
 	return time.Unix(0, tns), nil
 }
 
+// Clear removes all entries from the reprovider queue.
+func (s *reprovider) Clear() int {
+	return s.q.Clear()
+}
+
 func (s *reprovider) Close() error {
 	s.close()
 	err := s.q.Close()
