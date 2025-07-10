@@ -57,7 +57,7 @@ type Queue struct {
 	dequeue   chan cid.Cid
 	ds        datastore.Batching
 	enqueue   chan cid.Cid
-	clear     chan chan int
+	clear     chan chan<- int
 }
 
 // New creates a queue for cids.
