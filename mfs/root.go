@@ -101,7 +101,7 @@ type Root struct {
 }
 
 // NewRoot creates a new Root and starts up a republisher routine for it.
-func NewRoot(parent context.Context, ds ipld.DAGService, node *dag.ProtoNode, pf PubFunc) (*Root, error) {
+func NewRoot(ctx context.Context, ds ipld.DAGService, node *dag.ProtoNode, pf PubFunc) (*Root, error) {
 	var repub *Republisher
 	if pf != nil {
 		repub = NewRepublisher(pf, repubQuick, repubLong, node.Cid())
@@ -120,7 +120,7 @@ func NewRoot(parent context.Context, ds ipld.DAGService, node *dag.ProtoNode, pf
 
 	switch fsn.Type() {
 	case ft.TDirectory, ft.THAMTShard:
-		newDir, err := NewDirectory(parent, node.String(), node, root, ds)
+		newDir, err := NewDirectory(ctx, node.String(), node, root, ds)
 		if err != nil {
 			return nil, err
 		}
@@ -138,10 +138,10 @@ func NewRoot(parent context.Context, ds ipld.DAGService, node *dag.ProtoNode, pf
 
 // NewEmptyRoot creates an empty Root directory with the given directory
 // options. A republisher is created if PubFunc is not nil.
-func NewEmptyRoot(parent context.Context, ds ipld.DAGService, pf PubFunc, opts MkdirOpts) (*Root, error) {
+func NewEmptyRoot(ctx context.Context, ds ipld.DAGService, pf PubFunc, opts MkdirOpts) (*Root, error) {
 	root := new(Root)
 
-	dir, err := NewEmptyDirectory(parent, "", root, ds, opts)
+	dir, err := NewEmptyDirectory(ctx, "", root, ds, opts)
 	if err != nil {
 		return nil, err
 	}

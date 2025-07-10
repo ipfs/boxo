@@ -82,6 +82,10 @@ func init() {
 	pinAtl = pinAtl.WithMapMorphism(atlas.MapMorphism{KeySortMode: atlas.KeySortMode_Strings})
 }
 
+type Provide interface {
+	Provide(context.Context, cid.Cid, bool) error
+}
+
 // pinner implements the Pinner interface
 type pinner struct {
 	autoSync bool
@@ -96,6 +100,9 @@ type pinner struct {
 
 	clean int64
 	dirty int64
+
+	rootsProvider  Provide
+	pinnedProvider Provide
 }
 
 var _ ipfspinner.Pinner = (*pinner)(nil)
@@ -126,13 +133,33 @@ type syncDAGService interface {
 	Sync() error
 }
 
+type Option struct {
+	f func(p *pinner)
+}
+
+// WithPinnedProvider sets a provider for all pinned CIDs to be provided
+// (directly or recursively).
+func WithPinnedProvider(prov Provide) Option {
+	return Option{func(p *pinner) {
+		p.pinnedProvider = prov
+	}}
+}
+
+// WithRootsProvider sets a provider for root CIDs and direct pins to be
+// provided.
+func WithRootsProvider(prov Provide) Option {
+	return Option{func(p *pinner) {
+		p.rootsProvider = prov
+	}}
+}
+
 // New creates a new pinner and loads its keysets from the given datastore. If
 // there is no data present in the datastore, then an empty pinner is returned.
 //
 // By default, changes are automatically flushed to the datastore.  This can be
 // disabled by calling SetAutosync(false), which will require that Flush be
 // called explicitly.
-func New(ctx context.Context, dstore ds.Datastore, dserv ipld.DAGService) (*pinner, error) {
+func New(ctx context.Context, dstore ds.Datastore, dserv ipld.DAGService, opts ...Option) (*pinner, error) {
 	p := &pinner{
 		autoSync:  true,
 		cidDIndex: dsindex.New(dstore, ds.NewKey(pinCidDIndexPath)),
@@ -140,6 +167,10 @@ func New(ctx context.Context, dstore ds.Datastore, dserv ipld.DAGService) (*pinn
 		nameIndex: dsindex.New(dstore, ds.NewKey(pinNameIndexPath)),
 		dserv:     dserv,
 		dstore:    dstore,
+	}
+
+	for _, o := range opts {
+		o.f(p)
 	}
 
 	data, err := dstore.Get(ctx, dirtyKey)
@@ -213,7 +244,11 @@ func (p *pinner) doPinRecursive(ctx context.Context, c cid.Cid, fetch bool, name
 		// temporary unlock to fetch the entire graph
 		p.lock.Unlock()
 		// Fetch graph starting at node identified by cid
-		err = merkledag.FetchGraph(ctx, c, p.dserv)
+		var opts []merkledag.WalkOption
+		if p.pinnedProvider != nil {
+			opts = append(opts, merkledag.WithProvider(p.pinnedProvider))
+		}
+		err = merkledag.FetchGraph(ctx, c, p.dserv, opts...)
 		p.lock.Lock()
 		if err != nil {
 			return err
@@ -253,7 +288,14 @@ func (p *pinner) doPinRecursive(ctx context.Context, c cid.Cid, fetch bool, name
 	if err != nil {
 		return err
 	}
-	return p.flushPins(ctx, false)
+	err = p.flushPins(ctx, false)
+	if err != nil {
+		return err
+	}
+	if p.rootsProvider != nil {
+		return p.rootsProvider.Provide(ctx, c, true)
+	}
+	return nil
 }
 
 func (p *pinner) doPinDirect(ctx context.Context, c cid.Cid, name string) error {
@@ -291,7 +333,14 @@ func (p *pinner) doPinDirect(ctx context.Context, c cid.Cid, name string) error 
 		return err
 	}
 
-	return p.flushPins(ctx, false)
+	err = p.flushPins(ctx, false)
+	if err != nil {
+		return err
+	}
+	if p.rootsProvider != nil {
+		return p.rootsProvider.Provide(ctx, c, true)
+	}
+	return nil
 }
 
 func (p *pinner) addPin(ctx context.Context, c cid.Cid, mode ipfspinner.Mode, name string) (string, error) {
