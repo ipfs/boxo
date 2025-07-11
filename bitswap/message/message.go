@@ -234,7 +234,7 @@ func (m *impl) Empty() bool {
 
 func (m *impl) FillWantlist(out []Entry) []Entry {
 	if cap(out) < len(m.wantlist) {
-		out = make([]Entry, len(m.wantlist))
+		out = make([]Entry, 0, len(m.wantlist))
 	} else {
 		out = out[:0]
 	}

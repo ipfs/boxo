@@ -34,6 +34,9 @@ type Reprovider interface {
 // System defines the interface for interacting with the value
 // provider system
 type System interface {
+	// Clear removes all entries from the provide queue. Returns the number of
+	// CIDs removed from the queue.
+	Clear() int
 	Close() error
 	Stat() (ReproviderStats, error)
 	Provider
