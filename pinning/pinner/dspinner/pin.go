@@ -138,6 +138,7 @@ type Option struct {
 // (directly or recursively).
 func WithPinnedProvider(prov routing.ContentProviding) Option {
 	return Option{func(p *pinner) {
+		log.Debug("pinned-providing configured")
 		p.pinnedProvider = prov
 	}}
 }
@@ -146,6 +147,7 @@ func WithPinnedProvider(prov routing.ContentProviding) Option {
 // provided.
 func WithRootsProvider(prov routing.ContentProviding) Option {
 	return Option{func(p *pinner) {
+		log.Debug("roots-providing configured")
 		p.rootsProvider = prov
 	}}
 }

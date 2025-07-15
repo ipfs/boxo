@@ -148,6 +148,7 @@ func NoPrefix() Option {
 func Provider(provider routing.ContentProviding) Option {
 	return Option{
 		func(bs *blockstore) {
+			logger.Debug("providing-blockstore configured")
 			bs.provider = provider
 		},
 	}
