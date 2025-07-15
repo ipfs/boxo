@@ -15,6 +15,10 @@ func NewNoopProvider() System {
 	return &noopProvider{}
 }
 
+func (op *noopProvider) Clear() int {
+	return 0
+}
+
 func (op *noopProvider) Close() error {
 	return nil
 }

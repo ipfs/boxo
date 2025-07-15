@@ -136,3 +136,48 @@ func TestDeduplicateCids(t *testing.T) {
 
 	assertOrdered(cids, queue, t)
 }
+
+func TestClear(t *testing.T) {
+	const cidCount = 25
+
+	ds := sync.MutexWrap(datastore.NewMapDatastore())
+	queue := New(ds)
+	defer queue.Close()
+
+	for _, c := range random.Cids(cidCount) {
+		queue.Enqueue(c)
+	}
+
+	// Cause queued entried to be saved in datastore.
+	err := queue.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	queue = New(ds)
+	defer queue.Close()
+
+	for _, c := range random.Cids(cidCount) {
+		queue.Enqueue(c)
+	}
+
+	rmCount := queue.Clear()
+	t.Log("Cleared", rmCount, "entries from provider queue")
+	if rmCount != 2*cidCount {
+		t.Fatalf("expected %d cleared, got %d", 2*cidCount, rmCount)
+	}
+
+	if err = queue.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Ensure no data when creating new queue.
+	queue = New(ds)
+	defer queue.Close()
+
+	select {
+	case <-queue.Dequeue():
+		t.Fatal("dequeue should not return")
+	case <-time.After(10 * time.Millisecond):
+	}
+}
