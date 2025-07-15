@@ -31,6 +31,7 @@ type Reprovider interface {
 type System interface {
 	Close() error
 	Stat() (ReproviderStats, error)
+	SetKeyProvider(kp KeyChanFunc)
 	Provider
 	Reprovider
 }

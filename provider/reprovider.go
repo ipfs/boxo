@@ -52,9 +52,11 @@ type reprovider struct {
 	initalReprovideDelay     time.Duration
 	initialReprovideDelaySet bool
 
-	allowlist   verifcid.Allowlist
-	rsys        Provide
-	keyProvider KeyChanFunc
+	allowlist verifcid.Allowlist
+	rsys      Provide
+
+	keyProviderLock sync.RWMutex
+	keyProvider     KeyChanFunc
 
 	q  *queue.Queue
 	ds datastore.Batching
@@ -253,6 +255,16 @@ func Online(rsys Provide) Option {
 	}
 }
 
+// SetKeyProvider replaces the current key provider.
+func (s *reprovider) SetKeyProvider(kp KeyChanFunc) {
+	if kp == nil {
+		return
+	}
+	s.keyProviderLock.Lock()
+	s.keyProvider = kp
+	s.keyProviderLock.Unlock()
+}
+
 func (s *reprovider) run() {
 	s.closewg.Add(1)
 	go s.provideWorker()
@@ -417,7 +429,11 @@ func (s *reprovider) Reprovide(ctx context.Context) error {
 	}
 	defer s.mu.Unlock()
 
-	kch, err := s.keyProvider(ctx)
+	s.keyProviderLock.RLock()
+	kp := s.keyProvider
+	s.keyProviderLock.RUnlock()
+
+	kch, err := kp(ctx)
 	if err != nil {
 		return err
 	}
