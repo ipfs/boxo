@@ -14,6 +14,7 @@ import (
 	legacy "github.com/ipfs/go-ipld-legacy"
 	dagpb "github.com/ipld/go-codec-dagpb"
 	basicnode "github.com/ipld/go-ipld-prime/node/basic"
+	"github.com/libp2p/go-libp2p/core/routing"
 
 	// blank import is used to register the IPLD raw codec
 	_ "github.com/ipld/go-ipld-prime/codec/raw"
@@ -205,7 +206,8 @@ func FetchGraphWithDepthLimit(ctx context.Context, root cid.Cid, depthLim int, s
 		return false
 	}
 
-	opts = append(opts, Concurrent())
+	// We default to Concurrent() walk.
+	opts = append([]WalkOption{Concurrent()}, opts...)
 
 	// If we have a ProgressTracker, we wrap the visit function to handle it
 	v, _ := ctx.Value(progressContextKey).(*ProgressTracker)
@@ -303,7 +305,7 @@ type walkOptions struct {
 	SkipRoot     bool
 	Concurrency  int
 	ErrorHandler func(c cid.Cid, err error) error
-	Provider     Provide
+	Provider     routing.ContentProviding
 }
 
 // WalkOption is a setter for walkOptions
@@ -390,12 +392,8 @@ func OnError(handler func(c cid.Cid, err error) error) WalkOption {
 	}
 }
 
-type Provide interface {
-	Provide(context.Context, cid.Cid, bool) error
-}
-
 // WithProvider calls Provide() on every fetched node while traversing a DAG.
-func WithProvider(p Provide) WalkOption {
+func WithProvider(p routing.ContentProviding) WalkOption {
 	return func(walkOptions *walkOptions) {
 		walkOptions.Provider = p
 	}

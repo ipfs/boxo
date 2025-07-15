@@ -19,6 +19,7 @@ import (
 	"github.com/ipfs/go-datastore/query"
 	ipld "github.com/ipfs/go-ipld-format"
 	logging "github.com/ipfs/go-log/v2"
+	"github.com/libp2p/go-libp2p/core/routing"
 	"github.com/polydawn/refmt/cbor"
 	"github.com/polydawn/refmt/obj/atlas"
 )
@@ -82,10 +83,6 @@ func init() {
 	pinAtl = pinAtl.WithMapMorphism(atlas.MapMorphism{KeySortMode: atlas.KeySortMode_Strings})
 }
 
-type Provide interface {
-	Provide(context.Context, cid.Cid, bool) error
-}
-
 // pinner implements the Pinner interface
 type pinner struct {
 	autoSync bool
@@ -101,8 +98,8 @@ type pinner struct {
 	clean int64
 	dirty int64
 
-	rootsProvider  Provide
-	pinnedProvider Provide
+	rootsProvider  routing.ContentProviding
+	pinnedProvider routing.ContentProviding
 }
 
 var _ ipfspinner.Pinner = (*pinner)(nil)
@@ -139,7 +136,7 @@ type Option struct {
 
 // WithPinnedProvider sets a provider for all pinned CIDs to be provided
 // (directly or recursively).
-func WithPinnedProvider(prov Provide) Option {
+func WithPinnedProvider(prov routing.ContentProviding) Option {
 	return Option{func(p *pinner) {
 		p.pinnedProvider = prov
 	}}
@@ -147,7 +144,7 @@ func WithPinnedProvider(prov Provide) Option {
 
 // WithRootsProvider sets a provider for root CIDs and direct pins to be
 // provided.
-func WithRootsProvider(prov Provide) Option {
+func WithRootsProvider(prov routing.ContentProviding) Option {
 	return Option{func(p *pinner) {
 		p.rootsProvider = prov
 	}}
@@ -292,7 +289,10 @@ func (p *pinner) doPinRecursive(ctx context.Context, c cid.Cid, fetch bool, name
 	if err != nil {
 		return err
 	}
-	if p.rootsProvider != nil {
+
+	// Provide only if we have not set pinnedProvider, as otherwise
+	// we would provide it twice.
+	if p.rootsProvider != nil && p.pinnedProvider == nil {
 		return p.rootsProvider.Provide(ctx, c, true)
 	}
 	return nil

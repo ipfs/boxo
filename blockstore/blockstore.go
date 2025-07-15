@@ -16,6 +16,8 @@ import (
 	dsq "github.com/ipfs/go-datastore/query"
 	ipld "github.com/ipfs/go-ipld-format"
 	logging "github.com/ipfs/go-log/v2"
+	routinghelpers "github.com/libp2p/go-libp2p-routing-helpers"
+	"github.com/libp2p/go-libp2p/core/routing"
 	"github.com/multiformats/go-multihash"
 )
 
@@ -142,16 +144,8 @@ func NoPrefix() Option {
 	}
 }
 
-type Provide interface {
-	Provide(context.Context, cid.Cid, bool) error
-}
-
-type ProvideMany interface {
-	ProvideMany(ctx context.Context, keys []multihash.Multihash) error
-}
-
 // Provider allows performing a Provide operation for every block written.
-func Provider(provider Provide) Option {
+func Provider(provider routing.ContentProviding) Option {
 	return Option{
 		func(bs *blockstore) {
 			bs.provider = provider
@@ -191,7 +185,7 @@ type blockstore struct {
 	rehash       atomic.Bool
 	writeThrough bool
 	noPrefix     bool
-	provider     Provide
+	provider     routing.ContentProviding
 }
 
 func (bs *blockstore) HashOnRead(enabled bool) {
@@ -387,11 +381,11 @@ func (bs *gclocker) GCRequested(_ context.Context) bool {
 	return atomic.LoadInt32(&bs.gcreq) > 0
 }
 
-func doProvideManyHashes(ctx context.Context, r Provide, keys []multihash.Multihash) error {
+func doProvideManyHashes(ctx context.Context, r routing.ContentProviding, keys []multihash.Multihash) error {
 	if r == nil {
 		return nil
 	}
-	if many, ok := r.(ProvideMany); ok {
+	if many, ok := r.(routinghelpers.ProvideManyRouter); ok {
 		logger.Debugf("reprovider: provideMany (%d keys)", len(keys))
 		return many.ProvideMany(ctx, keys)
 	}
