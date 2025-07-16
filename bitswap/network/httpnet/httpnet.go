@@ -448,6 +448,11 @@ func (ht *Network) Connect(ctx context.Context, pi peer.AddrInfo) error {
 	p := pi.ID
 	connected := ht.pinger.isPinging(p)
 	if connected {
+		// ensure the evtMgr state aligns. There are cases where the
+		// state might have been flipped (possibly in combination with
+		// the Router + Bitswap sides).
+		ht.connEvtMgr.Connected(p)
+		log.Debugf("reconnected to %s", p)
 		return nil
 	}
 
@@ -508,7 +513,7 @@ func (ht *Network) Connect(ctx context.Context, pi peer.AddrInfo) error {
 		err = ht.connectToURL(ctx, pi.ID, u, "GET")
 		if err != nil {
 			errs = append(errs, fmt.Errorf("%s: %s", u.Multiaddress.String(), err))
-			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			if ctxErr := ctx.Err(); ctxErr != nil {
 				return multierr.Combine(errs...)
 			}
 			continue
@@ -518,7 +523,9 @@ func (ht *Network) Connect(ctx context.Context, pi peer.AddrInfo) error {
 
 	// Bail out if no working urls found.
 	if len(workingAddrs) == 0 {
-		return multierr.Combine(errs...)
+		err := multierr.Combine(errs...)
+		log.Debug(err)
+		return err
 	}
 
 	// We have some working urls!

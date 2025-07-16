@@ -24,6 +24,8 @@ The following emojis are used to highlight certain changes:
 
 ### Fixed
 
+- `bitswap/httpnet`: fix an issue where boxo silently stops making http retrieval requests.
+
 ### Security
 
 
