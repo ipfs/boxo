@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"slices"
 
 	"github.com/gammazero/chanqueue"
 	bsbpm "github.com/ipfs/boxo/bitswap/client/internal/blockpresencemanager"
@@ -207,6 +208,7 @@ func (sws *sessionWantSender) Shutdown() {
 	sws.shutdown()
 	// Wait for run loop to complete
 	<-sws.closed
+	sws.changes.Shutdown()
 }
 
 // addChange adds a new change to the queue
@@ -220,6 +222,7 @@ func (sws *sessionWantSender) addChange(c change) {
 // collectChanges collects all the changes that have occurred since the last
 // invocation of onChange
 func (sws *sessionWantSender) collectChanges(changes []change) []change {
+	changes = slices.Grow(changes, sws.changes.Len())
 	for range sws.changes.Len() {
 		select {
 		case next := <-sws.changes.Out():
