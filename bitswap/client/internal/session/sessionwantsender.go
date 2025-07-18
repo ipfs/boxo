@@ -213,6 +213,11 @@ func (sws *sessionWantSender) Shutdown() {
 
 // addChange adds a new change to the queue
 func (sws *sessionWantSender) addChange(c change) {
+	defer func() {
+		// Ignore send to closed channel error. This can happen if message
+		// received after shutdown.
+		recover()
+	}()
 	select {
 	case sws.changes.In() <- c:
 	case <-sws.ctx.Done():

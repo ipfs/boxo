@@ -2,7 +2,6 @@ package session
 
 import (
 	"context"
-	"sync"
 	"time"
 
 	"github.com/ipfs/boxo/bitswap/client/internal"
@@ -126,9 +125,6 @@ type Session struct {
 	id    uint64
 
 	self peer.ID
-
-	closed   bool
-	recvLock sync.RWMutex
 }
 
 // New creates a new bitswap session whose lifetime is bounded by the
@@ -180,23 +176,11 @@ func (s *Session) ID() uint64 {
 }
 
 func (s *Session) Shutdown() {
-	// Wait until no execution inside ReceiveFrom.
-	s.recvLock.Lock()
-	defer s.recvLock.Unlock()
-
-	s.closed = true
 	s.shutdown()
 }
 
 // ReceiveFrom receives incoming blocks from the given peer.
 func (s *Session) ReceiveFrom(from peer.ID, ks []cid.Cid, haves []cid.Cid, dontHaves []cid.Cid) {
-	s.recvLock.RLock()
-	defer s.recvLock.RUnlock()
-
-	if s.closed {
-		return
-	}
-
 	// The SessionManager tells each Session about all keys that it may be
 	// interested in. Here the Session filters the keys to the ones that this
 	// particular Session is interested in.
