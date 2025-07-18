@@ -24,7 +24,7 @@ The following emojis are used to highlight certain changes:
 
 ### Fixed
 
-- `bitswap/httpnet`: fix an issue where boxo silently stops making http retrieval requests.
+- `bitswap`: fix an issue where boxo silently stops making http retrieval requests. [#981](https://github.com/ipfs/boxo/pull/978), [#980](https://github.com/ipfs/boxo/pull/980), [#979](https://github.com/ipfs/boxo/pull/978)
 
 ### Security
 
