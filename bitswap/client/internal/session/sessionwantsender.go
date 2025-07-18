@@ -183,7 +183,6 @@ func (sws *sessionWantSender) SignalAvailability(p peer.ID, isAvailable bool) {
 
 // Run is the main loop for processing incoming changes
 func (sws *sessionWantSender) Run() {
-	defer sws.changes.Shutdown()
 	changes := sws.changes.Out()
 
 	for {
