@@ -2,6 +2,7 @@ package common
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/ipfs/boxo/gateway"
 	"github.com/ipfs/boxo/gateway/assets"
@@ -52,6 +53,8 @@ func NewHandler(gwAPI gateway.IPFSBackend) http.Handler {
 				Title: "Boxo",
 			},
 		},
+
+		ResponseWriteTimeout: 30 * time.Second, // Set default timeout to 30 seconds
 	}
 
 	// Creates a mux to serve the gateway paths. This is not strictly necessary
