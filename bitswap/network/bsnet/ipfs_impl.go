@@ -44,6 +44,7 @@ func NewFromIpfsHost(host host.Host, opts ...NetOpt) iface.BitSwapNetwork {
 		protocolBitswap:        s.ProtocolPrefix + ProtocolBitswap,
 
 		supportedProtocols: s.SupportedProtocols,
+		connectEvtMgr:      s.connEvtMgr,
 
 		metrics: newMetrics(),
 	}
@@ -243,6 +244,7 @@ func (s *streamMessageSender) send(ctx context.Context, msg bsmsg.BitSwapMessage
 	stream, err := s.Connect(ctx)
 	if err != nil {
 		log.Infof("failed to open stream to %s: %s", s.to, err)
+		s.bsnet.connectEvtMgr.MarkUnresponsive(s.to)
 		return err
 	}
 
@@ -252,6 +254,7 @@ func (s *streamMessageSender) send(ctx context.Context, msg bsmsg.BitSwapMessage
 	timeout := s.opts.SendTimeout - time.Since(start)
 	if err = s.bsnet.msgToStream(ctx, stream, msg, timeout); err != nil {
 		log.Infof("failed to send message to %s: %s", s.to, err)
+		s.bsnet.connectEvtMgr.MarkUnresponsive(s.to)
 		return err
 	}
 
@@ -400,7 +403,11 @@ func (bsnet *impl) Start(r ...iface.Receiver) {
 		for i, v := range r {
 			connectionListeners[i] = v
 		}
-		bsnet.connectEvtMgr = iface.NewConnectEventManager(connectionListeners...)
+		if bsnet.connectEvtMgr == nil {
+			bsnet.connectEvtMgr = iface.NewConnectEventManager(connectionListeners...)
+		} else {
+			bsnet.connectEvtMgr.SetListeners(connectionListeners...)
+		}
 	}
 	for _, proto := range bsnet.supportedProtocols {
 		bsnet.host.SetStreamHandler(proto, bsnet.handleNewStream)
@@ -423,6 +430,10 @@ func (bsnet *impl) Connect(ctx context.Context, p peer.AddrInfo) error {
 
 func (bsnet *impl) DisconnectFrom(ctx context.Context, p peer.ID) error {
 	return bsnet.host.Network().ClosePeer(p)
+}
+
+func (bsnet *impl) IsConnectedToPeer(ctx context.Context, p peer.ID) bool {
+	return bsnet.host.Network().Connectedness(p) == network.Connected
 }
 
 // handleNewStream receives a new stream from the network.

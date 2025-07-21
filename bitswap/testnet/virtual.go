@@ -349,6 +349,10 @@ func (nc *networkClient) DisconnectFrom(_ context.Context, p peer.ID) error {
 	return nil
 }
 
+func (bsnet *networkClient) IsConnectedToPeer(_ context.Context, p peer.ID) bool {
+	return true
+}
+
 func (bsnet *networkClient) TagPeer(p peer.ID, tag string, w int) {
 }
 

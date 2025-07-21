@@ -20,11 +20,13 @@ The following emojis are used to highlight certain changes:
  
 ### Changed
 
+- `bitswap/network`: The connection event manager now has a `SetListeners` method. Both `bsnet` and `httpnet` now have options to provide the `ConnectionEventManager` during `New(...)`. This allows sharing the connection event manager when using both. The connection manager SHOULD be shared when using both networks with the `network.Router` utility.
+
 ### Removed
 
 ### Fixed
 
-- `bitswap`: fix an issue where boxo silently stops making http retrieval requests. [#981](https://github.com/ipfs/boxo/pull/978), [#980](https://github.com/ipfs/boxo/pull/980), [#979](https://github.com/ipfs/boxo/pull/978)
+- `bitswap`: fix an issue where boxo silently stops making http retrieval requests. [#981](https://github.com/ipfs/boxo/pull/978), [#980](https://github.com/ipfs/boxo/pull/980), [#979](https://github.com/ipfs/boxo/pull/978) and [#984 (writeup)](https://github.com/ipfs/boxo/pull/984).
 
 ### Security
 
