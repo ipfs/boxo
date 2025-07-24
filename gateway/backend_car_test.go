@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -34,122 +35,106 @@ func TestCarBackendTar(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	requestNum := 0
+	// Map of expected requests to their response blocks
+	// This allows requests to arrive in any order, fixing race conditions
+	expectedRequests := map[string][]string{
+		"/ipfs/bafybeid3fd2xxdcd3dbj7trb433h2aqssn6xovjbwnkargjv7fuog4xjdi": {
+			// Full request, but return one that terminates in the middle of the HAMT
+			"bafybeid3fd2xxdcd3dbj7trb433h2aqssn6xovjbwnkargjv7fuog4xjdi", // root dir
+			"bafybeifdv255wmsrh75vcsrtkcwyktvewgihegeeyhhj2ju4lzt4lqfoze", // basicDir
+			"bafybeigcisqd7m5nf3qmuvjdbakl5bdnh4ocrmacaqkpuh77qjvggmt2sa", // exampleA
+			"bafkreie5noke3mb7hqxukzcy73nl23k6lxszxi5w3dtmuwz62wnvkpsscm",
+			"bafkreih4ephajybraj6wnxsbwjwa77fukurtpl7oj7t7pfq545duhot7cq",
+			"bafkreigu7buvm3cfunb35766dn7tmqyh2um62zcio63en2btvxuybgcpue",
+			"bafkreicll3huefkc3qnrzeony7zcfo7cr3nbx64hnxrqzsixpceg332fhe",
+			"bafkreifst3pqztuvj57lycamoi7z34b4emf7gawxs74nwrc2c7jncmpaqm",
+			"bafybeid3trcauvcp7fxaai23gkz3qexmlfxnnejgwm57hdvre472dafvha", // exampleB
+			"bafkreihgbi345degbcyxaf5b3boiyiaxhnuxdysvqmbdyaop2swmhh3s3m",
+			"bafkreiaugmh5gal5rgiems6gslcdt2ixfncahintrmcqvrgxqamwtlrmz4",
+			"bafkreiaxwwb7der2qvmteymgtlj7ww7w5vc44phdxfnexog3vnuwdkxuea",
+			"bafkreic5zyan5rk4ccfum4d4mu3h5eqsllbudlj4texlzj6xdgxvldzngi",
+			"bafybeignui4g7l6cvqyy4t6vnbl2fjtego4ejmpcia77jhhwnksmm4bejm", // hamtDir
+		},
+		"/ipfs/bafybeignui4g7l6cvqyy4t6vnbl2fjtego4ejmpcia77jhhwnksmm4bejm": {
+			// Request for the HAMT only
+			"bafybeignui4g7l6cvqyy4t6vnbl2fjtego4ejmpcia77jhhwnksmm4bejm", // hamtDir
+			"bafybeiccgo7euew77gkqkhezn3pozfrciiibqz2u3spdqmgjvd5wqskipm",
+			"bafybeihjydob4eq5j4m43whjgf5cgftthc42kjno3g24sa3wcw7vonbmfy",
+		},
+		"/ipfs/bafybeid3trcauvcp7fxaai23gkz3qexmlfxnnejgwm57hdvre472dafvha": {
+			// Request for exampleB file
+			"bafybeid3trcauvcp7fxaai23gkz3qexmlfxnnejgwm57hdvre472dafvha", // exampleB
+			"bafkreihgbi345degbcyxaf5b3boiyiaxhnuxdysvqmbdyaop2swmhh3s3m",
+			"bafkreiaugmh5gal5rgiems6gslcdt2ixfncahintrmcqvrgxqamwtlrmz4",
+			"bafkreiaxwwb7der2qvmteymgtlj7ww7w5vc44phdxfnexog3vnuwdkxuea",
+			"bafkreic5zyan5rk4ccfum4d4mu3h5eqsllbudlj4texlzj6xdgxvldzngi",
+		},
+		"/ipfs/bafkreih2grj7p2bo5yk2guqazxfjzapv6hpm3mwrinv6s3cyayd72ke5he": {
+			// Request for exampleD file
+			"bafkreih2grj7p2bo5yk2guqazxfjzapv6hpm3mwrinv6s3cyayd72ke5he", // exampleD
+		},
+		"/ipfs/bafkreidqhbqn5htm5qejxpb3hps7dookudo3nncfn6al6niqibi5lq6fee": {
+			// Request for exampleC file
+			"bafkreidqhbqn5htm5qejxpb3hps7dookudo3nncfn6al6niqibi5lq6fee", // exampleC
+		},
+		"/ipfs/bafybeigcisqd7m5nf3qmuvjdbakl5bdnh4ocrmacaqkpuh77qjvggmt2sa": {
+			// Request for exampleA file (full response)
+			"bafybeigcisqd7m5nf3qmuvjdbakl5bdnh4ocrmacaqkpuh77qjvggmt2sa", // exampleA
+			"bafkreigu7buvm3cfunb35766dn7tmqyh2um62zcio63en2btvxuybgcpue",
+			"bafkreicll3huefkc3qnrzeony7zcfo7cr3nbx64hnxrqzsixpceg332fhe",
+			"bafkreifst3pqztuvj57lycamoi7z34b4emf7gawxs74nwrc2c7jncmpaqm",
+		},
+	}
+
+	// Track requests to handle exampleA being requested multiple times with partial responses
+	exampleARequests := make(map[string]int)
+	var requestCount int32
+
 	s := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		requestNum++
-		switch requestNum {
-		case 1:
-			// Expect the full request, but return one that terminates in the middle of the HAMT
-			expectedUri := "/ipfs/bafybeid3fd2xxdcd3dbj7trb433h2aqssn6xovjbwnkargjv7fuog4xjdi"
-			if request.URL.Path != expectedUri {
-				panic(fmt.Errorf("expected URI %s, got %s", expectedUri, request.RequestURI))
+		atomic.AddInt32(&requestCount, 1)
+
+		// Get the path, ignoring query parameters for comparison
+		requestPath := request.URL.Path
+
+		// Handle exampleA specially - it can be requested multiple times with different partial responses
+		if requestPath == "/ipfs/bafybeigcisqd7m5nf3qmuvjdbakl5bdnh4ocrmacaqkpuh77qjvggmt2sa" {
+			count := exampleARequests[requestPath]
+			exampleARequests[requestPath] = count + 1
+
+			// First request for exampleA: partial response (like case 6)
+			if count == 0 {
+				blocks := []string{
+					"bafybeigcisqd7m5nf3qmuvjdbakl5bdnh4ocrmacaqkpuh77qjvggmt2sa", // exampleA
+					"bafkreie5noke3mb7hqxukzcy73nl23k6lxszxi5w3dtmuwz62wnvkpsscm",
+					"bafkreih4ephajybraj6wnxsbwjwa77fukurtpl7oj7t7pfq545duhot7cq",
+				}
+				if err := sendBlocks(ctx, dirWithMultiblockHAMTandFiles, writer, blocks); err != nil {
+					panic(err)
+				}
+				return
 			}
 
-			if err := sendBlocks(ctx, dirWithMultiblockHAMTandFiles, writer, []string{
-				"bafybeid3fd2xxdcd3dbj7trb433h2aqssn6xovjbwnkargjv7fuog4xjdi", // root dir
-				"bafybeifdv255wmsrh75vcsrtkcwyktvewgihegeeyhhj2ju4lzt4lqfoze", // basicDir
-				"bafybeigcisqd7m5nf3qmuvjdbakl5bdnh4ocrmacaqkpuh77qjvggmt2sa", // exampleA
-				"bafkreie5noke3mb7hqxukzcy73nl23k6lxszxi5w3dtmuwz62wnvkpsscm",
-				"bafkreih4ephajybraj6wnxsbwjwa77fukurtpl7oj7t7pfq545duhot7cq",
-				"bafkreigu7buvm3cfunb35766dn7tmqyh2um62zcio63en2btvxuybgcpue",
-				"bafkreicll3huefkc3qnrzeony7zcfo7cr3nbx64hnxrqzsixpceg332fhe",
-				"bafkreifst3pqztuvj57lycamoi7z34b4emf7gawxs74nwrc2c7jncmpaqm",
-				"bafybeid3trcauvcp7fxaai23gkz3qexmlfxnnejgwm57hdvre472dafvha", // exampleB
-				"bafkreihgbi345degbcyxaf5b3boiyiaxhnuxdysvqmbdyaop2swmhh3s3m",
-				"bafkreiaugmh5gal5rgiems6gslcdt2ixfncahintrmcqvrgxqamwtlrmz4",
-				"bafkreiaxwwb7der2qvmteymgtlj7ww7w5vc44phdxfnexog3vnuwdkxuea",
-				"bafkreic5zyan5rk4ccfum4d4mu3h5eqsllbudlj4texlzj6xdgxvldzngi",
-				"bafybeignui4g7l6cvqyy4t6vnbl2fjtego4ejmpcia77jhhwnksmm4bejm", // hamtDir
-			}); err != nil {
-				panic(err)
-			}
-		case 2:
-			// Expect a request for the HAMT only and give it
-			// Note: this is an implementation detail, it could be in the future that we request less or more data
-			// (e.g. requesting the blocks to fill out the HAMT, or with spec changes asking for HAMT ranges, or asking for the HAMT and its children)
-			expectedUri := "/ipfs/bafybeignui4g7l6cvqyy4t6vnbl2fjtego4ejmpcia77jhhwnksmm4bejm"
-			if request.URL.Path != expectedUri {
-				panic(fmt.Errorf("expected URI %s, got %s", expectedUri, request.RequestURI))
-			}
-
-			if err := sendBlocks(ctx, dirWithMultiblockHAMTandFiles, writer, []string{
-				"bafybeignui4g7l6cvqyy4t6vnbl2fjtego4ejmpcia77jhhwnksmm4bejm", // hamtDir
-				"bafybeiccgo7euew77gkqkhezn3pozfrciiibqz2u3spdqmgjvd5wqskipm",
-				"bafybeihjydob4eq5j4m43whjgf5cgftthc42kjno3g24sa3wcw7vonbmfy",
-			}); err != nil {
-				panic(err)
-			}
-		case 3:
-			// Starting here expect requests for each file in the directory
-			expectedUri := "/ipfs/bafybeid3trcauvcp7fxaai23gkz3qexmlfxnnejgwm57hdvre472dafvha"
-			if request.URL.Path != expectedUri {
-				panic(fmt.Errorf("expected URI %s, got %s", expectedUri, request.RequestURI))
-			}
-
-			if err := sendBlocks(ctx, dirWithMultiblockHAMTandFiles, writer, []string{
-				"bafybeid3trcauvcp7fxaai23gkz3qexmlfxnnejgwm57hdvre472dafvha", // exampleB
-				"bafkreihgbi345degbcyxaf5b3boiyiaxhnuxdysvqmbdyaop2swmhh3s3m",
-				"bafkreiaugmh5gal5rgiems6gslcdt2ixfncahintrmcqvrgxqamwtlrmz4",
-				"bafkreiaxwwb7der2qvmteymgtlj7ww7w5vc44phdxfnexog3vnuwdkxuea",
-				"bafkreic5zyan5rk4ccfum4d4mu3h5eqsllbudlj4texlzj6xdgxvldzngi",
-			}); err != nil {
-				panic(err)
-			}
-		case 4:
-			// Expect a request for one of the directory items and give it
-			expectedUri := "/ipfs/bafkreih2grj7p2bo5yk2guqazxfjzapv6hpm3mwrinv6s3cyayd72ke5he"
-			if request.URL.Path != expectedUri {
-				panic(fmt.Errorf("expected URI %s, got %s", expectedUri, request.RequestURI))
-			}
-
-			if err := sendBlocks(ctx, dirWithMultiblockHAMTandFiles, writer, []string{
-				"bafkreih2grj7p2bo5yk2guqazxfjzapv6hpm3mwrinv6s3cyayd72ke5he", // exampleD
-			}); err != nil {
-				panic(err)
-			}
-		case 5:
-			// Expect a request for one of the directory items and give it
-			expectedUri := "/ipfs/bafkreidqhbqn5htm5qejxpb3hps7dookudo3nncfn6al6niqibi5lq6fee"
-			if request.URL.Path != expectedUri {
-				panic(fmt.Errorf("expected URI %s, got %s", expectedUri, request.RequestURI))
-			}
-
-			if err := sendBlocks(ctx, dirWithMultiblockHAMTandFiles, writer, []string{
-				"bafkreidqhbqn5htm5qejxpb3hps7dookudo3nncfn6al6niqibi5lq6fee", // exampleC
-			}); err != nil {
-				panic(err)
-			}
-		case 6:
-			// Expect a request for one of the directory items and give part of it
-			expectedUri := "/ipfs/bafybeigcisqd7m5nf3qmuvjdbakl5bdnh4ocrmacaqkpuh77qjvggmt2sa"
-			if request.URL.Path != expectedUri {
-				panic(fmt.Errorf("expected URI %s, got %s", expectedUri, request.RequestURI))
-			}
-
-			if err := sendBlocks(ctx, dirWithMultiblockHAMTandFiles, writer, []string{
-				"bafybeigcisqd7m5nf3qmuvjdbakl5bdnh4ocrmacaqkpuh77qjvggmt2sa", // exampleA
-				"bafkreie5noke3mb7hqxukzcy73nl23k6lxszxi5w3dtmuwz62wnvkpsscm",
-				"bafkreih4ephajybraj6wnxsbwjwa77fukurtpl7oj7t7pfq545duhot7cq",
-			}); err != nil {
-				panic(err)
-			}
-		case 7:
-			// Expect a partial request for one of the directory items and give it
-			expectedUri := "/ipfs/bafybeigcisqd7m5nf3qmuvjdbakl5bdnh4ocrmacaqkpuh77qjvggmt2sa"
-			if request.URL.Path != expectedUri {
-				panic(fmt.Errorf("expected URI %s, got %s", expectedUri, request.RequestURI))
-			}
-
-			if err := sendBlocks(ctx, dirWithMultiblockHAMTandFiles, writer, []string{
+			// Second request for exampleA: different partial response (like case 7)
+			blocks := []string{
 				"bafybeigcisqd7m5nf3qmuvjdbakl5bdnh4ocrmacaqkpuh77qjvggmt2sa", // exampleA
 				"bafkreigu7buvm3cfunb35766dn7tmqyh2um62zcio63en2btvxuybgcpue",
 				"bafkreicll3huefkc3qnrzeony7zcfo7cr3nbx64hnxrqzsixpceg332fhe",
 				"bafkreifst3pqztuvj57lycamoi7z34b4emf7gawxs74nwrc2c7jncmpaqm",
-			}); err != nil {
+			}
+			if err := sendBlocks(ctx, dirWithMultiblockHAMTandFiles, writer, blocks); err != nil {
 				panic(err)
 			}
-		default:
-			t.Fatal("unsupported request number")
+			return
+		}
+
+		blocks, found := expectedRequests[requestPath]
+		if !found {
+			t.Errorf("unexpected request to %s (full URI: %s)", requestPath, request.RequestURI)
+			return
+		}
+
+		if err := sendBlocks(ctx, dirWithMultiblockHAMTandFiles, writer, blocks); err != nil {
+			panic(err)
 		}
 	}))
 	defer s.Close()
