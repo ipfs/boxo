@@ -131,9 +131,8 @@ func (ps *impl) Subscribe(ctx context.Context, keys ...cid.Cid) <-chan blocks.Bl
 				}
 				var block blocks.Block
 				if ps.trace {
-					tb := val.(traceability.Block)
-					tb.Delay = time.Since(subscribe)
-					block = tb
+					block = val.(traceability.Block)
+					block.Delay = time.Since(subscribe)
 				} else {
 					block = val.(blocks.Block)
 				}
