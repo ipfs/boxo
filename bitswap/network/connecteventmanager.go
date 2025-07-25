@@ -49,6 +49,12 @@ func NewConnectEventManager(connListeners ...ConnectionListener) *ConnectEventMa
 	return evtManager
 }
 
+// SetListeners sets or replaces the current listeners. Not safe to call after
+// Start().
+func (c *ConnectEventManager) SetListeners(connListeners ...ConnectionListener) {
+	c.connListeners = connListeners
+}
+
 func (c *ConnectEventManager) Start() {
 	go c.worker()
 }
