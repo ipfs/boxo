@@ -12,6 +12,7 @@ import (
 	ft "github.com/ipfs/boxo/ipld/unixfs"
 	mod "github.com/ipfs/boxo/ipld/unixfs/mod"
 	ipld "github.com/ipfs/go-ipld-format"
+	"github.com/libp2p/go-libp2p/core/routing"
 )
 
 // File represents a file in the MFS, its logic its mainly targeted
@@ -38,12 +39,13 @@ type File struct {
 
 // NewFile returns a NewFile object with the given parameters.  If the
 // Cid version is non-zero RawLeaves will be enabled.
-func NewFile(name string, node ipld.Node, parent parent, dserv ipld.DAGService) (*File, error) {
+func NewFile(name string, node ipld.Node, parent parent, dserv ipld.DAGService, prov routing.ContentProviding) (*File, error) {
 	fi := &File{
 		inode: inode{
 			name:       name,
 			parent:     parent,
 			dagService: dserv,
+			prov:       prov,
 		},
 		node: node,
 	}
@@ -263,15 +265,21 @@ func (fi *File) SetModTime(ts time.Time) error {
 
 func (fi *File) setNodeData(data []byte) error {
 	nd := dag.NodeWithData(data)
-	err := fi.inode.dagService.Add(context.TODO(), nd)
+	err := fi.dagService.Add(context.TODO(), nd)
 	if err != nil {
 		return err
 	}
 
+	if fi.prov != nil {
+		if err = fi.prov.Provide(context.TODO(), nd.Cid(), true); err != nil {
+			log.Errorf("error providing %s: %s", nd.Cid(), err)
+		}
+	}
+
 	fi.nodeLock.Lock()
 	fi.node = nd
-	parent := fi.inode.parent
-	name := fi.inode.name
+	parent := fi.parent
+	name := fi.name
 	fi.nodeLock.Unlock()
 	return parent.updateChildEntry(child{name, fi.node})
 }
