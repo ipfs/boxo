@@ -24,6 +24,8 @@ The following emojis are used to highlight certain changes:
 
 ### Fixed
 
+- `bitswap`: fix an issue where boxo silently stops making http retrieval requests. [#981](https://github.com/ipfs/boxo/pull/978), [#980](https://github.com/ipfs/boxo/pull/980), [#979](https://github.com/ipfs/boxo/pull/978)
+
 ### Security
 
 
@@ -35,6 +37,7 @@ The following emojis are used to highlight certain changes:
 
 ### Changed
 
+- `bitswap/client` The bitswap client's [`traceability.Block`](https://github.com/ipfs/boxo/blob/main/bitswap/client/traceability/block.go) is now disabled by default. It is only used for testing an debugging and is not needed for typical operation. Using it costs additional allocation. To enable `traceability.Block`, use the bitswap client option `WithTraceBlock(true)`.
 - `DontHaveTimeoutConfig`'s default `MinTimeout` is changed from `0` to `50ms` [#959](https://github.com/ipfs/boxo/pull/959) [#965](https://github.com/ipfs/boxo/pull/965).
 - upgrade to `go-libp2p` [v0.42.0](https://github.com/libp2p/go-libp2p/releases/tag/v0.42.0)
 

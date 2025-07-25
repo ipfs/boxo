@@ -448,6 +448,8 @@ func (ht *Network) Connect(ctx context.Context, pi peer.AddrInfo) error {
 	p := pi.ID
 	connected := ht.pinger.isPinging(p)
 	if connected {
+		ht.connEvtMgr.Connected(p)
+		log.Debugf("reconnected to %s", p)
 		return nil
 	}
 
@@ -508,7 +510,7 @@ func (ht *Network) Connect(ctx context.Context, pi peer.AddrInfo) error {
 		err = ht.connectToURL(ctx, pi.ID, u, "GET")
 		if err != nil {
 			errs = append(errs, fmt.Errorf("%s: %s", u.Multiaddress.String(), err))
-			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			if ctxErr := ctx.Err(); ctxErr != nil {
 				return multierr.Combine(errs...)
 			}
 			continue
@@ -518,7 +520,9 @@ func (ht *Network) Connect(ctx context.Context, pi peer.AddrInfo) error {
 
 	// Bail out if no working urls found.
 	if len(workingAddrs) == 0 {
-		return multierr.Combine(errs...)
+		err := multierr.Combine(errs...)
+		log.Debug(err)
+		return err
 	}
 
 	// We have some working urls!
@@ -529,8 +533,9 @@ func (ht *Network) Connect(ctx context.Context, pi peer.AddrInfo) error {
 	// Record whether HEAD test passed for all urls - ignoring error
 	_ = ht.host.Peerstore().Put(pi.ID, peerstoreSupportsHeadKey, supportsHead)
 
-	ht.connEvtMgr.Connected(p)
 	ht.pinger.startPinging(p)
+	ht.connEvtMgr.Connected(p)
+
 	log.Debugf("connect success to %s (supports HEAD: %t)", p, supportsHead)
 	// We "connected"
 	return nil
@@ -750,6 +755,8 @@ func buildRequest(ctx context.Context, u network.ParsedURL, method string, cid s
 // given message to the given peer over HTTP.
 // An error is returned of the peer has no known HTTP endpoints.
 func (ht *Network) NewMessageSender(ctx context.Context, p peer.ID, opts *network.MessageSenderOpts) (network.MessageSender, error) {
+	log.Debugf("NewMessageSender: %s", p)
+
 	// cooldowns made by other senders between now and SendMsg will not be
 	// taken into account since we access that info here only. From that
 	// point, we only react to cooldowns/errors received by this message
@@ -770,16 +777,17 @@ func (ht *Network) NewMessageSender(ctx context.Context, p peer.ID, opts *networ
 	// peers that we have connected to and we stop pinging them on
 	// disconnect.
 	if !ht.pinger.isPinging(p) {
+		log.Debug("NewMessageSender: aborting: not connected")
 		return nil, ErrNotConnected
 	}
 
 	// Check that we have HTTP urls.
 	urls := ht.senderURLs(p)
 	if len(urls) == 0 {
+		log.Debug("NewMessageSender: aborting: no HTTPAddresses")
 		return nil, ErrNoHTTPAddresses
 	}
 
-	log.Debugf("NewMessageSender: %s", p)
 	senderOpts := setSenderOpts(opts)
 
 	return &httpMsgSender{
