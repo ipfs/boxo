@@ -236,7 +236,9 @@ func (bs *blockstore) Put(ctx context.Context, block blocks.Block) error {
 
 	if bs.provider != nil {
 		logger.Debugf("blockstore: provide %s", block.Cid())
-		return bs.provider.Provide(ctx, block.Cid(), true)
+		if err := bs.provider.Provide(ctx, block.Cid(), true); err != nil {
+			logger.Debugf("error providing %s: %s", block.Cid(), err)
+		}
 	}
 	return nil
 }
@@ -274,7 +276,8 @@ func (bs *blockstore) PutMany(ctx context.Context, blocks []blocks.Block) error 
 	for _, block := range blocks {
 		hashes = append(hashes, block.Cid().Hash())
 	}
-	return doProvideManyHashes(ctx, bs.provider, hashes)
+	doProvideManyHashes(ctx, bs.provider, hashes)
+	return nil
 }
 
 func (bs *blockstore) Has(ctx context.Context, k cid.Cid) (bool, error) {
@@ -382,20 +385,22 @@ func (bs *gclocker) GCRequested(_ context.Context) bool {
 	return atomic.LoadInt32(&bs.gcreq) > 0
 }
 
-func doProvideManyHashes(ctx context.Context, r routing.ContentProviding, keys []multihash.Multihash) error {
+func doProvideManyHashes(ctx context.Context, r routing.ContentProviding, keys []multihash.Multihash) {
 	if r == nil {
-		return nil
+		return
 	}
 	if many, ok := r.(routinghelpers.ProvideManyRouter); ok {
 		logger.Debugf("reprovider: provideMany (%d keys)", len(keys))
-		return many.ProvideMany(ctx, keys)
+		if err := many.ProvideMany(ctx, keys); err != nil {
+			logger.Debugf("error providing keys: %s", err)
+		}
 	}
 
 	for _, k := range keys {
 		logger.Debugf("reprovider: providing %s", k)
 		if err := r.Provide(ctx, cid.NewCidV1(cid.Raw, k), true); err != nil {
-			return err
+			logger.Debugf("error providing %s: %s", k, err)
+			break
 		}
 	}
-	return nil
 }

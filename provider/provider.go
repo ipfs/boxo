@@ -42,20 +42,6 @@ type System interface {
 // KeyChanFunc is function streaming CIDs to pass to content routing
 type KeyChanFunc func(context.Context) (<-chan cid.Cid, error)
 
-// CidKeysStore is an object that can provide a KeyChanFunc.
-type CidKeysStore interface {
-	// AllKeysChan returns a channel from which CIDs can be read. It
-	// should respect the given context, closing the channel if it becomes
-	// Done.
-	//
-	// The only guarantee is that the consumer of AllKKeysChan will
-	// encounter every CID in the underlying store, at least once. If the
-	// underlying store supports duplicate CIDs it is up to the
-	// implementation to elect to return such duplicates or not. Similarly
-	// no guarantees are made regarding CID ordering.
-	AllKeysChan(ctx context.Context) (<-chan cid.Cid, error)
-}
-
 // NewBufferedProvider returns a KeyChanFunc supplying keys from a given
 // KeyChanFunction, but buffering keys in memory if we can read them faster
 // they are consumed.  This allows the underlying KeyChanFunc to finish

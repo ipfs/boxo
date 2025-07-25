@@ -13,6 +13,7 @@ import (
 	format "github.com/ipfs/go-ipld-format"
 	legacy "github.com/ipfs/go-ipld-legacy"
 	dagpb "github.com/ipld/go-codec-dagpb"
+
 	// Blank import is used to register the IPLD raw codec
 	_ "github.com/ipld/go-ipld-prime/codec/raw"
 	basicnode "github.com/ipld/go-ipld-prime/node/basic"
@@ -441,12 +442,9 @@ func sequentialWalkDepth(ctx context.Context, getLinks GetLinks, root cid.Cid, d
 	// Successfully fetched "root".
 	// provide it when needed
 	if prov := options.Provider; prov != nil {
-		err := prov.Provide(ctx, root, true)
-		if err != nil && options.ErrorHandler != nil {
-			err = options.ErrorHandler(root, err)
-		}
-		if err != nil {
-			return err
+		log.Debugf("merkledag: provide %s", root)
+		if err := prov.Provide(ctx, root, true); err != nil {
+			log.Debugf("error providing %s: %s", root, err)
 		}
 	}
 
@@ -541,16 +539,9 @@ func parallelWalkDepth(ctx context.Context, getLinks GetLinks, root cid.Cid, vis
 					// Successfully fetched "ci".
 					// provide it when needed
 					if prov := options.Provider; prov != nil {
-						err := prov.Provide(ctx, ci, true)
-						if err != nil && options.ErrorHandler != nil {
-							err = options.ErrorHandler(root, err)
-						}
-						if err != nil {
-							select {
-							case errChan <- err:
-							case <-fetchersCtx.Done():
-							}
-							return
+						log.Debugf("merkledag: provide %s", root)
+						if err := prov.Provide(ctx, root, true); err != nil {
+							log.Debugf("error providing %s: %s", root, err)
 						}
 					}
 					outLinks := linksDepth{

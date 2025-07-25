@@ -218,6 +218,7 @@ func (kr *Root) updateChildEntry(c child) error {
 	// applying the same procedure as `Directory.updateChildEntry`?
 
 	if kr.prov != nil {
+		log.Debugf("mfs: provide: %s", c.Node.Cid())
 		if err = kr.prov.Provide(context.TODO(), c.Node.Cid(), true); err != nil {
 			log.Errorf("error providing %s: %s", c.Node.Cid(), err)
 		}

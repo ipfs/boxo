@@ -66,6 +66,7 @@ func NewDirectory(ctx context.Context, name string, node ipld.Node, parent paren
 	}
 
 	if prov != nil {
+		log.Debugf("mfs: provide: %s", nd.Cid())
 		if err = prov.Provide(ctx, nd.Cid(), true); err != nil {
 			log.Errorf("error providing %s: %s", nd.Cid(), err)
 		}
@@ -181,6 +182,7 @@ func (d *Directory) localUpdate(c child) (*dag.ProtoNode, error) {
 	}
 
 	if d.prov != nil {
+		log.Debugf("mfs: provide: %s", nd.Cid())
 		if err = d.prov.Provide(d.ctx, nd.Cid(), true); err != nil {
 			log.Errorf("error providing %s: %s", nd.Cid(), err)
 		}
@@ -420,6 +422,7 @@ func (d *Directory) AddChild(name string, nd ipld.Node) error {
 	}
 
 	if d.prov != nil {
+		log.Debugf("mfs: provide: %s", nd.Cid())
 		if err = d.prov.Provide(d.ctx, nd.Cid(), true); err != nil {
 			log.Errorf("error providing %s: %s", nd.Cid(), err)
 		}
@@ -487,6 +490,7 @@ func (d *Directory) getNode(cacheClean bool) (ipld.Node, error) {
 	}
 
 	if d.prov != nil {
+		log.Debugf("mfs: provide: %s", nd.Cid())
 		if err = d.prov.Provide(d.ctx, nd.Cid(), true); err != nil {
 			log.Errorf("error providing %s: %s", nd.Cid(), err)
 		}
@@ -556,6 +560,7 @@ func (d *Directory) setNodeData(data []byte, links []*ipld.Link) error {
 	}
 
 	if d.prov != nil {
+		log.Debugf("mfs: provide: %s", nd.Cid())
 		if err = d.prov.Provide(d.ctx, nd.Cid(), true); err != nil {
 			log.Errorf("error providing %s: %s", nd.Cid(), err)
 		}

@@ -271,6 +271,7 @@ func (fi *File) setNodeData(data []byte) error {
 	}
 
 	if fi.prov != nil {
+		log.Debugf("mfs: provide: %s", nd.Cid())
 		if err = fi.prov.Provide(context.TODO(), nd.Cid(), true); err != nil {
 			log.Errorf("error providing %s: %s", nd.Cid(), err)
 		}

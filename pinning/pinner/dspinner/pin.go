@@ -293,9 +293,12 @@ func (p *pinner) doPinRecursive(ctx context.Context, c cid.Cid, fetch bool, name
 	}
 
 	// Provide only if we have not set pinnedProvider, as otherwise
-	// we would provide it twice.
+	// we would provide the roots twice.
 	if p.rootsProvider != nil && p.pinnedProvider == nil {
-		return p.rootsProvider.Provide(ctx, c, true)
+		log.Debugf("pinner: provide root %s", c)
+		if err := p.rootsProvider.Provide(ctx, c, true); err != nil {
+			log.Debugf("error providing %s: %s", c, err)
+		}
 	}
 	return nil
 }
@@ -339,9 +342,14 @@ func (p *pinner) doPinDirect(ctx context.Context, c cid.Cid, name string) error 
 	if err != nil {
 		return err
 	}
+
 	if p.rootsProvider != nil {
-		return p.rootsProvider.Provide(ctx, c, true)
+		log.Debugf("pinner: provide direct pin %s", c)
+		if err := p.rootsProvider.Provide(ctx, c, true); err != nil {
+			log.Debugf("error providing %s: %s", c, err)
+		}
 	}
+
 	return nil
 }
 
