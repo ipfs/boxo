@@ -90,6 +90,7 @@ func (pm *PeerManager) ConnectedPeers() []peer.ID {
 func (pm *PeerManager) Connected(p peer.ID) {
 	pm.pqLk.Lock()
 
+	log.Debugf("connect notification for %s", p)
 	pq := pm.getOrCreate(p)
 	// Inform the peer want manager that there's a new peer
 	pm.pwm.addPeer(pq, p)
@@ -104,6 +105,7 @@ func (pm *PeerManager) Connected(p peer.ID) {
 func (pm *PeerManager) Disconnected(p peer.ID) {
 	pm.pqLk.Lock()
 
+	log.Debugf("disconnect notification for %s", p)
 	pq, ok := pm.peerQueues[p]
 	if !ok {
 		pm.pqLk.Unlock()
@@ -202,6 +204,9 @@ func (pm *PeerManager) getOrCreate(p peer.ID) PeerQueue {
 		}
 		pq.Startup()
 		pm.peerQueues[p] = pq
+		log.Debugf("getOrCreate: new queue for %s", p)
+	} else {
+		log.Debugf("getOrCreate: queue exists already for %s", p)
 	}
 	return pq
 }

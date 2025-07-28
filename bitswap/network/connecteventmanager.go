@@ -138,6 +138,7 @@ func (c *ConnectEventManager) worker() {
 			// We could be transitioning from unresponsive to disconnected.
 			if oldState == stateResponsive {
 				c.lk.Unlock()
+				log.Debugf("PeerDisconnected notification: %s", pid)
 				for _, v := range c.connListeners {
 					v.PeerDisconnected(pid)
 				}
@@ -145,6 +146,7 @@ func (c *ConnectEventManager) worker() {
 			}
 		case stateResponsive:
 			c.lk.Unlock()
+			log.Debugf("PeerConnected notification: %s", pid)
 			for _, v := range c.connListeners {
 				v.PeerConnected(pid)
 			}

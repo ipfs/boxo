@@ -329,6 +329,7 @@ func (bsnet *impl) msgToStream(ctx context.Context, s network.Stream, msg bsmsg.
 }
 
 func (bsnet *impl) NewMessageSender(ctx context.Context, p peer.ID, opts *iface.MessageSenderOpts) (iface.MessageSender, error) {
+	log.Debugf("NewMessageSender: %s", p)
 	opts = setDefaultOpts(opts)
 
 	sender := &streamMessageSender{
