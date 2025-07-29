@@ -13,11 +13,11 @@ import (
 	format "github.com/ipfs/go-ipld-format"
 	legacy "github.com/ipfs/go-ipld-legacy"
 	dagpb "github.com/ipld/go-codec-dagpb"
+	basicnode "github.com/ipld/go-ipld-prime/node/basic"
+	"github.com/libp2p/go-libp2p/core/routing"
 
 	// Blank import is used to register the IPLD raw codec
 	_ "github.com/ipld/go-ipld-prime/codec/raw"
-	basicnode "github.com/ipld/go-ipld-prime/node/basic"
-	"github.com/libp2p/go-libp2p/core/routing"
 )
 
 var ipldLegacyDecoder *legacy.Decoder
@@ -47,9 +47,9 @@ func NewDAGService(bs bserv.BlockService) *dagService {
 // dagService is an IPFS Merkle DAG service.
 // - the root is virtual (like a forest)
 // - stores nodes' data in a BlockService
-// TODO: should cache Nodes that are in memory, and be
 //
-//	able to free some of them when vm pressure is high
+// TODO: should cache Nodes that are in memory, and be able to free some of
+// them when vm pressure is high
 type dagService struct {
 	Blocks  bserv.BlockService
 	decoder *legacy.Decoder
@@ -106,8 +106,8 @@ func (n *dagService) Remove(ctx context.Context, c cid.Cid) error {
 	return n.Blocks.DeleteBlock(ctx, c)
 }
 
-// RemoveMany removes multiple nodes from the DAG. It will likely be faster than
-// removing them individually.
+// RemoveMany removes multiple nodes from the DAG. It will likely be faster
+// than removing them individually.
 //
 // This operation is not atomic. If it returns an error, some nodes may or may
 // not have been removed.
@@ -121,9 +121,9 @@ func (n *dagService) RemoveMany(ctx context.Context, cids []cid.Cid) error {
 	return nil
 }
 
-// GetLinksDirect creates a function to get the links for a node, from
-// the node, bypassing the LinkService.  If the node does not exist
-// locally (and can not be retrieved) an error will be returned.
+// GetLinksDirect creates a function to get the links for a node, from the
+// node, bypassing the LinkService. If the node does not exist locally (and can
+// not be retrieved) an error will be returned.
 func GetLinksDirect(serv format.NodeGetter) GetLinks {
 	return func(ctx context.Context, c cid.Cid) ([]*format.Link, error) {
 		nd, err := serv.Get(ctx, c)
@@ -154,7 +154,8 @@ func (sg *sesGetter) GetMany(ctx context.Context, keys []cid.Cid) <-chan *format
 	return getNodesFromBG(ctx, sg.bs, keys, sg.decoder)
 }
 
-// WrapSession wraps a blockservice session to satisfy the format.NodeGetter interface
+// WrapSession wraps a blockservice session to satisfy the format.NodeGetter
+// interface.
 func WrapSession(s *bserv.Session) format.NodeGetter {
 	return &sesGetter{
 		bs:      s,
@@ -177,9 +178,9 @@ func FetchGraph(ctx context.Context, root cid.Cid, serv format.DAGService, opts 
 }
 
 // FetchGraphWithDepthLimit fetches all nodes that are children to the given
-// node down to the given depth. maxDepth=0 means "only fetch root",
-// maxDepth=1 means "fetch root and its direct children" and so on...
-// maxDepth=-1 means unlimited.
+// node down to the given depth. maxDepth=0 means "only fetch root", maxDepth=1
+// means "fetch root and its direct children" and so on... maxDepth=-1 means
+// unlimited.
 func FetchGraphWithDepthLimit(ctx context.Context, root cid.Cid, depthLim int, serv format.DAGService, opts ...WalkOption) error {
 	var ng format.NodeGetter = NewSession(ctx, serv)
 
@@ -209,7 +210,7 @@ func FetchGraphWithDepthLimit(ctx context.Context, root cid.Cid, depthLim int, s
 	// We default to Concurrent() walk.
 	opts = append([]WalkOption{Concurrent()}, opts...)
 
-	// If we have a ProgressTracker, we wrap the visit function to handle it
+	// If we have a ProgressTracker, we wrap the visit function to handle it.
 	v, _ := ctx.Value(progressContextKey).(*ProgressTracker)
 	if v == nil {
 		return WalkDepth(ctx, GetLinksDirect(ng), root, visit, opts...)
@@ -287,9 +288,9 @@ func getNodesFromBG(ctx context.Context, bs bserv.BlockGetter, keys []cid.Cid, d
 type GetLinks func(context.Context, cid.Cid) ([]*format.Link, error)
 
 // GetLinksWithDAG returns a GetLinks function that tries to use the given
-// NodeGetter as a LinkGetter to get the children of a given IPLD node. This may
-// allow us to traverse the DAG without actually loading and parsing the node in
-// question (if we already have the links cached).
+// NodeGetter as a LinkGetter to get the children of a given IPLD node. This
+// may allow us to traverse the DAG without actually loading and parsing the
+// node in question (if we already have the links cached).
 func GetLinksWithDAG(ng format.NodeGetter) GetLinks {
 	return func(ctx context.Context, c cid.Cid) ([]*format.Link, error) {
 		return format.GetLinks(ctx, ng, c)
@@ -297,7 +298,7 @@ func GetLinksWithDAG(ng format.NodeGetter) GetLinks {
 }
 
 // defaultConcurrentFetch is the default maximum number of concurrent fetches
-// that 'fetchNodes' will start at a time
+// that 'fetchNodes' will start at a time.
 const defaultConcurrentFetch = 32
 
 // walkOptions represent the parameters of a graph walking algorithm
@@ -329,8 +330,9 @@ func SkipRoot() WalkOption {
 }
 
 // Concurrent is a WalkOption indicating that node fetching should be done in
-// parallel, with the default concurrency factor.
-// NOTE: When using that option, the walk order is *not* guarantee.
+// parallel, with the default concurrency factor. When using this option, the
+// walk order is not guaranteed.
+//
 // NOTE: It *does not* make multiple concurrent calls to the passed `visit` function.
 func Concurrent() WalkOption {
 	return func(walkOptions *walkOptions) {
@@ -339,8 +341,9 @@ func Concurrent() WalkOption {
 }
 
 // Concurrency is a WalkOption indicating that node fetching should be done in
-// parallel, with a specific concurrency factor.
-// NOTE: When using that option, the walk order is *not* guarantee.
+// parallel, with a specific concurrency factor. When using that option, the
+// walk order is not guaranteed.
+//
 // NOTE: It *does not* make multiple concurrent calls to the passed `visit` function.
 func Concurrency(worker int) WalkOption {
 	return func(walkOptions *walkOptions) {
@@ -371,8 +374,8 @@ func IgnoreMissing() WalkOption {
 	}
 }
 
-// OnMissing is a WalkOption adding a callback that will be triggered on a missing
-// node.
+// OnMissing is a WalkOption adding a callback that will be triggered on a
+// missing node.
 func OnMissing(callback func(c cid.Cid)) WalkOption {
 	return func(walkOptions *walkOptions) {
 		walkOptions.addHandler(func(c cid.Cid, err error) error {
@@ -384,8 +387,8 @@ func OnMissing(callback func(c cid.Cid)) WalkOption {
 	}
 }
 
-// OnError is a WalkOption adding a custom error handler.
-// If this handler return a nil error, the walk will continue.
+// OnError is a WalkOption that adds a custom error handler. The walk is
+// stopped if this handler returns a non-nil error.
 func OnError(handler func(c cid.Cid, err error) error) WalkOption {
 	return func(walkOptions *walkOptions) {
 		walkOptions.addHandler(handler)
@@ -399,7 +402,7 @@ func WithProvider(p routing.ContentProviding) WalkOption {
 	}
 }
 
-// WalkGraph will walk the dag in order (depth first) starting at the given root.
+// WalkGraph walks the dag in depth-first order starting at the given root.
 func Walk(ctx context.Context, getLinks GetLinks, c cid.Cid, visit func(cid.Cid) bool, options ...WalkOption) error {
 	visitDepth := func(c cid.Cid, depth int) bool {
 		return visit(c)
@@ -439,8 +442,7 @@ func sequentialWalkDepth(ctx context.Context, getLinks GetLinks, root cid.Cid, d
 		return err
 	}
 
-	// Successfully fetched "root".
-	// provide it when needed
+	// Successfully fetched "root". Provide it when needed.
 	if prov := options.Provider; prov != nil {
 		log.Debugf("merkledag: provide %s", root)
 		if err := prov.Provide(ctx, root, true); err != nil {
@@ -462,8 +464,8 @@ type ProgressTracker struct {
 	lk    sync.Mutex
 }
 
-// DeriveContext returns a new context with value "progress" derived from
-// the given one.
+// DeriveContext returns a new context with value "progress" derived from the
+// given one.
 func (p *ProgressTracker) DeriveContext(ctx context.Context) context.Context {
 	return context.WithValue(ctx, progressContextKey, p)
 }
