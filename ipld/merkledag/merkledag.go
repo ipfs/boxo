@@ -536,8 +536,7 @@ func parallelWalkDepth(ctx context.Context, getLinks GetLinks, root cid.Cid, vis
 						return
 					}
 
-					// Successfully fetched "ci".
-					// provide it when needed
+					// Successfully fetched "ci". Provide it when needed,
 					if prov := options.Provider; prov != nil {
 						log.Debugf("merkledag: provide %s", root)
 						if err := prov.Provide(ctx, root, true); err != nil {
