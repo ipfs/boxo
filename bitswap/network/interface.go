@@ -27,6 +27,7 @@ type BitSwapNetwork interface {
 
 	Connect(context.Context, peer.AddrInfo) error
 	DisconnectFrom(context.Context, peer.ID) error
+	IsConnectedToPeer(context.Context, peer.ID) bool
 
 	NewMessageSender(context.Context, peer.ID, *MessageSenderOpts) (MessageSender, error)
 
