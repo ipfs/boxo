@@ -13,11 +13,9 @@ import (
 	format "github.com/ipfs/go-ipld-format"
 	legacy "github.com/ipfs/go-ipld-legacy"
 	dagpb "github.com/ipld/go-codec-dagpb"
+	_ "github.com/ipld/go-ipld-prime/codec/raw" // register the IPLD raw codec
 	basicnode "github.com/ipld/go-ipld-prime/node/basic"
 	"github.com/libp2p/go-libp2p/core/routing"
-
-	// Blank import is used to register the IPLD raw codec
-	_ "github.com/ipld/go-ipld-prime/codec/raw"
 )
 
 var ipldLegacyDecoder *legacy.Decoder
@@ -182,7 +180,7 @@ func FetchGraph(ctx context.Context, root cid.Cid, serv format.DAGService, opts 
 // means "fetch root and its direct children" and so on... maxDepth=-1 means
 // unlimited.
 func FetchGraphWithDepthLimit(ctx context.Context, root cid.Cid, depthLim int, serv format.DAGService, opts ...WalkOption) error {
-	var ng format.NodeGetter = NewSession(ctx, serv)
+	ng := NewSession(ctx, serv)
 
 	set := make(map[cid.Cid]int)
 
@@ -428,7 +426,7 @@ func WalkDepth(ctx context.Context, getLinks GetLinks, c cid.Cid, visit func(cid
 }
 
 func sequentialWalkDepth(ctx context.Context, getLinks GetLinks, root cid.Cid, depth int, visit func(cid.Cid, int) bool, options *walkOptions) error {
-	if !(options.SkipRoot && depth == 0) {
+	if !options.SkipRoot || depth != 0 {
 		if !visit(root, depth) {
 			return nil
 		}
@@ -517,12 +515,12 @@ func parallelWalkDepth(ctx context.Context, getLinks GetLinks, root cid.Cid, vis
 				var shouldVisit bool
 
 				// bypass the root if needed
-				if !(options.SkipRoot && depth == 0) {
+				if options.SkipRoot && depth == 0 {
+					shouldVisit = true
+				} else {
 					visitlk.Lock()
 					shouldVisit = visit(ci, depth)
 					visitlk.Unlock()
-				} else {
-					shouldVisit = true
 				}
 
 				if shouldVisit {
