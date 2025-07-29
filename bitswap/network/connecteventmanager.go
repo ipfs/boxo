@@ -2,6 +2,7 @@ package network
 
 import (
 	"sync"
+	"sync/atomic"
 
 	"github.com/gammazero/deque"
 	logging "github.com/ipfs/go-log/v2"
@@ -29,9 +30,10 @@ type ConnectEventManager struct {
 	cond          sync.Cond
 	peers         map[peer.ID]*peerState
 
-	changeQueue deque.Deque[peer.ID]
-	stop        bool
-	done        chan struct{}
+	workerStarted atomic.Bool
+	changeQueue   deque.Deque[peer.ID]
+	stop          bool
+	done          chan struct{}
 }
 
 type peerState struct {
@@ -49,14 +51,18 @@ func NewConnectEventManager(connListeners ...ConnectionListener) *ConnectEventMa
 	return evtManager
 }
 
-// SetListeners sets or replaces the current listeners. Not safe to call after
-// Start().
+// SetListeners sets or replaces the current listeners. It will not take effect
+// after Start().
 func (c *ConnectEventManager) SetListeners(connListeners ...ConnectionListener) {
-	c.connListeners = connListeners
+	if workerStarted := c.workerStarted.Load(); !workerStarted {
+		c.connListeners = connListeners
+	}
 }
 
 func (c *ConnectEventManager) Start() {
-	go c.worker()
+	if shouldStart := c.workerStarted.CompareAndSwap(false, true); shouldStart {
+		go c.worker()
+	}
 }
 
 func (c *ConnectEventManager) Stop() {
