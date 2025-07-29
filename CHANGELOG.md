@@ -17,10 +17,15 @@ The following emojis are used to highlight certain changes:
 ### Added
 
 - `provider`: Add ability to clear provide queue [#978](https://github.com/ipfs/boxo/pull/978)
- 
+
 ### Changed
 
 - `bitswap/network`: The connection event manager now has a `SetListeners` method. Both `bsnet` and `httpnet` now have options to provide the `ConnectionEventManager` during `New(...)`. This allows sharing the connection event manager when using both. The connection manager SHOULD be shared when using both networks with the `network.Router` utility.
+- `provider`: Distribute the responsability of providing new blocks to the places that play a role in the different providing strategies [#976](https://github.com/ipfs/boxo/pull/976). Refactor the logic to perform Provides, when the component has been given a provider:
+  - Remove `providing.Exchange`
+  - Provide directly from Blockstore
+  - Provide directly from pinner/merkledag on dag traversal
+  - Provide from MFS whenever there is a call to `DAGService.Add`
 
 ### Removed
 
