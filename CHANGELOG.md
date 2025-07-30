@@ -21,6 +21,7 @@ The following emojis are used to highlight certain changes:
 ### Changed
 
 - `bitswap/network`: The connection event manager now has a `SetListeners` method. Both `bsnet` and `httpnet` now have options to provide the `ConnectionEventManager` during `New(...)`. This allows sharing the connection event manager when using both. The connection manager SHOULD be shared when using both networks with the `network.Router` utility.
+- `bootstrap`: Relay-only peers (with `/p2p-circuit/` addresses) are now filtered out when selecting backup bootstrap peers to improve reliability.
 
 ### Removed
 

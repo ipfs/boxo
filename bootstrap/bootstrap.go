@@ -15,6 +15,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/peerstore"
 	"github.com/libp2p/go-libp2p/core/routing"
+	"github.com/multiformats/go-multiaddr"
 )
 
 var log = logging.Logger("bootstrap")
@@ -230,10 +231,14 @@ func saveConnectedPeersAsTemporaryBootstrap(ctx context.Context, host host.Host,
 		}
 		foundPeers[p] = struct{}{}
 
-		backupPeers = append(backupPeers, peer.AddrInfo{
+		peerInfo := peer.AddrInfo{
 			ID:    p,
 			Addrs: host.Network().Peerstore().Addrs(p),
-		})
+		}
+		// Only include peers with direct addresses (filter out relay-only peers)
+		if hasDirectAddresses(peerInfo) {
+			backupPeers = append(backupPeers, peerInfo)
+		}
 
 		if len(backupPeers) >= cfg.MaxBackupBootstrapSize {
 			break
@@ -396,4 +401,27 @@ func randomizeList[T any](in []T) []T {
 		out[i] = in[val]
 	}
 	return out
+}
+
+// hasDirectAddresses checks if a peer has any direct (non-relay) addresses.
+// Peers with only relay addresses (P_CIRCUIT protocol) are considered unreliable
+// for bootstrap purposes and should be filtered out.
+func hasDirectAddresses(p peer.AddrInfo) bool {
+	for _, addr := range p.Addrs {
+		if !hasCircuitProtocol(addr) {
+			return true
+		}
+	}
+	return false
+}
+
+// hasCircuitProtocol checks if a multiaddr contains the circuit relay protocol.
+func hasCircuitProtocol(addr multiaddr.Multiaddr) bool {
+	protocols := addr.Protocols()
+	for _, proto := range protocols {
+		if proto.Code == multiaddr.P_CIRCUIT {
+			return true
+		}
+	}
+	return false
 }
