@@ -51,8 +51,8 @@ func NewConnectEventManager(connListeners ...ConnectionListener) *ConnectEventMa
 	return evtManager
 }
 
-// SetListeners sets or replaces the current listeners. It will not take effect
-// after Start().
+// SetListeners sets or replaces the current listeners. It has no effect after
+// Start is called.
 func (c *ConnectEventManager) SetListeners(connListeners ...ConnectionListener) {
 	if workerStarted := c.workerStarted.Load(); !workerStarted {
 		c.connListeners = connListeners
