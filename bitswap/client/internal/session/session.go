@@ -406,7 +406,7 @@ func (s *Session) findMorePeers(ctx context.Context, c cid.Cid) {
 		for p := range s.providerFinder.FindProvidersAsync(ctx, k, 0) {
 			// When a provider indicates that it has a cid, it's equivalent to
 			// the providing peer sending a HAVE
-			log.Infof("FoundPeer %s for CID %s", p, k)
+			log.Infow("Found peer for CID", "peer", p, "cid", k)
 			span.AddEvent("FoundPeer")
 			s.sws.Update(p.ID, nil, []cid.Cid{c}, nil)
 		}
