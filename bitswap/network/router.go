@@ -49,6 +49,11 @@ func (rt *router) Start(receivers ...Receiver) {
 	// manager has the power to remove a peer from everywhere, and the
 	// router may in some edge cases or due to bugs route requests wrongly,
 	// this may cause connection-state mismatches.
+	//
+	// The Start() calls call ConnectEventManager.Start(), which makes
+	// sure only one worker starts. SetListeners does not have effect if
+	// called when the manager has started. We still call Start() on both
+	// in case they are using separate connectEventManagers.
 	rt.Bitswap.Start(receivers...)
 	rt.HTTP.Start(receivers...)
 }
