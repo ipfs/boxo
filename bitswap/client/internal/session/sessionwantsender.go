@@ -262,6 +262,7 @@ func (sws *sessionWantSender) onChange(changes []change) {
 			// the peer is available
 			if len(chng.update.ks) > 0 || len(chng.update.haves) > 0 {
 				p := chng.update.from
+				log.Debugf("change: availability (update includes blocks/haves): %s -> true", p)
 				availability[p] = true
 
 				// Register with the PeerManager
@@ -270,8 +271,9 @@ func (sws *sessionWantSender) onChange(changes []change) {
 
 			updates = append(updates, chng.update)
 		}
-		if chng.availability.target != "" {
-			availability[chng.availability.target] = chng.availability.available
+		if t := chng.availability.target; t != "" {
+			log.Debugf("change: availability: %s -> %t", t, chng.availability.available)
+			availability[t] = chng.availability.available
 		}
 	}
 
@@ -329,7 +331,9 @@ func (sws *sessionWantSender) processAvailability(availability map[peer.ID]bool)
 			delete(sws.peerConsecutiveDontHaves, p)
 		}
 	}
-
+	if len(newlyAvailable)+len(newlyUnavailable) > 0 {
+		log.Infof("newly available: %s, newlyUnavailable: %s", newlyAvailable, newlyUnavailable)
+	}
 	return newlyAvailable, newlyUnavailable
 }
 

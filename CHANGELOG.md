@@ -26,12 +26,13 @@ The following emojis are used to highlight certain changes:
   - Provide directly from Blockstore
   - Provide directly from pinner/merkledag on dag traversal
   - Provide from MFS whenever there is a call to `DAGService.Add`
+- upgrade to `go-libp2p` [v0.42.1](https://github.com/libp2p/go-libp2p/releases/tag/v0.42.1)
 
 ### Removed
 
 ### Fixed
 
-- `bitswap`: fix an issue where boxo silently stops making http retrieval requests. [#981](https://github.com/ipfs/boxo/pull/978), [#980](https://github.com/ipfs/boxo/pull/980), [#979](https://github.com/ipfs/boxo/pull/978) and [#984 (writeup)](https://github.com/ipfs/boxo/pull/984).
+- `bitswap`: fix an issue where boxo silently stops making http retrieval requests. [#981](https://github.com/ipfs/boxo/pull/978), [#980](https://github.com/ipfs/boxo/pull/980), [#979](https://github.com/ipfs/boxo/pull/978) and [#984 (writeup)](https://github.com/ipfs/boxo/pull/984), [#986](https://github.com/ipfs/boxo/pull/986).
 
 ### Security
 
