@@ -16,6 +16,19 @@ The following emojis are used to highlight certain changes:
 
 ### Added
 
+### Changed
+
+### Removed
+
+### Fixed
+
+### Security
+
+
+## [v0.33.1]
+
+### Added
+
 - `provider`: Add ability to clear provide queue [#978](https://github.com/ipfs/boxo/pull/978)
 
 ### Changed
@@ -24,13 +37,9 @@ The following emojis are used to highlight certain changes:
 - `bootstrap`: Relay-only peers (with `/p2p-circuit/` addresses) are now filtered out when selecting backup bootstrap peers to improve reliability.
 - upgrade to `go-libp2p` [v0.42.1](https://github.com/libp2p/go-libp2p/releases/tag/v0.42.1)
 
-### Removed
-
 ### Fixed
 
 - `bitswap`: fix an issue where boxo silently stops making http retrieval requests. [#981](https://github.com/ipfs/boxo/pull/978), [#980](https://github.com/ipfs/boxo/pull/980), [#979](https://github.com/ipfs/boxo/pull/978) and [#984 (writeup)](https://github.com/ipfs/boxo/pull/984), [#986](https://github.com/ipfs/boxo/pull/986).
-
-### Security
 
 
 ## [v0.33.0]
