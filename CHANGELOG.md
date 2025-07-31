@@ -17,10 +17,11 @@ The following emojis are used to highlight certain changes:
 ### Added
 
 - `provider`: Add ability to clear provide queue [#978](https://github.com/ipfs/boxo/pull/978)
- 
+
 ### Changed
 
 - `bitswap/network`: The connection event manager now has a `SetListeners` method. Both `bsnet` and `httpnet` now have options to provide the `ConnectionEventManager` during `New(...)`. This allows sharing the connection event manager when using both. The connection manager SHOULD be shared when using both networks with the `network.Router` utility.
+- upgrade to `go-libp2p` [v0.42.1](https://github.com/libp2p/go-libp2p/releases/tag/v0.42.1)
 
 ### Removed
 
