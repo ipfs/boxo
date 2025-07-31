@@ -1,4 +1,4 @@
-package provider
+package dspinner
 
 import (
 	"context"
@@ -11,8 +11,8 @@ import (
 	bsfetcher "github.com/ipfs/boxo/fetcher/impl/blockservice"
 	"github.com/ipfs/boxo/ipld/merkledag"
 	mdutils "github.com/ipfs/boxo/ipld/merkledag/test"
-	ipinner "github.com/ipfs/boxo/pinning/pinner"
-	"github.com/ipfs/boxo/pinning/pinner/dspinner"
+	ipfspinner "github.com/ipfs/boxo/pinning/pinner"
+	"github.com/ipfs/boxo/provider"
 	"github.com/ipfs/go-datastore"
 	dssync "github.com/ipfs/go-datastore/sync"
 	"github.com/stretchr/testify/require"
@@ -30,7 +30,7 @@ func TestBufferedPinProvider(t *testing.T) {
 	bserv := blockservice.New(bs, offline.Exchange(bs))
 	fetcher := bsfetcher.NewFetcherConfig(bserv)
 	dserv := merkledag.NewDAGService(bserv)
-	pinner, err := dspinner.New(ctx, ds, dserv)
+	pinner, err := New(ctx, ds, dserv)
 	require.NoError(t, err)
 	daggen := mdutils.NewDAGGenerator()
 	root, _, err := daggen.MakeDagNode(dserv.Add, 1, 64)
@@ -40,7 +40,7 @@ func TestBufferedPinProvider(t *testing.T) {
 
 	// test with 0 pins to ensure things work.
 	zeroProv := NewPinnedProvider(false, pinner, fetcher)
-	zeroKeyChanF := NewBufferedProvider(zeroProv)
+	zeroKeyChanF := provider.NewBufferedProvider(zeroProv)
 	zeroPins, err := zeroKeyChanF(ctx)
 	require.NoError(t, err)
 	for range zeroPins {
@@ -48,14 +48,14 @@ func TestBufferedPinProvider(t *testing.T) {
 	}
 
 	// Pin the first DAG.
-	err = pinner.PinWithMode(ctx, root, ipinner.Recursive, "test")
+	err = pinner.PinWithMode(ctx, root, ipfspinner.Recursive, "test")
 	require.NoError(t, err)
 
 	// Then open the keyChanF to read the pins. This should trigger the
 	// pin query, but we don't read from it, so in normal condiditions
 	// it would block.
 	pinProv := NewPinnedProvider(false, pinner, fetcher)
-	keyChanF := NewBufferedProvider(pinProv)
+	keyChanF := provider.NewBufferedProvider(pinProv)
 	root1pins, err := keyChanF(ctx)
 	require.NoError(t, err)
 
@@ -65,12 +65,12 @@ func TestBufferedPinProvider(t *testing.T) {
 
 	// If the previous query was blocking the pinset under a read-lock,
 	// we would not be able to write a second pin:
-	err = pinner.PinWithMode(ctx, root2, ipinner.Recursive, "test")
+	err = pinner.PinWithMode(ctx, root2, ipfspinner.Recursive, "test")
 	require.NoError(t, err)
 
 	// Now we trigger a second query.
 	pinProv2 := NewPinnedProvider(false, pinner, fetcher)
-	keyChanF2 := NewBufferedProvider(pinProv2)
+	keyChanF2 := provider.NewBufferedProvider(pinProv2)
 	root2pins, err := keyChanF2(ctx)
 	require.NoError(t, err)
 
