@@ -11,6 +11,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/test"
+	ma "github.com/multiformats/go-multiaddr"
 )
 
 func TestRandomizeAddressList(t *testing.T) {
@@ -135,4 +136,121 @@ func assertPanics(t *testing.T, name string, f func()) {
 	}()
 
 	f()
+}
+
+func TestHasDirectAddresses(t *testing.T) {
+	// Create valid peer IDs for testing
+	testPeer1, err := test.RandPeerID()
+	if err != nil {
+		t.Fatal(err)
+	}
+	testPeer2, err := test.RandPeerID()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tests := []struct {
+		name     string
+		addrs    []string
+		expected bool
+	}{
+		{
+			name:     "direct addresses only",
+			addrs:    []string{"/ip4/127.0.0.1/tcp/4001", "/ip6/::1/tcp/4001"},
+			expected: true,
+		},
+		{
+			name:     "relay addresses only",
+			addrs:    []string{"/p2p-circuit/p2p/" + testPeer1.String()},
+			expected: false,
+		},
+		{
+			name:     "mixed addresses",
+			addrs:    []string{"/ip4/127.0.0.1/tcp/4001", "/p2p-circuit/p2p/" + testPeer1.String()},
+			expected: true,
+		},
+		{
+			name:     "empty addresses",
+			addrs:    []string{},
+			expected: false,
+		},
+		{
+			name:     "multiple relay addresses",
+			addrs:    []string{"/p2p-circuit/p2p/" + testPeer1.String(), "/p2p-circuit/p2p/" + testPeer2.String()},
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Convert strings to multiaddrs
+			addrs := make([]ma.Multiaddr, len(tt.addrs))
+			for i, addrStr := range tt.addrs {
+				addr, err := ma.NewMultiaddr(addrStr)
+				if err != nil {
+					t.Fatalf("failed to create multiaddr from %s: %v", addrStr, err)
+				}
+				addrs[i] = addr
+			}
+
+			peerInfo := peer.AddrInfo{
+				ID:    "QmTest",
+				Addrs: addrs,
+			}
+
+			result := hasDirectAddresses(peerInfo)
+			if result != tt.expected {
+				t.Errorf("hasDirectAddresses() = %v, expected %v", result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestHasCircuitProtocol(t *testing.T) {
+	// Create valid peer IDs for testing
+	testPeer1, err := test.RandPeerID()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tests := []struct {
+		name     string
+		addr     string
+		expected bool
+	}{
+		{
+			name:     "direct TCP address",
+			addr:     "/ip4/192.168.1.100/tcp/4001",
+			expected: false,
+		},
+		{
+			name:     "direct QUIC address",
+			addr:     "/ip4/10.0.0.50/udp/4001/quic",
+			expected: false,
+		},
+		{
+			name:     "circuit relay address",
+			addr:     "/ip4/203.0.113.1/tcp/4001/p2p/" + testPeer1.String() + "/p2p-circuit",
+			expected: true,
+		},
+		{
+			name:     "IPv6 direct address",
+			addr:     "/ip6/2001:db8::1/tcp/4001",
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			addr, err := ma.NewMultiaddr(tt.addr)
+			if err != nil {
+				t.Fatalf("failed to create multiaddr from %s: %v", tt.addr, err)
+			}
+
+			result := hasCircuitProtocol(addr)
+			if result != tt.expected {
+				t.Errorf("hasCircuitProtocol(%s) = %v, expected %v", tt.addr, result, tt.expected)
+			}
+		})
+	}
 }
