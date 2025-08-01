@@ -49,7 +49,7 @@ type reprovider struct {
 	// reprovideInterval is the time between 2 reprovides. A value of 0 means
 	// that no automatic reprovide will be performed.
 	reprovideInterval        time.Duration
-	initalReprovideDelay     time.Duration
+	initialReprovideDelay    time.Duration
 	initialReprovideDelaySet bool
 
 	allowlist   verifcid.Allowlist
@@ -131,7 +131,7 @@ func New(ds datastore.Batching, opts ...Option) (System, error) {
 
 	// Setup default behavior for the initial reprovide delay
 	if !s.initialReprovideDelaySet && s.reprovideInterval > defaultInitialReprovideDelay {
-		s.initalReprovideDelay = defaultInitialReprovideDelay
+		s.initialReprovideDelay = defaultInitialReprovideDelay
 		s.initialReprovideDelaySet = true
 	}
 
@@ -336,9 +336,9 @@ func (s *reprovider) reprovideSchedulingWorker() {
 
 	// read last reprovide time written to the datastore, and schedule the
 	// first reprovide to happen reprovideInterval after that
-	firstReprovideDelay := s.initalReprovideDelay
+	firstReprovideDelay := s.initialReprovideDelay
 	lastReprovide, err := s.getLastReprovideTime()
-	if err == nil && time.Since(lastReprovide) < s.reprovideInterval-s.initalReprovideDelay {
+	if err == nil && time.Since(lastReprovide) < s.reprovideInterval-s.initialReprovideDelay {
 		firstReprovideDelay = time.Until(lastReprovide.Add(s.reprovideInterval))
 	}
 	firstReprovideTimer := time.NewTimer(firstReprovideDelay)
