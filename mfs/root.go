@@ -14,6 +14,7 @@ import (
 	ft "github.com/ipfs/boxo/ipld/unixfs"
 	ipld "github.com/ipfs/go-ipld-format"
 	logging "github.com/ipfs/go-log/v2"
+	"github.com/libp2p/go-libp2p/core/routing"
 )
 
 // TODO: Remove if not used.
@@ -98,10 +99,11 @@ type Root struct {
 	dir *Directory
 
 	repub *Republisher
+	prov  routing.ContentProviding
 }
 
 // NewRoot creates a new Root and starts up a republisher routine for it.
-func NewRoot(parent context.Context, ds ipld.DAGService, node *dag.ProtoNode, pf PubFunc) (*Root, error) {
+func NewRoot(ctx context.Context, ds ipld.DAGService, node *dag.ProtoNode, pf PubFunc, prov routing.ContentProviding) (*Root, error) {
 	var repub *Republisher
 	if pf != nil {
 		repub = NewRepublisher(pf, repubQuick, repubLong, node.Cid())
@@ -120,7 +122,7 @@ func NewRoot(parent context.Context, ds ipld.DAGService, node *dag.ProtoNode, pf
 
 	switch fsn.Type() {
 	case ft.TDirectory, ft.THAMTShard:
-		newDir, err := NewDirectory(parent, node.String(), node, root, ds)
+		newDir, err := NewDirectory(ctx, node.String(), node, root, ds, prov)
 		if err != nil {
 			return nil, err
 		}
@@ -138,10 +140,10 @@ func NewRoot(parent context.Context, ds ipld.DAGService, node *dag.ProtoNode, pf
 
 // NewEmptyRoot creates an empty Root directory with the given directory
 // options. A republisher is created if PubFunc is not nil.
-func NewEmptyRoot(parent context.Context, ds ipld.DAGService, pf PubFunc, opts MkdirOpts) (*Root, error) {
+func NewEmptyRoot(ctx context.Context, ds ipld.DAGService, pf PubFunc, prov routing.ContentProviding, opts MkdirOpts) (*Root, error) {
 	root := new(Root)
 
-	dir, err := NewEmptyDirectory(parent, "", root, ds, opts)
+	dir, err := NewEmptyDirectory(ctx, "", root, ds, prov, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -211,8 +213,16 @@ func (kr *Root) updateChildEntry(c child) error {
 	if err != nil {
 		return err
 	}
+
 	// TODO: Why are we not using the inner directory lock nor
 	// applying the same procedure as `Directory.updateChildEntry`?
+
+	if kr.prov != nil {
+		log.Debugf("mfs: provide: %s", c.Node.Cid())
+		if err = kr.prov.Provide(context.TODO(), c.Node.Cid(), true); err != nil {
+			log.Errorf("error providing %s: %s", c.Node.Cid(), err)
+		}
+	}
 
 	if kr.repub != nil {
 		kr.repub.Update(c.Node.Cid())

@@ -52,9 +52,11 @@ type reprovider struct {
 	initialReprovideDelay    time.Duration
 	initialReprovideDelaySet bool
 
-	allowlist   verifcid.Allowlist
-	rsys        Provide
-	keyProvider KeyChanFunc
+	allowlist verifcid.Allowlist
+	rsys      Provide
+
+	keyProviderLock sync.RWMutex
+	keyProvider     KeyChanFunc
 
 	q  *queue.Queue
 	ds datastore.Batching
@@ -253,6 +255,16 @@ func Online(rsys Provide) Option {
 	}
 }
 
+// SetKeyProvider replaces the current key provider.
+func (s *reprovider) SetKeyProvider(kp KeyChanFunc) {
+	if kp == nil {
+		return
+	}
+	s.keyProviderLock.Lock()
+	s.keyProvider = kp
+	s.keyProviderLock.Unlock()
+}
+
 func (s *reprovider) run() {
 	s.closewg.Add(1)
 	go s.provideWorker()
@@ -423,7 +435,11 @@ func (s *reprovider) Reprovide(ctx context.Context) error {
 	}
 	defer s.mu.Unlock()
 
-	kch, err := s.keyProvider(ctx)
+	s.keyProviderLock.RLock()
+	kp := s.keyProvider
+	s.keyProviderLock.RUnlock()
+
+	kch, err := kp(ctx)
 	if err != nil {
 		return err
 	}
@@ -552,11 +568,12 @@ func (s *reprovider) Stat() (ReproviderStats, error) {
 
 func doProvideMany(ctx context.Context, r Provide, keys []multihash.Multihash) error {
 	if many, ok := r.(ProvideMany); ok {
+		log.Debugf("reprovider: provideMany (%d keys)", len(keys))
 		return many.ProvideMany(ctx, keys)
 	}
 
 	for _, k := range keys {
-		log.Debugf("providing %s", k)
+		log.Debugf("reprovider: providing %s", k)
 		if err := r.Provide(ctx, cid.NewCidV1(cid.Raw, k), true); err != nil {
 			return err
 		}

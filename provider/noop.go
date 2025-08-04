@@ -34,3 +34,6 @@ func (op *noopProvider) Reprovide(context.Context) error {
 func (op *noopProvider) Stat() (ReproviderStats, error) {
 	return ReproviderStats{}, nil
 }
+
+func (op *noopProvider) SetKeyProvider(KeyChanFunc) {
+}
