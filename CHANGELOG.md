@@ -16,25 +16,38 @@ The following emojis are used to highlight certain changes:
 
 ### Added
 
-- `provider`: Add ability to clear provide queue [#978](https://github.com/ipfs/boxo/pull/978)
-
 ### Changed
 
 - `bitswap/network`: The connection event manager now has a `SetListeners` method. Both `bsnet` and `httpnet` now have options to provide the `ConnectionEventManager` during `New(...)`. This allows sharing the connection event manager when using both. The connection manager SHOULD be shared when using both networks with the `network.Router` utility.
 - `provider`: Distribute the responsability of providing new blocks to the places that play a role in the different providing strategies [#976](https://github.com/ipfs/boxo/pull/976). Refactor the logic to perform Provides, when the component has been given a provider:
   - Remove `providing.Exchange`
-  - Provide directly from Blockstore
-  - Provide directly from pinner/merkledag on dag traversal
-  - Provide from MFS whenever there is a call to `DAGService.Add`
+  - Provide directly from Blockstore when `provider` is set (via Option).
+  - Provide directly from pinner/merkledag on dag traversal when `provider` is set (via Option).
+  - Provide from MFS whenever there is a call to `DAGService.Add` and `provider` is set (via constructor param).
 - upgrade to `go-libp2p` [v0.42.1](https://github.com/libp2p/go-libp2p/releases/tag/v0.42.1)
 
 ### Removed
 
 ### Fixed
 
-- `bitswap`: fix an issue where boxo silently stops making http retrieval requests. [#981](https://github.com/ipfs/boxo/pull/978), [#980](https://github.com/ipfs/boxo/pull/980), [#979](https://github.com/ipfs/boxo/pull/978) and [#984 (writeup)](https://github.com/ipfs/boxo/pull/984), [#986](https://github.com/ipfs/boxo/pull/986).
-
 ### Security
+
+
+## [v0.33.1]
+
+### Added
+
+- `provider`: Add ability to clear provide queue [#978](https://github.com/ipfs/boxo/pull/978)
+
+### Changed
+
+- `bitswap/network`: The connection event manager now has a `SetListeners` method. Both `bsnet` and `httpnet` now have options to provide the `ConnectionEventManager` during `New(...)`. This allows sharing the connection event manager when using both. The connection manager SHOULD be shared when using both networks with the `network.Router` utility.
+- `bootstrap`: Relay-only peers (with `/p2p-circuit/` addresses) are now filtered out when selecting backup bootstrap peers to improve reliability.
+- upgrade to `go-libp2p` [v0.42.1](https://github.com/libp2p/go-libp2p/releases/tag/v0.42.1)
+
+### Fixed
+
+- `bitswap`: fix an issue where boxo silently stops making http retrieval requests. [#981](https://github.com/ipfs/boxo/pull/978), [#980](https://github.com/ipfs/boxo/pull/980), [#979](https://github.com/ipfs/boxo/pull/978) and [#984 (writeup)](https://github.com/ipfs/boxo/pull/984), [#986](https://github.com/ipfs/boxo/pull/986).
 
 
 ## [v0.33.0]
