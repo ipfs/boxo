@@ -395,6 +395,7 @@ func OnError(handler func(c cid.Cid, err error) error) WalkOption {
 
 // WithProvider calls Provide() on every fetched node while traversing a DAG.
 func WithProvider(p routing.ContentProviding) WalkOption {
+	log.Debug("merkledag provider configured")
 	return func(walkOptions *walkOptions) {
 		walkOptions.Provider = p
 	}
