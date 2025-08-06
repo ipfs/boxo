@@ -186,6 +186,8 @@ func (p *IPNSPublisher) updateRecord(ctx context.Context, k crypto.PrivKey, valu
 			if value.String() != p.String() {
 				// Don't bother incrementing the sequence number unless the
 				// value changes.
+				// TODO: also compare Data field (https://specs.ipfs.tech/ipns/ipns-record/#extensible-data-dag-cbor)
+				// if we ever expose ability to set custom CBOR in PublishOptions
 				seq++
 			}
 		}
