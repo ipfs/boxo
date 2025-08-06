@@ -562,7 +562,7 @@ func (mq *MessageQueue) sendMessage() {
 		// If we fail to initialize the sender, the networking layer will
 		// emit a Disconnect event and the MessageQueue will get cleaned up
 		log.Infof("Could not open message sender to peer %s: %s", mq.p, err)
-		mq.Shutdown()
+		// do not shudown the queue here, wait for Disconnect to arrive.
 		return
 	}
 
@@ -593,7 +593,7 @@ func (mq *MessageQueue) sendMessage() {
 			// If the message couldn't be sent, the networking layer will
 			// emit a Disconnect event and the MessageQueue will get cleaned up
 			log.Infof("Could not send message to peer %s: %s", mq.p, err)
-			mq.Shutdown()
+			// do not shudown the queue here, wait for Disconnect to arrive.
 			return
 		}
 

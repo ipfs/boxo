@@ -75,7 +75,7 @@ type singleMockWrapper struct {
 func initialReprovideDelay(duration time.Duration) Option {
 	return func(system *reprovider) error {
 		system.initialReprovideDelaySet = true
-		system.initalReprovideDelay = duration
+		system.initialReprovideDelay = duration
 		return nil
 	}
 }

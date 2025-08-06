@@ -118,6 +118,7 @@ func newPeerWantManager(wantGauge, wantBlockGauge Gauge, bcastControl BroadcastC
 // current list of broadcast wants to the peer.
 func (pwm *peerWantManager) addPeer(peerQueue PeerQueue, p peer.ID) {
 	if _, ok := pwm.peerWants[p]; ok {
+		log.Debugf("peerWantManager: addPeer: peerWants already existed for %s", p)
 		return
 	}
 

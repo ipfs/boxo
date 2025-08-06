@@ -2,6 +2,7 @@ package network
 
 import (
 	"sync"
+	"sync/atomic"
 
 	"github.com/gammazero/deque"
 	logging "github.com/ipfs/go-log/v2"
@@ -29,9 +30,10 @@ type ConnectEventManager struct {
 	cond          sync.Cond
 	peers         map[peer.ID]*peerState
 
-	changeQueue deque.Deque[peer.ID]
-	stop        bool
-	done        chan struct{}
+	workerStarted atomic.Bool
+	changeQueue   deque.Deque[peer.ID]
+	stop          bool
+	done          chan struct{}
 }
 
 type peerState struct {
@@ -49,8 +51,18 @@ func NewConnectEventManager(connListeners ...ConnectionListener) *ConnectEventMa
 	return evtManager
 }
 
+// SetListeners sets or replaces the current listeners. It has no effect after
+// Start is called.
+func (c *ConnectEventManager) SetListeners(connListeners ...ConnectionListener) {
+	if workerStarted := c.workerStarted.Load(); !workerStarted {
+		c.connListeners = connListeners
+	}
+}
+
 func (c *ConnectEventManager) Start() {
-	go c.worker()
+	if shouldStart := c.workerStarted.CompareAndSwap(false, true); shouldStart {
+		go c.worker()
+	}
 }
 
 func (c *ConnectEventManager) Stop() {
@@ -132,6 +144,7 @@ func (c *ConnectEventManager) worker() {
 			// We could be transitioning from unresponsive to disconnected.
 			if oldState == stateResponsive {
 				c.lk.Unlock()
+				log.Debugf("PeerDisconnected notification: %s", pid)
 				for _, v := range c.connListeners {
 					v.PeerDisconnected(pid)
 				}
@@ -139,6 +152,7 @@ func (c *ConnectEventManager) worker() {
 			}
 		case stateResponsive:
 			c.lk.Unlock()
+			log.Debugf("PeerConnected notification: %s", pid)
 			for _, v := range c.connListeners {
 				v.PeerConnected(pid)
 			}

@@ -2,6 +2,7 @@ package network
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	bsmsg "github.com/ipfs/boxo/bitswap/message"
@@ -43,10 +44,16 @@ func New(pstore peerstore.Peerstore, bitswap BitSwapNetwork, http BitSwapNetwork
 }
 
 func (rt *router) Start(receivers ...Receiver) {
-	// This creates two connectionEventManagers. A connection manager has
-	// the power to remove a peer from everywhere on a Disconnect() event,
-	// so we need to be careful so that the Bitswap connection manager
-	// does not step in when we are using HTTP and vice-versa.
+	// When using the router, it is best if both Bitswap and HTTP are
+	// sharing the same connectionEventManager. Since a connection event
+	// manager has the power to remove a peer from everywhere, and the
+	// router may in some edge cases or due to bugs route requests wrongly,
+	// this may cause connection-state mismatches.
+	//
+	// The Start() calls call ConnectEventManager.Start(), which makes
+	// sure only one worker starts. SetListeners does not have effect if
+	// called when the manager has started. We still call Start() on both
+	// in case they are using separate connectEventManagers.
 	rt.Bitswap.Start(receivers...)
 	rt.HTTP.Start(receivers...)
 }
@@ -67,18 +74,14 @@ func (rt *router) Self() peer.ID {
 }
 
 func (rt *router) Ping(ctx context.Context, p peer.ID) ping.Result {
-	pi := rt.Peerstore.PeerInfo(p)
-	htaddrs, _ := SplitHTTPAddrs(pi)
-	if len(htaddrs.Addrs) > 0 {
+	if rt.HTTP.IsConnectedToPeer(ctx, p) {
 		return rt.HTTP.Ping(ctx, p)
 	}
 	return rt.Bitswap.Ping(ctx, p)
 }
 
 func (rt *router) Latency(p peer.ID) time.Duration {
-	pi := rt.Peerstore.PeerInfo(p)
-	htaddrs, _ := SplitHTTPAddrs(pi)
-	if len(htaddrs.Addrs) > 0 {
+	if rt.HTTP.IsConnectedToPeer(context.Background(), p) {
 		return rt.HTTP.Latency(p)
 	}
 	return rt.Bitswap.Latency(p)
@@ -103,9 +106,7 @@ func (rt *router) SendMessage(ctx context.Context, p peer.ID, msg bsmsg.BitSwapM
 
 	// Otherwise, assume it's a wantlist. Follow usual prioritization
 	// of HTTP when possible.
-	pi := rt.Peerstore.PeerInfo(p)
-	htaddrs, _ := SplitHTTPAddrs(pi)
-	if len(htaddrs.Addrs) > 0 {
+	if rt.HTTP.IsConnectedToPeer(ctx, p) {
 		return rt.HTTP.SendMessage(ctx, p, msg)
 	}
 	return rt.Bitswap.SendMessage(ctx, p, msg)
@@ -142,6 +143,11 @@ func (rt *router) DisconnectFrom(ctx context.Context, p peer.ID) error {
 	return nil
 }
 
+// IsConnectedToPeer returns true if HTTP or Bitswap are.
+func (rt *router) IsConnectedToPeer(ctx context.Context, p peer.ID) bool {
+	return rt.HTTP.IsConnectedToPeer(ctx, p) || rt.Bitswap.IsConnectedToPeer(ctx, p)
+}
+
 func (rt *router) Stats() Stats {
 	htstats := rt.HTTP.Stats()
 	bsstats := rt.Bitswap.Stats()
@@ -151,22 +157,40 @@ func (rt *router) Stats() Stats {
 	}
 }
 
-// NewMessageSender returns a MessageSender using the HTTP network when HTTP
-// addresses are known, and bitswap otherwise.
+// NewMessageSender returns a MessageSender using the HTTP network when
+// connecting over HTTP is possible, and bitswap otherwise.
 func (rt *router) NewMessageSender(ctx context.Context, p peer.ID, opts *MessageSenderOpts) (MessageSender, error) {
-	// There seem to be cases when we have HTTP addresses in the peerstore
-	// even though we have not connected to the peer via HTTP before. This
-	// can then bypass allowlists etc.  HTTP.NewMessageSender() checks if
-	// the peer is known to HTTP or errors.
-	// We switch to bitswap in that case.
+	// This will error if not connected via HTTP.
+	mss, err := rt.HTTP.NewMessageSender(ctx, p, opts)
+	if err == nil {
+		return mss, nil
+	}
 
-	// Note that NewMessageSender extracts Addrs from the peerstore so we
-	// don't have to do it here as well.
-	ms, err := rt.HTTP.NewMessageSender(ctx, p, opts)
-	if err != nil {
+	// Before we route to bitswap, check we can connect.  If we let
+	// network.Bitswap do this, it will trigger a Disconnect() event on
+	// failure, which is annoying because it happens 5 seconds after the
+	// fact. That, in turn, causes havoc if it was indeed an HTTP peer and
+	// we were just temporally disconnected from it
+
+	// If we can connect or were already connected via Bitswap, then route
+	// the request.
+	bserr := rt.Bitswap.Connect(ctx, peer.AddrInfo{ID: p})
+	if bserr == nil {
 		return rt.Bitswap.NewMessageSender(ctx, p, opts)
 	}
-	return ms, nil
+
+	// Otherwise, do a final HTTP attempt, because we may have lost some
+	// time performing the check above (peer-routing lookup), and we may
+	// have connected to HTTP after all in the meantime.
+	mss, err = rt.HTTP.NewMessageSender(ctx, p, opts)
+	if err != nil {
+		// Might still be bad luck or a confirmation this is not an
+		// HTTP peer, but since we know bitswap fails, we can feel
+		// good about failing here finally.
+		return nil, fmt.Errorf("NewMessageSender: cannot connect via HTTP (%s) nor Bitswap (%s)", err, bserr)
+	}
+
+	return mss, nil
 }
 
 func (rt *router) TagPeer(p peer.ID, tag string, w int) {
@@ -176,9 +200,7 @@ func (rt *router) TagPeer(p peer.ID, tag string, w int) {
 		return
 	}
 
-	pi := rt.Peerstore.PeerInfo(p)
-	htaddrs, _ := SplitHTTPAddrs(pi)
-	if len(htaddrs.Addrs) > 0 {
+	if rt.HTTP.IsConnectedToPeer(context.Background(), p) {
 		rt.HTTP.TagPeer(p, tag, w)
 		return
 	}
@@ -192,9 +214,7 @@ func (rt *router) UntagPeer(p peer.ID, tag string) {
 		return
 	}
 
-	pi := rt.Peerstore.PeerInfo(p)
-	htaddrs, _ := SplitHTTPAddrs(pi)
-	if len(htaddrs.Addrs) > 0 {
+	if rt.HTTP.IsConnectedToPeer(context.Background(), p) {
 		rt.HTTP.UntagPeer(p, tag)
 		return
 	}
@@ -202,9 +222,7 @@ func (rt *router) UntagPeer(p peer.ID, tag string) {
 }
 
 func (rt *router) Protect(p peer.ID, tag string) {
-	pi := rt.Peerstore.PeerInfo(p)
-	htaddrs, _ := SplitHTTPAddrs(pi)
-	if len(htaddrs.Addrs) > 0 {
+	if rt.HTTP.IsConnectedToPeer(context.Background(), p) {
 		rt.HTTP.Protect(p, tag)
 		return
 	}
@@ -212,9 +230,7 @@ func (rt *router) Protect(p peer.ID, tag string) {
 }
 
 func (rt *router) Unprotect(p peer.ID, tag string) bool {
-	pi := rt.Peerstore.PeerInfo(p)
-	htaddrs, _ := SplitHTTPAddrs(pi)
-	if len(htaddrs.Addrs) > 0 {
+	if rt.HTTP.IsConnectedToPeer(context.Background(), p) {
 		return rt.HTTP.Unprotect(p, tag)
 	}
 	return rt.Bitswap.Unprotect(p, tag)

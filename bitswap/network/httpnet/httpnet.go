@@ -208,6 +208,16 @@ func WithMetricsLabelsForEndpoints(hosts []string) Option {
 	}
 }
 
+// WithConnectEventManager allows to set the ConnectEventManager. Upon
+// Start(), we will run SetListeners(). If not provided, an event manager will
+// be created internally. This allows re-using the event manager among several
+// Network instances.
+func WithConnectEventManager(evm *network.ConnectEventManager) Option {
+	return func(net *Network) {
+		net.connEvtMgr = evm
+	}
+}
+
 type Network struct {
 	// NOTE: Stats must be at the top of the heap allocation to ensure 64bit
 	// alignment.
@@ -224,6 +234,9 @@ type Network struct {
 	errorTracker    *errorTracker
 	requestTracker  *requestTracker
 	cooldownTracker *cooldownTracker
+
+	ongoingConnsLock sync.RWMutex
+	ongoingConns     map[peer.ID]struct{}
 
 	// options
 	userAgent               string
@@ -263,6 +276,7 @@ func New(host host.Host, opts ...Option) network.BitSwapNetwork {
 	htnet := &Network{
 		host:                    host,
 		closing:                 make(chan struct{}),
+		ongoingConns:            make(map[peer.ID]struct{}),
 		userAgent:               defaultUserAgent(),
 		maxBlockSize:            DefaultMaxBlockSize,
 		dialTimeout:             DefaultDialTimeout,
@@ -369,7 +383,12 @@ func (ht *Network) Start(receivers ...network.Receiver) {
 	for i, v := range receivers {
 		connectionListeners[i] = v
 	}
-	ht.connEvtMgr = network.NewConnectEventManager(connectionListeners...)
+
+	if ht.connEvtMgr == nil {
+		ht.connEvtMgr = network.NewConnectEventManager(connectionListeners...)
+	} else {
+		ht.connEvtMgr.SetListeners(connectionListeners...)
+	}
 
 	ht.connEvtMgr.Start()
 }
@@ -407,6 +426,16 @@ func (ht *Network) senderURLs(p peer.ID) []*senderURL {
 	return ht.cooldownTracker.fillSenderURLs(urls)
 }
 
+// IsHTTPPeer returns true if the peer is currently being pinged, which means
+// we are connected to it via HTTP.
+func (ht *Network) IsConnectedToPeer(ctx context.Context, p peer.ID) bool {
+	// only answer this question while no one is connecting or
+	// disconnecting.
+	ht.ongoingConnsLock.RLock()
+	defer ht.ongoingConnsLock.RUnlock()
+	return ht.pinger.isPinging(p)
+}
+
 // SendMessage sends the given message to the given peer. It uses
 // NewMessageSender under the hood, with default options.
 func (ht *Network) SendMessage(ctx context.Context, p peer.ID, msg bsmsg.BitSwapMessage) error {
@@ -430,6 +459,24 @@ func (ht *Network) Self() peer.ID {
 	return ht.host.ID()
 }
 
+// lockConnectingPeer locks code around connecting/disconnecting to avoid
+// answering questions about connection state while a connect/disconnect
+// operation is ongoing. Also avoid doing them twice, or simultaneously.
+func (ht *Network) lockConnectingPeer(p peer.ID) {
+	ht.ongoingConnsLock.Lock()
+	ht.ongoingConns[p] = struct{}{}
+	ht.ongoingConnsLock.Unlock()
+}
+
+// unlockConnectingPeer unlocks code around connecting/disconnecting to avoid
+// answering questions about connection state while a connect/disconnect
+// operation is ongoing. Also avoid doing them twice, or simultaneously.
+func (ht *Network) unlockConnectingPeer(p peer.ID) {
+	ht.ongoingConnsLock.Lock()
+	delete(ht.ongoingConns, p)
+	ht.ongoingConnsLock.Unlock()
+}
+
 // Connect attempts setting up an HTTP connection to the given peer. The given
 // AddrInfo must include at least one HTTP endpoint for the peer. HTTP URLs in
 // AddrInfo will be tried by making an HTTP GET request to
@@ -446,10 +493,15 @@ func (ht *Network) Connect(ctx context.Context, pi peer.AddrInfo) error {
 	// time are correct, and we will only re-do the effort when we are not
 	// connected.
 	p := pi.ID
-	connected := ht.pinger.isPinging(p)
+	connected := ht.IsConnectedToPeer(ctx, p)
 	if connected {
+		ht.connEvtMgr.Connected(p)
+		log.Debugf("skipping connect, already connected to %s", p)
 		return nil
 	}
+
+	ht.lockConnectingPeer(p)
+	defer ht.unlockConnectingPeer(p)
 
 	urls := network.ExtractURLsFromPeer(pi)
 
@@ -508,7 +560,7 @@ func (ht *Network) Connect(ctx context.Context, pi peer.AddrInfo) error {
 		err = ht.connectToURL(ctx, pi.ID, u, "GET")
 		if err != nil {
 			errs = append(errs, fmt.Errorf("%s: %s", u.Multiaddress.String(), err))
-			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			if ctxErr := ctx.Err(); ctxErr != nil {
 				return multierr.Combine(errs...)
 			}
 			continue
@@ -518,19 +570,22 @@ func (ht *Network) Connect(ctx context.Context, pi peer.AddrInfo) error {
 
 	// Bail out if no working urls found.
 	if len(workingAddrs) == 0 {
-		return multierr.Combine(errs...)
+		err := multierr.Combine(errs...)
+		log.Debug(err)
+		return err
 	}
 
-	// We have some working urls!
-
+	// We have some working urls, keep the bitswap providers in case we fail over.
 	// Add the working addresses to the peerstore. Clean the others.
-	ht.host.Peerstore().ClearAddrs(p)
-	ht.host.Peerstore().AddAddrs(p, workingAddrs, peerstore.PermanentAddrTTL)
+	ps := ht.host.Peerstore()
+	ps.ClearAddrs(p)
+	ps.AddAddrs(p, workingAddrs, peerstore.PermanentAddrTTL)
 	// Record whether HEAD test passed for all urls - ignoring error
-	_ = ht.host.Peerstore().Put(pi.ID, peerstoreSupportsHeadKey, supportsHead)
+	_ = ps.Put(pi.ID, peerstoreSupportsHeadKey, supportsHead)
 
-	ht.connEvtMgr.Connected(p)
 	ht.pinger.startPinging(p)
+	ht.connEvtMgr.Connected(p)
+
 	log.Debugf("connect success to %s (supports HEAD: %t)", p, supportsHead)
 	// We "connected"
 	return nil
@@ -543,7 +598,7 @@ func (ht *Network) connectToURL(ctx context.Context, p peer.ID, u network.Parsed
 		return err
 	}
 
-	log.Debugf("connect request to %s %s %q", p, method, req.URL)
+	log.Debugf("connect/ping request to %s %s %q", p, method, req.URL)
 	resp, err := ht.client.Do(req)
 	if err != nil {
 		return err
@@ -562,6 +617,7 @@ func (ht *Network) connectToURL(ctx context.Context, p peer.ID, u network.Parsed
 	// probe success.
 	// FIXME: Storacha returns 410 for our probe.
 	if resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusNoContent || resp.StatusCode == http.StatusGone {
+		log.Debugf("connect/ping request to %s %s succeeded: %d", p, req.URL, resp.StatusCode)
 		return nil
 	}
 
@@ -575,17 +631,12 @@ func (ht *Network) connectToURL(ctx context.Context, p peer.ID, u network.Parsed
 // manager, stops pinging for latency measurements and removes it from the
 // peerstore.
 func (ht *Network) DisconnectFrom(ctx context.Context, p peer.ID) error {
-	pi := ht.host.Peerstore().PeerInfo(p)
-	_, bsaddrs := network.SplitHTTPAddrs(pi)
-	ht.host.Peerstore().ClearAddrs(p)
-	if len(bsaddrs.Addrs) == 0 {
-		// this should always be the case unless we have been
-		// contacted via bitswap...
-		ht.connEvtMgr.Disconnected(p)
-	} else { // re-add bitswap addresses
-		// unfortunately we cannot maintain ttl info
-		ht.host.Peerstore().SetAddrs(p, bsaddrs.Addrs, peerstore.TempAddrTTL)
-	}
+	ht.lockConnectingPeer(p)
+	defer ht.unlockConnectingPeer(p)
+
+	log.Debugf("disconnecting from %s", p)
+	ht.connEvtMgr.Disconnected(p) // notify everywhere that we are going offline
+
 	ht.pinger.stopPinging(p)
 	ht.errorTracker.stopTracking(p)
 
@@ -750,6 +801,8 @@ func buildRequest(ctx context.Context, u network.ParsedURL, method string, cid s
 // given message to the given peer over HTTP.
 // An error is returned of the peer has no known HTTP endpoints.
 func (ht *Network) NewMessageSender(ctx context.Context, p peer.ID, opts *network.MessageSenderOpts) (network.MessageSender, error) {
+	log.Debugf("NewMessageSender: %s", p)
+
 	// cooldowns made by other senders between now and SendMsg will not be
 	// taken into account since we access that info here only. From that
 	// point, we only react to cooldowns/errors received by this message
@@ -765,21 +818,24 @@ func (ht *Network) NewMessageSender(ctx context.Context, p peer.ID, opts *networ
 	// This way we minimize lock contention around the cooldown map, with
 	// one read access per message sender only.
 
-	// Error when we have not called Connect() for this peer. Use the
-	// pinger as proxy for this information, since we should be pinging
-	// peers that we have connected to and we stop pinging them on
-	// disconnect.
-	if !ht.pinger.isPinging(p) {
+	// Error when we have not called Connect() for this peer or we
+	// Disconnected and this is a late item.  We cannot simply
+	// re-connect: perhaps we disconnected based on client-errors and this
+	// is a left-over request for that endpoint. If we reconnect here we
+	// start from scratch and the disconnection was for nothing because it
+	// gets overridden.
+	if !ht.IsConnectedToPeer(ctx, p) {
+		log.Debugf("NewMessageSender: cannot send message over HTTP: not connected to %s", p)
 		return nil, ErrNotConnected
 	}
 
 	// Check that we have HTTP urls.
 	urls := ht.senderURLs(p)
 	if len(urls) == 0 {
+		log.Debugf("NewMessageSender: aborting: no HTTPAddresses for %s", p)
 		return nil, ErrNoHTTPAddresses
 	}
 
-	log.Debugf("NewMessageSender: %s", p)
 	senderOpts := setSenderOpts(opts)
 
 	return &httpMsgSender{

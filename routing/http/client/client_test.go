@@ -676,6 +676,83 @@ func TestClient_FindPeers(t *testing.T) {
 	}
 }
 
+func TestNormalizeBaseURL(t *testing.T) {
+	cases := []struct {
+		name        string
+		input       string
+		expected    string
+		expectError bool
+	}{
+		{
+			name:     "URL with trailing /routing/v1",
+			input:    "https://delegated-routing.example.net/routing/v1",
+			expected: "https://delegated-routing.example.net",
+		},
+		{
+			name:     "URL with trailing /routing/v1/",
+			input:    "https://delegated-routing.example.net/routing/v1/",
+			expected: "https://delegated-routing.example.net",
+		},
+		{
+			name:     "URL without /routing/v1",
+			input:    "https://delegated-routing.example.net",
+			expected: "https://delegated-routing.example.net",
+		},
+		{
+			name:     "URL with trailing slash but no /routing/v1",
+			input:    "https://delegated-routing.example.net/",
+			expected: "https://delegated-routing.example.net",
+		},
+		{
+			name:        "URL with /routing/v1 in the middle should error",
+			input:       "https://delegated-routing.example.net/routing/v1/something",
+			expectError: true,
+		},
+		{
+			name:     "URL with multiple trailing slashes",
+			input:    "https://delegated-routing.example.net/routing/v1///",
+			expected: "https://delegated-routing.example.net",
+		},
+		{
+			name:     "localhost URL with /routing/v1",
+			input:    "http://localhost:8080/routing/v1",
+			expected: "http://localhost:8080",
+		},
+		{
+			name:        "third-party routing API with /foobar/ path should error",
+			input:       "https://api.example.com/foobar/routing/v1",
+			expectError: true,
+		},
+		{
+			name:        "third-party routing API with /foobar/ path and trailing slash should error",
+			input:       "https://api.example.com/foobar/routing/v1/",
+			expectError: true,
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			result, err := normalizeBaseURL(c.input)
+			if c.expectError {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), "only /routing/v1 URLs are supported")
+			} else {
+				require.NoError(t, err)
+				assert.Equal(t, c.expected, result)
+			}
+
+			client, err := New(c.input)
+			if c.expectError {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), "only /routing/v1 URLs are supported")
+			} else {
+				require.NoError(t, err)
+				assert.Equal(t, c.expected, client.baseURL)
+			}
+		})
+	}
+}
+
 func makeName(t *testing.T) (crypto.PrivKey, ipns.Name) {
 	sk, _, err := crypto.GenerateEd25519Key(rand.Reader)
 	require.NoError(t, err)

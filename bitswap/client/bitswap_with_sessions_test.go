@@ -53,7 +53,7 @@ func TestBasicSessions(t *testing.T) {
 
 	vnet := getVirtualNetwork()
 	router := mockrouting.NewServer()
-	ig := testinstance.NewTestInstanceGenerator(vnet, router, nil, nil)
+	ig := testinstance.NewTestInstanceGenerator(vnet, router, nil, []bitswap.Option{bitswap.WithClientOption(client.WithTraceBlock(true))})
 	defer ig.Close()
 
 	block := random.BlocksOfSize(1, blockSize)[0]
@@ -137,7 +137,8 @@ func TestCustomProviderQueryManager(t *testing.T) {
 	defer cancel()
 
 	bs := bitswap.New(ctx, a.Adapter, pqm, a.Blockstore,
-		bitswap.WithClientOption(client.WithDefaultProviderQueryManager(false)))
+		bitswap.WithClientOption(client.WithDefaultProviderQueryManager(false)),
+		bitswap.WithClientOption(client.WithTraceBlock(true)))
 	a.Exchange.Close() // close old to be sure.
 	a.Exchange = bs
 	// Connect instances only after bitswap exists.
@@ -177,7 +178,11 @@ func TestSessionBetweenPeers(t *testing.T) {
 
 	vnet := tn.VirtualNetwork(delay.Fixed(time.Millisecond))
 	router := mockrouting.NewServer()
-	ig := testinstance.NewTestInstanceGenerator(vnet, router, nil, []bitswap.Option{bitswap.SetSimulateDontHavesOnTimeout(false)})
+	ig := testinstance.NewTestInstanceGenerator(vnet, router, nil,
+		[]bitswap.Option{
+			bitswap.SetSimulateDontHavesOnTimeout(false),
+			bitswap.WithClientOption(client.WithTraceBlock(true)),
+		})
 	defer ig.Close()
 
 	inst := ig.Instances(10)
@@ -237,7 +242,7 @@ func TestSessionSplitFetch(t *testing.T) {
 
 	vnet := getVirtualNetwork()
 	router := mockrouting.NewServer()
-	ig := testinstance.NewTestInstanceGenerator(vnet, router, nil, nil)
+	ig := testinstance.NewTestInstanceGenerator(vnet, router, nil, []bitswap.Option{bitswap.WithClientOption(client.WithTraceBlock(true))})
 	defer ig.Close()
 
 	inst := ig.Instances(11)
@@ -281,7 +286,11 @@ func TestFetchNotConnected(t *testing.T) {
 
 	vnet := getVirtualNetwork()
 	router := mockrouting.NewServer()
-	ig := testinstance.NewTestInstanceGenerator(vnet, router, nil, []bitswap.Option{bitswap.ProviderSearchDelay(10 * time.Millisecond)})
+	ig := testinstance.NewTestInstanceGenerator(vnet, router, nil,
+		[]bitswap.Option{
+			bitswap.ProviderSearchDelay(10 * time.Millisecond),
+			bitswap.WithClientOption(client.WithTraceBlock(true)),
+		})
 	defer ig.Close()
 
 	other := ig.Next()
@@ -326,6 +335,7 @@ func TestFetchAfterDisconnect(t *testing.T) {
 	ig := testinstance.NewTestInstanceGenerator(vnet, router, nil, []bitswap.Option{
 		bitswap.ProviderSearchDelay(10 * time.Millisecond),
 		bitswap.RebroadcastDelay(delay.Fixed(15 * time.Millisecond)),
+		bitswap.WithClientOption(client.WithTraceBlock(true)),
 	})
 	defer ig.Close()
 

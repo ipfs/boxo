@@ -470,9 +470,10 @@ WANTLIST_LOOP:
 			// against bsnet requests-time.
 			// sender.ht.metrics.RequestTime.Observe(float64(time.Since(reqStart))
 			// / float64(time.Second))
+			log.Debugf("wantlist msg %d/%d: %s %s cancel", i, lenWantlist-1, sender.peer, entry.Cid)
 			continue
 		}
-		log.Debugf("wantlist msg %d/%d: %s %s %s DH:%t", i, lenWantlist, sender.peer, entry.Cid, entry.WantType, entry.SendDontHave)
+		log.Debugf("wantlist msg %d/%d: %s %s %s DH:%t", i, lenWantlist-1, sender.peer, entry.Cid, entry.WantType, entry.SendDontHave)
 
 		reqInfo := httpRequestInfo{
 			ctx:       entryCtxs[i],
@@ -551,7 +552,6 @@ WANTLIST_LOOP:
 		if err := sender.ht.errorTracker.logErrors(sender.peer, totalClientErrors, sender.ht.maxDontHaveErrors); err != nil {
 			log.Debugf("too many client errors. Disconnecting from %s", sender.peer)
 			sender.ht.DisconnectFrom(ctx, sender.peer)
-
 		}
 
 		// We return a special "cancel" function that we need to call
@@ -581,7 +581,7 @@ func (sender *httpMsgSender) notifyReceivers(bsresp bsmsg.BitSwapMessage) {
 	}
 
 	for i, recv := range sender.ht.receivers {
-		log.Debugf("ReceiveMessage from %s#%d. Blocks: %d. Haves: %d", sender.peer, i, lb, lh)
+		log.Debugf("ReceiveMessage from %s#%d. Blocks: %d. Haves: %d. DontHaves: %d", sender.peer, i, lb, lh, ldh)
 		recv.ReceiveMessage(
 			context.Background(),
 			sender.peer,

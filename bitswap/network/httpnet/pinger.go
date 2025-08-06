@@ -127,11 +127,14 @@ func (pngr *pinger) startPinging(p peer.ID) {
 
 	_, ok := pngr.pings[p]
 	if ok {
+		log.Debugf("already pinging %s", p)
 		return
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	pngr.pings[p] = cancel
+
+	log.Debugf("starting pings to %s", p)
 
 	go func(ctx context.Context, p peer.ID) {
 		ticker := time.NewTicker(5 * time.Second)
@@ -147,6 +150,7 @@ func (pngr *pinger) startPinging(p peer.ID) {
 }
 
 func (pngr *pinger) stopPinging(p peer.ID) {
+	log.Debugf("stopping pings to %s", p)
 	pngr.pingsLock.Lock()
 	{
 		cancel, ok := pngr.pings[p]
