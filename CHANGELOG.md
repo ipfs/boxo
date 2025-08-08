@@ -16,6 +16,8 @@ The following emojis are used to highlight certain changes:
 
 ### Added
 
+- `gateway`: Implemented a configurable limit for concurrent in-flight HTTP requests. Returns HTTP 503 Service Unavailable with Retry-After header when the limit is reached. Includes a default limit to protect against traffic spikes when exposed without a reverse proxy. [#881](https://github.com/ipfs/boxo/issues/881)
+
 ### Changed
 
 - `bitswap/network`: The connection event manager now has a `SetListeners` method. Both `bsnet` and `httpnet` now have options to provide the `ConnectionEventManager` during `New(...)`. This allows sharing the connection event manager when using both. The connection manager SHOULD be shared when using both networks with the `network.Router` utility.
