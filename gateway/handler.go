@@ -900,21 +900,48 @@ func (i *handler) handleWebRequestErrors(w http.ResponseWriter, r *http.Request,
 // Detect 'Cache-Control: only-if-cached' in request and return data if it is already in the local datastore.
 // https://github.com/ipfs/specs/blob/main/http-gateways/PATH_GATEWAY.md#cache-control-request-header
 func (i *handler) handleOnlyIfCached(w http.ResponseWriter, r *http.Request, contentPath path.Path) bool {
-	if r.Header.Get("Cache-Control") == "only-if-cached" {
-		if !i.backend.IsCached(r.Context(), contentPath) {
-			if r.Method == http.MethodHead {
-				w.WriteHeader(http.StatusPreconditionFailed)
-				return true
-			}
+	if r.Header.Get("Cache-Control") != "only-if-cached" {
+		return false
+	}
+
+	// If RetrievalTimeout is configured, use a timeout for the IsCached check to avoid
+	// returning 504 Gateway Timeout when the remote backend is slow.
+	// If the content is not immediately available, we should return 412 Precondition Failed.
+	// Use 80% of RetrievalTimeout for cache checks. This ensures that if the backend
+	// is slow or unresponsive, we timeout and return 412 before the overall request
+	// would hit RetrievalTimeout and return 504. This distinction is important for
+	// correct HTTP semantics: 412 means "content not in cache" while 504 means
+	// "gateway timeout", and clients may handle these differently.
+	ctx := r.Context()
+	if i.config.RetrievalTimeout != 0 {
+		cacheCheckTimeout := i.config.RetrievalTimeout * 80 / 100
+		checkCtx, cancel := context.WithTimeout(ctx, cacheCheckTimeout)
+		defer cancel()
+		ctx = checkCtx
+	}
+
+	isCached := i.backend.IsCached(ctx, contentPath)
+
+	// If the context timed out, treat as not cached
+	if ctx.Err() != nil {
+		isCached = false
+	}
+
+	if isCached && r.Method == http.MethodHead {
+		w.WriteHeader(http.StatusOK)
+		return true
+	}
+
+	if !isCached {
+		if r.Method == http.MethodHead {
+			w.WriteHeader(http.StatusPreconditionFailed)
+		} else {
 			errMsg := fmt.Sprintf("%q not in local datastore", contentPath.String())
 			http.Error(w, errMsg, http.StatusPreconditionFailed)
-			return true
 		}
-		if r.Method == http.MethodHead {
-			w.WriteHeader(http.StatusOK)
-			return true
-		}
+		return true
 	}
+
 	return false
 }
 
