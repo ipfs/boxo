@@ -11,7 +11,6 @@ import (
 )
 
 func TestWithResponseMetrics(t *testing.T) {
-
 	t.Run("records all response codes", func(t *testing.T) {
 		handler := withResponseMetrics(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			switch r.URL.Path {
@@ -106,7 +105,6 @@ func TestWithResponseMetrics(t *testing.T) {
 }
 
 func TestMiddlewareMetricsIntegration(t *testing.T) {
-
 	t.Run("separate metrics for middleware events", func(t *testing.T) {
 		// Create a handler that holds the request
 		var handler http.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -202,7 +200,7 @@ func TestMiddlewareMetricsIntegration(t *testing.T) {
 			for metric := range ch {
 				dto := &dto.Metric{}
 				metric.Write(dto)
-				if dto.Label != nil && len(dto.Label) >= 1 {
+				if len(dto.Label) >= 1 {
 					// First label should be code
 					if *dto.Label[0].Name == "code" && *dto.Label[0].Value == "504" {
 						found504 = true
