@@ -17,7 +17,7 @@ func TestWithRetrievalTimeout(t *testing.T) {
 			time.Sleep(100 * time.Millisecond)
 		}), 50*time.Millisecond, config)
 
-		req := httptest.NewRequest("GET", "/", nil)
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
 		req.Header.Set("Accept", "text/html,application/xhtml+xml")
 		rec := httptest.NewRecorder()
 
@@ -57,7 +57,7 @@ func TestWithRetrievalTimeout(t *testing.T) {
 			select {}
 		}), 50*time.Millisecond, nil)
 
-		req := httptest.NewRequest("GET", "/ipfs/bafkreif6lrhgz3fpiwypdk65qrqiey7svgpggruhbylrgv32l3izkqpsc4", nil)
+		req := httptest.NewRequest(http.MethodGet, "/ipfs/bafkreif6lrhgz3fpiwypdk65qrqiey7svgpggruhbylrgv32l3izkqpsc4", nil)
 		rec := httptest.NewRecorder()
 
 		done := make(chan bool)
@@ -92,7 +92,7 @@ func TestWithRetrievalTimeout(t *testing.T) {
 			w.Write([]byte("should not appear"))
 		}), 50*time.Millisecond, nil)
 
-		req := httptest.NewRequest("GET", "/", nil)
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
 		rec := httptest.NewRecorder()
 
 		done := make(chan bool)
@@ -121,7 +121,7 @@ func TestWithRetrievalTimeout(t *testing.T) {
 			w.Write([]byte("success"))
 		}), 0, nil)
 
-		req := httptest.NewRequest("GET", "/", nil)
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
 		rec := httptest.NewRecorder()
 		handler.ServeHTTP(rec, req)
 
@@ -139,7 +139,7 @@ func TestWithRetrievalTimeout(t *testing.T) {
 			time.Sleep(150 * time.Millisecond)
 		}), 50*time.Millisecond, nil)
 
-		req := httptest.NewRequest("GET", "/", nil)
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
 		rec := httptest.NewRecorder()
 
 		// Run in goroutine to allow timeout to trigger
@@ -170,7 +170,7 @@ func TestWithRetrievalTimeout(t *testing.T) {
 			}
 		}), 100*time.Millisecond, nil)
 
-		req := httptest.NewRequest("GET", "/", nil)
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
 		rec := httptest.NewRecorder()
 		handler.ServeHTTP(rec, req)
 
@@ -193,7 +193,7 @@ func TestWithRetrievalTimeout(t *testing.T) {
 			}
 		}), 100*time.Millisecond, nil)
 
-		req := httptest.NewRequest("GET", "/", nil)
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
 		rec := httptest.NewRecorder()
 		handler.ServeHTTP(rec, req)
 
@@ -218,7 +218,7 @@ func TestWithRetrievalTimeout(t *testing.T) {
 			w.Write([]byte("should not appear"))
 		}), 50*time.Millisecond, nil)
 
-		req := httptest.NewRequest("GET", "/", nil)
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
 		rec := httptest.NewRecorder()
 
 		done := make(chan bool)
@@ -255,7 +255,7 @@ func TestWithRetrievalTimeout(t *testing.T) {
 			time.Sleep(150 * time.Millisecond)
 		}), 50*time.Millisecond, nil)
 
-		req := httptest.NewRequest("GET", "/", nil)
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
 		rec := httptest.NewRecorder()
 
 		done := make(chan bool)

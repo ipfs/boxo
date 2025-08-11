@@ -21,7 +21,7 @@ func TestWithConcurrentRequestLimiter(t *testing.T) {
 		}), 1, config)
 
 		// First request occupies the slot
-		req1 := httptest.NewRequest("GET", "/", nil)
+		req1 := httptest.NewRequest(http.MethodGet, "/", nil)
 		rec1 := httptest.NewRecorder()
 		go func() {
 			handler.ServeHTTP(rec1, req1)
@@ -31,7 +31,7 @@ func TestWithConcurrentRequestLimiter(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 
 		// Second request with HTML accept should get HTML error
-		req2 := httptest.NewRequest("GET", "/", nil)
+		req2 := httptest.NewRequest(http.MethodGet, "/", nil)
 		req2.Header.Set("Accept", "text/html,application/xhtml+xml")
 		rec2 := httptest.NewRecorder()
 		handler.ServeHTTP(rec2, req2)
@@ -67,7 +67,7 @@ func TestWithConcurrentRequestLimiter(t *testing.T) {
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
-				req := httptest.NewRequest("GET", "/", nil)
+				req := httptest.NewRequest(http.MethodGet, "/", nil)
 				rec := httptest.NewRecorder()
 				handler.ServeHTTP(rec, req)
 			}()
@@ -107,7 +107,7 @@ func TestWithConcurrentRequestLimiter(t *testing.T) {
 			wg.Add(1)
 			go func(idx int) {
 				defer wg.Done()
-				req := httptest.NewRequest("GET", "/", nil)
+				req := httptest.NewRequest(http.MethodGet, "/", nil)
 				rec := httptest.NewRecorder()
 				handler.ServeHTTP(rec, req)
 				results[idx] = rec.Code
@@ -146,7 +146,7 @@ func TestWithConcurrentRequestLimiter(t *testing.T) {
 		}), 1, nil)
 
 		// First request should succeed
-		req1 := httptest.NewRequest("GET", "/", nil)
+		req1 := httptest.NewRequest(http.MethodGet, "/", nil)
 		rec1 := httptest.NewRecorder()
 		go func() {
 			handler.ServeHTTP(rec1, req1)
@@ -156,7 +156,7 @@ func TestWithConcurrentRequestLimiter(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 
 		// Second request should be rejected
-		req2 := httptest.NewRequest("GET", "/", nil)
+		req2 := httptest.NewRequest(http.MethodGet, "/", nil)
 		rec2 := httptest.NewRecorder()
 		handler.ServeHTTP(rec2, req2)
 
@@ -194,7 +194,7 @@ func TestWithConcurrentRequestLimiter(t *testing.T) {
 
 		// Fill the single slot
 		go func() {
-			req := httptest.NewRequest("GET", "/", nil)
+			req := httptest.NewRequest(http.MethodGet, "/", nil)
 			rec := httptest.NewRecorder()
 			handler.ServeHTTP(rec, req)
 		}()
@@ -203,7 +203,7 @@ func TestWithConcurrentRequestLimiter(t *testing.T) {
 
 		// Generate many rejections and verify Retry-After stays constant
 		for i := 0; i < 20; i++ {
-			req := httptest.NewRequest("GET", "/", nil)
+			req := httptest.NewRequest(http.MethodGet, "/", nil)
 			rec := httptest.NewRecorder()
 			handler.ServeHTTP(rec, req)
 
@@ -236,7 +236,7 @@ func TestMiddlewareIntegration(t *testing.T) {
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
-				req := httptest.NewRequest("GET", "/", nil)
+				req := httptest.NewRequest(http.MethodGet, "/", nil)
 				rec := httptest.NewRecorder()
 				handler.ServeHTTP(rec, req)
 				if rec.Code != http.StatusOK {

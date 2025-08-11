@@ -40,7 +40,7 @@ func TestWithResponseMetrics(t *testing.T) {
 		}
 
 		for _, tc := range testCases {
-			req := httptest.NewRequest("GET", tc.path, nil)
+			req := httptest.NewRequest(http.MethodGet, tc.path, nil)
 			rec := httptest.NewRecorder()
 			handler.ServeHTTP(rec, req)
 
@@ -60,7 +60,7 @@ func TestWithResponseMetrics(t *testing.T) {
 			for metric := range ch {
 				dto := &dto.Metric{}
 				metric.Write(dto)
-				if dto.Label != nil && len(dto.Label) > 0 {
+				if len(dto.Label) > 0 {
 					code := *dto.Label[0].Value
 					foundCodes[code] = true
 				}
@@ -82,7 +82,7 @@ func TestWithResponseMetrics(t *testing.T) {
 			w.Write([]byte("implicit 200"))
 		}))
 
-		req := httptest.NewRequest("GET", "/", nil)
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
 		rec := httptest.NewRecorder()
 		handler.ServeHTTP(rec, req)
 
@@ -101,7 +101,7 @@ func TestWithResponseMetrics(t *testing.T) {
 			}
 		}))
 
-		req := httptest.NewRequest("GET", "/", nil)
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
 		rec := httptest.NewRecorder()
 		handler.ServeHTTP(rec, req)
 	})
@@ -124,7 +124,7 @@ func TestMiddlewareMetricsIntegration(t *testing.T) {
 		handler = withResponseMetrics(handler)
 
 		// First request should succeed
-		req1 := httptest.NewRequest("GET", "/", nil)
+		req1 := httptest.NewRequest(http.MethodGet, "/", nil)
 		rec1 := httptest.NewRecorder()
 		done := make(chan bool)
 		go func() {
@@ -136,7 +136,7 @@ func TestMiddlewareMetricsIntegration(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 
 		// Second request should be rate limited
-		req2 := httptest.NewRequest("GET", "/", nil)
+		req2 := httptest.NewRequest(http.MethodGet, "/", nil)
 		rec2 := httptest.NewRecorder()
 		handler.ServeHTTP(rec2, req2)
 
@@ -157,7 +157,7 @@ func TestMiddlewareMetricsIntegration(t *testing.T) {
 			for metric := range ch {
 				dto := &dto.Metric{}
 				metric.Write(dto)
-				if dto.Label != nil && len(dto.Label) > 0 {
+				if len(dto.Label) > 0 {
 					if *dto.Label[0].Value == "429" {
 						found429 = true
 					}
@@ -180,7 +180,7 @@ func TestMiddlewareMetricsIntegration(t *testing.T) {
 		handler = withRetrievalTimeout(handler, 50*time.Millisecond, nil)
 		handler = withResponseMetrics(handler)
 
-		req := httptest.NewRequest("GET", "/", nil)
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
 		rec := httptest.NewRecorder()
 
 		// Run in goroutine to allow timeout to trigger
