@@ -112,17 +112,80 @@ func NewRemoteBlocksBackend(gatewayURL []string, httpClient *http.Client, opts .
 }
 
 func (bb *BlocksBackend) Get(ctx context.Context, path path.ImmutablePath, ranges ...ByteRange) (ContentPathMetadata, *GetResponse, error) {
-	md, nd, err := bb.getNode(ctx, path)
-	if err != nil {
-		return md, nil, err
-	}
-
 	// Only a single range is supported in responses to HTTP Range Requests.
 	// When more than one is passed in the Range header, this library will
 	// return a response for the first one and ignores remaining ones.
 	var ra *ByteRange
 	if len(ranges) > 0 {
 		ra = &ranges[0]
+	}
+
+	// For range requests on UnixFS files, we can optimize by only fetching
+	// the root block first to determine if it's a file, then create a
+	// UnixfsFile that will lazily fetch only the blocks needed for the range
+	if ra != nil {
+		// Get just the root block first
+		roots, lastSeg, remainder, err := bb.getPathRoots(ctx, path)
+		if err != nil {
+			return ContentPathMetadata{}, nil, err
+		}
+
+		md := ContentPathMetadata{
+			PathSegmentRoots:     roots,
+			LastSegment:          lastSeg,
+			LastSegmentRemainder: remainder,
+		}
+
+		lastRoot := lastSeg.RootCid()
+
+		// Fetch only the root block to check if it's a UnixFS file
+		rootBlock, err := bb.blockService.GetBlock(ctx, lastRoot)
+		if err != nil {
+			return md, nil, err
+		}
+
+		// Check if this is a dag-pb block that might be a UnixFS file
+		rootCodec := lastRoot.Prefix().GetCodec()
+		if rootCodec == uint64(mc.DagPb) {
+			// Create a minimal node from the root block to check if it's a file
+			nd, err := merkledag.DecodeProtobuf(rootBlock.RawData())
+			if err == nil {
+				// Try to create a UnixFS file - this will only fetch blocks as needed
+				f, err := ufile.NewUnixfsFile(ctx, bb.dagService, nd)
+				if err == nil {
+					if file, ok := f.(files.File); ok {
+						// It's a file - we can proceed with lazy loading for the range
+						fileSize, err := f.Size()
+						if err != nil {
+							return ContentPathMetadata{}, nil, err
+						}
+
+						// Set modification time if available
+						mtime := f.ModTime()
+						if !mtime.IsZero() {
+							md.ModTime = mtime
+						}
+
+						if err := seekToRangeStart(file, ra, fileSize); err != nil {
+							return ContentPathMetadata{}, nil, err
+						}
+
+						if s, ok := f.(*files.Symlink); ok {
+							return md, NewGetResponseFromSymlink(s, fileSize), nil
+						}
+
+						return md, NewGetResponseFromReader(file, fileSize), nil
+					}
+				}
+			}
+		}
+		// Fall back to regular path for non-files or if optimization fails
+	}
+
+	// Regular path for non-range requests or when optimization doesn't apply
+	md, nd, err := bb.getNode(ctx, path)
+	if err != nil {
+		return md, nil, err
 	}
 
 	rootCodec := nd.Cid().Prefix().GetCodec()
