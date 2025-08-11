@@ -16,8 +16,17 @@ The following emojis are used to highlight certain changes:
 
 ### Added
 
+- `gateway`: Added configurable limits for gateway resource protection:
+  - `Config.RetrievalTimeout`: Maximum duration between writes of non-empty data to HTTP response body (default: 30s). Returns 504 Gateway Timeout when gateway cannot retrieve content within this period.
+  - `Config.MaxConcurrentRequests`: Limits concurrent HTTP requests (default: 1024). Returns 429 Too Many Requests with 60s Retry-After header when exceeded.
+  - New middleware with Prometheus metrics:
+    - `ipfs_http_gw_concurrent_requests`: Gauge tracking number of concurrent requests
+    - `ipfs_http_gw_responses_total{code}`: Counter for all HTTP responses by status code
+    - `ipfs_http_gw_retrieval_timeouts_total{code,truncated}`: Counter for retrieval timeout events with details on truncation
+
 ### Changed
 
+- `gateway`: The gateway now enforces default limits for request handling. To restore previous unlimited behavior set both `RetrievalTimeout` and `MaxConcurrentRequests` to `0`.
 - `bitswap/network`: The connection event manager now has a `SetListeners` method. Both `bsnet` and `httpnet` now have options to provide the `ConnectionEventManager` during `New(...)`. This allows sharing the connection event manager when using both. The connection manager SHOULD be shared when using both networks with the `network.Router` utility.
 - `provider`: Distribute the responsability of providing new blocks to the places that play a role in the different providing strategies [#976](https://github.com/ipfs/boxo/pull/976). Refactor the logic to perform Provides, when the component has been given a provider:
   - Remove `providing.Exchange`

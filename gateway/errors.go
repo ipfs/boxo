@@ -166,6 +166,37 @@ func (epr ErrPartialResponse) Error() string {
 	return "received a partial CAR response from the backend"
 }
 
+// writeErrorResponse writes an error response with the given status code and message.
+// It returns HTML or plain text based on the Accept header and DisableHTMLErrors config.
+func writeErrorResponse(w http.ResponseWriter, r *http.Request, c *Config, statusCode int, message string) {
+	// Check if HTML response is appropriate
+	acceptsHTML := false
+	if c != nil && !c.DisableHTMLErrors {
+		acceptsHTML = strings.Contains(r.Header.Get("Accept"), "text/html")
+	}
+
+	if acceptsHTML {
+		w.Header().Set("Content-Type", "text/html")
+		w.WriteHeader(statusCode)
+		err := assets.ErrorTemplate.Execute(w, assets.ErrorTemplateData{
+			GlobalData: assets.GlobalData{
+				Menu: c.Menu,
+			},
+			StatusCode: statusCode,
+			StatusText: http.StatusText(statusCode),
+			Error:      message,
+		})
+		if err != nil {
+			_, _ = w.Write([]byte(fmt.Sprintf("error during body generation: %v", err)))
+		}
+	} else {
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.WriteHeader(statusCode)
+		fmt.Fprintln(w, message)
+	}
+}
+
 func webError(w http.ResponseWriter, r *http.Request, c *Config, err error, defaultCode int) {
 	code := defaultCode
 
@@ -200,24 +231,7 @@ func webError(w http.ResponseWriter, r *http.Request, c *Config, err error, defa
 		code = gwErr.StatusCode
 	}
 
-	acceptsHTML := !c.DisableHTMLErrors && strings.Contains(r.Header.Get("Accept"), "text/html")
-	if acceptsHTML {
-		w.Header().Set("Content-Type", "text/html")
-		w.WriteHeader(code)
-		err = assets.ErrorTemplate.Execute(w, assets.ErrorTemplateData{
-			GlobalData: assets.GlobalData{
-				Menu: c.Menu,
-			},
-			StatusCode: code,
-			StatusText: http.StatusText(code),
-			Error:      err.Error(),
-		})
-		if err != nil {
-			_, _ = w.Write([]byte(fmt.Sprintf("error during body generation: %v", err)))
-		}
-	} else {
-		http.Error(w, err.Error(), code)
-	}
+	writeErrorResponse(w, r, c, code, err.Error())
 }
 
 // isErrNotFound returns true for IPLD errors that should return 4xx errors (e.g. the path doesn't exist, the data is

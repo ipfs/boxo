@@ -16,6 +16,17 @@ import (
 	"github.com/ipfs/go-cid"
 )
 
+// Default values for gateway configuration limits
+const (
+	// DefaultRetrievalTimeout is the default maximum duration for initial content retrieval
+	// (time to first byte) and subsequent writes to the HTTP response body.
+	DefaultRetrievalTimeout = 30 * time.Second
+
+	// DefaultMaxConcurrentRequests is the default maximum number of concurrent HTTP requests
+	// that the gateway will process.
+	DefaultMaxConcurrentRequests = 1024
+)
+
 // Config is the configuration used when creating a new gateway handler.
 type Config struct {
 	// DeserializedResponses configures this gateway to support returning data
@@ -48,6 +59,28 @@ type Config struct {
 	// directory listings, DAG previews and errors. These will be displayed to the
 	// right of "About IPFS" and "Install IPFS".
 	Menu []assets.MenuItem
+
+	// RetrievalTimeout enforces a maximum duration for content retrieval:
+	// - Time to first byte: If the gateway cannot start writing the response within
+	//   this duration (e.g., stuck searching for providers), a 504 Gateway Timeout
+	//   is returned.
+	// - Time between writes: After the first byte, the timeout resets each time new
+	//   bytes are written to the client. If the gateway cannot write additional data
+	//   within this duration after the last successful write, the response is
+	//   terminated (with 504 for headers not sent, or truncation for headers already sent).
+	// This helps free resources when the gateway gets stuck looking for providers
+	// or cannot retrieve parts of the requested content.
+	// A value of 0 disables this timeout.
+	RetrievalTimeout time.Duration
+
+	// MaxConcurrentRequests limits the number of concurrent HTTP requests handled by
+	// the gateway. Requests beyond this limit receive a 429 Too Many Requests
+	// response with a Retry-After header. High-load deployments may need to tune
+	// this value based on their reverse proxy configuration (e.g., nginx's
+	// worker_connections). Set this slightly below your reverse proxy's limit
+	// for graceful degradation.
+	// A value of 0 disables the limit.
+	MaxConcurrentRequests int
 }
 
 // PublicGateway is the specification of an IPFS Public Gateway.

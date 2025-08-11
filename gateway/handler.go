@@ -68,7 +68,28 @@ type handler struct {
 //
 // [IPFS HTTP Gateway]: https://specs.ipfs.tech/http-gateways/
 func NewHandler(c Config, backend IPFSBackend) http.Handler {
-	return newHandlerWithMetrics(&c, backend)
+	// Initialize middleware metrics (safe to call multiple times)
+	initializeMiddlewareMetrics()
+
+	h := newHandlerWithMetrics(&c, backend)
+
+	// Apply middleware in order (innermost to outermost)
+	var handler http.Handler = h
+
+	// Retrieval timeout middleware (innermost after main handler)
+	if c.RetrievalTimeout > 0 {
+		handler = withRetrievalTimeout(handler, c.RetrievalTimeout, &c)
+	}
+
+	// Concurrent request limiter middleware
+	if c.MaxConcurrentRequests > 0 {
+		handler = withConcurrentRequestLimiter(handler, c.MaxConcurrentRequests, &c)
+	}
+
+	// Response metrics wrapper (outermost - records ALL responses including middleware responses)
+	handler = withResponseMetrics(handler)
+
+	return handler
 }
 
 // serveContent replies to the request using the content in the provided Reader
