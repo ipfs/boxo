@@ -75,7 +75,7 @@ func NewHandler(c Config, backend IPFSBackend) http.Handler {
 	}
 
 	// Initialize middleware metrics with the registry
-	initializeMiddlewareMetrics(reg)
+	metrics := newMiddlewareMetrics(reg)
 
 	h := newHandlerWithMetrics(&c, backend, reg)
 
@@ -84,16 +84,16 @@ func NewHandler(c Config, backend IPFSBackend) http.Handler {
 
 	// Retrieval timeout middleware (innermost after main handler)
 	if c.RetrievalTimeout > 0 {
-		handler = withRetrievalTimeout(handler, c.RetrievalTimeout, &c)
+		handler = withRetrievalTimeout(handler, c.RetrievalTimeout, &c, metrics)
 	}
 
 	// Concurrent request limiter middleware
 	if c.MaxConcurrentRequests > 0 {
-		handler = withConcurrentRequestLimiter(handler, c.MaxConcurrentRequests, &c)
+		handler = withConcurrentRequestLimiter(handler, c.MaxConcurrentRequests, &c, metrics)
 	}
 
 	// Response metrics wrapper (outermost - records ALL responses including middleware responses)
-	handler = withResponseMetrics(handler)
+	handler = withResponseMetrics(handler, metrics)
 
 	return handler
 }

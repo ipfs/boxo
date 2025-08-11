@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
-
-	"github.com/prometheus/client_golang/prometheus"
 )
 
 const retryAfterSeconds = 60 // seconds - industry standard minimum
@@ -32,7 +30,7 @@ const retryAfterSeconds = 60 // seconds - industry standard minimum
 //   - handler: The HTTP handler to wrap with concurrent request limiting
 //   - limit: Maximum number of concurrent requests allowed (0 disables limiting)
 //   - c: Optional configuration for controlling error page rendering (can be nil)
-func withConcurrentRequestLimiter(handler http.Handler, limit int, c *Config) http.Handler {
+func withConcurrentRequestLimiter(handler http.Handler, limit int, c *Config, metrics *middlewareMetrics) http.Handler {
 	if limit <= 0 {
 		return handler
 	}
@@ -47,22 +45,16 @@ func withConcurrentRequestLimiter(handler http.Handler, limit int, c *Config) ht
 		select {
 		case <-semaphore:
 			// Acquired a slot
-			if concurrentRequests != nil {
-				concurrentRequests.Inc()
-			}
+			metrics.incConcurrentRequests()
 			defer func() {
 				semaphore <- struct{}{} // Release slot
-				if concurrentRequests != nil {
-					concurrentRequests.Dec()
-				}
+				metrics.decConcurrentRequests()
 			}()
 			handler.ServeHTTP(w, r)
 
 		default:
 			// At capacity - reject with 429
-			if httpResponsesTotal != nil {
-				httpResponsesTotal.With(prometheus.Labels{"code": "429"}).Inc()
-			}
+			metrics.recordResponse(http.StatusTooManyRequests)
 			// No need for separate rate limits metric - 429 responses ONLY come from this middleware
 
 			// Prevent caching of rate limit responses

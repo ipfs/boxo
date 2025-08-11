@@ -4,11 +4,8 @@ import (
 	"fmt"
 	"net"
 	"net/http"
-	"strconv"
 	"sync"
 	"time"
-
-	"github.com/prometheus/client_golang/prometheus"
 )
 
 const truncationMessage = "\n\n[Gateway Error: Response truncated - unable to retrieve remaining data within timeout period]"
@@ -23,7 +20,7 @@ const truncationMessage = "\n\n[Gateway Error: Response truncated - unable to re
 //   - handler: The HTTP handler to wrap with retrieval timeout
 //   - timeout: Maximum duration between writes (0 disables timeout)
 //   - c: Optional configuration for controlling error page rendering (can be nil)
-func withRetrievalTimeout(handler http.Handler, timeout time.Duration, c *Config) http.Handler {
+func withRetrievalTimeout(handler http.Handler, timeout time.Duration, c *Config, metrics *middlewareMetrics) http.Handler {
 	if timeout <= 0 {
 		return handler
 	}
@@ -55,15 +52,7 @@ func withRetrievalTimeout(handler http.Handler, timeout time.Duration, c *Config
 
 						if !tw.wroteHeader {
 							// Headers not sent yet, we can send 504
-							if httpResponsesTotal != nil {
-								httpResponsesTotal.With(prometheus.Labels{"code": "504"}).Inc()
-							}
-							if retrievalTimeouts != nil {
-								retrievalTimeouts.With(prometheus.Labels{
-									"code":      "504",
-									"truncated": "false",
-								}).Inc()
-							}
+							metrics.recordTimeout(http.StatusGatewayTimeout, false)
 							message := "Unable to retrieve content within timeout period"
 							writeErrorResponse(tw.ResponseWriter, tw.request, tw.config, http.StatusGatewayTimeout, message)
 						} else {
@@ -72,17 +61,7 @@ func withRetrievalTimeout(handler http.Handler, timeout time.Duration, c *Config
 							if statusCode == 0 {
 								statusCode = http.StatusOK
 							}
-							codeStr := strconv.Itoa(statusCode)
-
-							if httpResponsesTotal != nil {
-								httpResponsesTotal.With(prometheus.Labels{"code": codeStr}).Inc()
-							}
-							if retrievalTimeouts != nil {
-								retrievalTimeouts.With(prometheus.Labels{
-									"code":      codeStr,
-									"truncated": "true",
-								}).Inc()
-							}
+							metrics.recordTimeout(statusCode, true)
 
 							// Try to write truncation message (best effort)
 							tw.ResponseWriter.Write([]byte(truncationMessage))

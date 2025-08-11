@@ -15,7 +15,7 @@ func TestWithRetrievalTimeout(t *testing.T) {
 		handler := withRetrievalTimeout(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// Don't write anything - simulate stuck retrieval
 			time.Sleep(100 * time.Millisecond)
-		}), 50*time.Millisecond, config)
+		}), 50*time.Millisecond, config, newTestMetrics())
 
 		req := httptest.NewRequest(http.MethodGet, "/", nil)
 		req.Header.Set("Accept", "text/html,application/xhtml+xml")
@@ -55,7 +55,7 @@ func TestWithRetrievalTimeout(t *testing.T) {
 		handler := withRetrievalTimeout(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// Block forever - simulating stuck provider search
 			select {}
-		}), 50*time.Millisecond, nil)
+		}), 50*time.Millisecond, nil, newTestMetrics())
 
 		req := httptest.NewRequest(http.MethodGet, "/ipfs/bafkreif6lrhgz3fpiwypdk65qrqiey7svgpggruhbylrgv32l3izkqpsc4", nil)
 		rec := httptest.NewRecorder()
@@ -90,7 +90,7 @@ func TestWithRetrievalTimeout(t *testing.T) {
 			time.Sleep(100 * time.Millisecond)
 			// This write should never happen due to timeout
 			w.Write([]byte("should not appear"))
-		}), 50*time.Millisecond, nil)
+		}), 50*time.Millisecond, nil, newTestMetrics())
 
 		req := httptest.NewRequest(http.MethodGet, "/", nil)
 		rec := httptest.NewRecorder()
@@ -119,7 +119,7 @@ func TestWithRetrievalTimeout(t *testing.T) {
 		handler := withRetrievalTimeout(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			time.Sleep(100 * time.Millisecond)
 			w.Write([]byte("success"))
-		}), 0, nil)
+		}), 0, nil, newTestMetrics())
 
 		req := httptest.NewRequest(http.MethodGet, "/", nil)
 		rec := httptest.NewRecorder()
@@ -137,7 +137,7 @@ func TestWithRetrievalTimeout(t *testing.T) {
 		handler := withRetrievalTimeout(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// Don't write anything for longer than timeout
 			time.Sleep(150 * time.Millisecond)
-		}), 50*time.Millisecond, nil)
+		}), 50*time.Millisecond, nil, newTestMetrics())
 
 		req := httptest.NewRequest(http.MethodGet, "/", nil)
 		rec := httptest.NewRecorder()
@@ -168,7 +168,7 @@ func TestWithRetrievalTimeout(t *testing.T) {
 				w.(http.Flusher).Flush()
 				time.Sleep(75 * time.Millisecond) // Less than timeout
 			}
-		}), 100*time.Millisecond, nil)
+		}), 100*time.Millisecond, nil, newTestMetrics())
 
 		req := httptest.NewRequest(http.MethodGet, "/", nil)
 		rec := httptest.NewRecorder()
@@ -191,7 +191,7 @@ func TestWithRetrievalTimeout(t *testing.T) {
 				w.Write([]byte{})
 				time.Sleep(30 * time.Millisecond)
 			}
-		}), 100*time.Millisecond, nil)
+		}), 100*time.Millisecond, nil, newTestMetrics())
 
 		req := httptest.NewRequest(http.MethodGet, "/", nil)
 		rec := httptest.NewRecorder()
@@ -216,7 +216,7 @@ func TestWithRetrievalTimeout(t *testing.T) {
 			time.Sleep(150 * time.Millisecond)
 			// This write should fail
 			w.Write([]byte("should not appear"))
-		}), 50*time.Millisecond, nil)
+		}), 50*time.Millisecond, nil, newTestMetrics())
 
 		req := httptest.NewRequest(http.MethodGet, "/", nil)
 		rec := httptest.NewRecorder()
@@ -253,7 +253,7 @@ func TestWithRetrievalTimeout(t *testing.T) {
 			w.Write([]byte("partial"))
 			w.(http.Flusher).Flush()
 			time.Sleep(150 * time.Millisecond)
-		}), 50*time.Millisecond, nil)
+		}), 50*time.Millisecond, nil, newTestMetrics())
 
 		req := httptest.NewRequest(http.MethodGet, "/", nil)
 		rec := httptest.NewRecorder()

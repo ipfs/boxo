@@ -13,17 +13,54 @@ import (
 
 var middlewareLog = logging.Logger("boxo/gateway/middleware")
 
-// Metrics variables for middleware
-var (
+// middlewareMetrics holds metrics used by gateway middleware
+type middlewareMetrics struct {
 	// General HTTP response counter
 	httpResponsesTotal *prometheus.CounterVec
 
 	// Middleware-specific metrics
 	retrievalTimeouts  *prometheus.CounterVec
 	concurrentRequests prometheus.Gauge
-)
+}
 
-// initializeMiddlewareMetrics sets up the metrics used by middleware.
+// recordResponse records an HTTP response with the given status code
+func (m *middlewareMetrics) recordResponse(statusCode int) {
+	if m != nil && m.httpResponsesTotal != nil {
+		code := strconv.Itoa(statusCode)
+		m.httpResponsesTotal.With(prometheus.Labels{"code": code}).Inc()
+	}
+}
+
+// recordTimeout records both HTTP response and timeout-specific metrics
+func (m *middlewareMetrics) recordTimeout(statusCode int, truncated bool) {
+	if m == nil {
+		return
+	}
+	m.recordResponse(statusCode)
+	if m.retrievalTimeouts != nil {
+		code := strconv.Itoa(statusCode)
+		m.retrievalTimeouts.With(prometheus.Labels{
+			"code":      code,
+			"truncated": strconv.FormatBool(truncated),
+		}).Inc()
+	}
+}
+
+// incConcurrentRequests increments the concurrent requests gauge
+func (m *middlewareMetrics) incConcurrentRequests() {
+	if m != nil && m.concurrentRequests != nil {
+		m.concurrentRequests.Inc()
+	}
+}
+
+// decConcurrentRequests decrements the concurrent requests gauge
+func (m *middlewareMetrics) decConcurrentRequests() {
+	if m != nil && m.concurrentRequests != nil {
+		m.concurrentRequests.Dec()
+	}
+}
+
+// newMiddlewareMetrics creates and initializes metrics used by middleware.
 //
 // Metrics Design:
 //
@@ -44,9 +81,11 @@ var (
 // Example Prometheus queries:
 //   - Rate limited requests: sum(rate(gw_responses_total{code="429"}[5m]))
 //   - Truncated 200 responses: sum(rate(gw_retrieval_timeouts_total{code="200",truncated="true"}[5m]))
-func initializeMiddlewareMetrics(reg prometheus.Registerer) {
+func newMiddlewareMetrics(reg prometheus.Registerer) *middlewareMetrics {
+	metrics := &middlewareMetrics{}
+
 	// Initialize the HTTP responses counter
-	httpResponsesTotal = registerOrGetMetric(
+	metrics.httpResponsesTotal = registerOrGetMetric(
 		prometheus.NewCounterVec(
 			prometheus.CounterOpts{
 				Namespace: "ipfs",
@@ -61,7 +100,7 @@ func initializeMiddlewareMetrics(reg prometheus.Registerer) {
 	).(*prometheus.CounterVec)
 
 	// Initialize retrieval timeout metrics
-	retrievalTimeouts = registerOrGetMetric(
+	metrics.retrievalTimeouts = registerOrGetMetric(
 		prometheus.NewCounterVec(
 			prometheus.CounterOpts{
 				Namespace: "ipfs",
@@ -76,7 +115,7 @@ func initializeMiddlewareMetrics(reg prometheus.Registerer) {
 	).(*prometheus.CounterVec)
 
 	// Initialize the concurrent requests gauge
-	concurrentRequests = registerOrGetMetric(
+	metrics.concurrentRequests = registerOrGetMetric(
 		prometheus.NewGauge(
 			prometheus.GaugeOpts{
 				Namespace: "ipfs",
@@ -88,10 +127,12 @@ func initializeMiddlewareMetrics(reg prometheus.Registerer) {
 		"gw_concurrent_requests",
 		reg,
 	).(prometheus.Gauge)
+
+	return metrics
 }
 
 // withResponseMetrics wraps an http.Handler to record response status codes
-func withResponseMetrics(handler http.Handler) http.Handler {
+func withResponseMetrics(handler http.Handler, metrics *middlewareMetrics) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Wrap the ResponseWriter to capture status code
 		mrw := &metricsResponseWriter{
@@ -103,10 +144,7 @@ func withResponseMetrics(handler http.Handler) http.Handler {
 		handler.ServeHTTP(mrw, r)
 
 		// Record the response metric
-		if httpResponsesTotal != nil {
-			code := strconv.Itoa(mrw.statusCode)
-			httpResponsesTotal.With(prometheus.Labels{"code": code}).Inc()
-		}
+		metrics.recordResponse(mrw.statusCode)
 	})
 }
 

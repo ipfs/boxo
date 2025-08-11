@@ -10,8 +10,15 @@ import (
 	dto "github.com/prometheus/client_model/go"
 )
 
+// newTestMetrics creates a new middlewareMetrics instance for testing
+func newTestMetrics() *middlewareMetrics {
+	return newMiddlewareMetrics(prometheus.NewRegistry())
+}
+
 func TestWithResponseMetrics(t *testing.T) {
 	t.Run("records all response codes", func(t *testing.T) {
+		metrics := newTestMetrics()
+
 		handler := withResponseMetrics(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			switch r.URL.Path {
 			case "/success":
@@ -24,7 +31,7 @@ func TestWithResponseMetrics(t *testing.T) {
 				w.WriteHeader(http.StatusInternalServerError)
 				w.Write([]byte("error"))
 			}
-		}))
+		}), metrics)
 
 		// Make requests with different status codes
 		testCases := []struct {
@@ -47,10 +54,10 @@ func TestWithResponseMetrics(t *testing.T) {
 		}
 
 		// Verify metrics were recorded
-		if httpResponsesTotal != nil {
+		if metrics.httpResponsesTotal != nil {
 			// Get metric values
 			ch := make(chan prometheus.Metric, 10)
-			httpResponsesTotal.Collect(ch)
+			metrics.httpResponsesTotal.Collect(ch)
 			close(ch)
 
 			foundCodes := make(map[string]bool)
@@ -74,10 +81,12 @@ func TestWithResponseMetrics(t *testing.T) {
 	})
 
 	t.Run("default status code is 200", func(t *testing.T) {
+		metrics := newTestMetrics()
+
 		handler := withResponseMetrics(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// Write without calling WriteHeader
 			w.Write([]byte("implicit 200"))
-		}))
+		}), metrics)
 
 		req := httptest.NewRequest(http.MethodGet, "/", nil)
 		rec := httptest.NewRecorder()
@@ -89,6 +98,8 @@ func TestWithResponseMetrics(t *testing.T) {
 	})
 
 	t.Run("metrics wrapper preserves flusher interface", func(t *testing.T) {
+		metrics := newTestMetrics()
+
 		handler := withResponseMetrics(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if flusher, ok := w.(http.Flusher); ok {
 				w.Write([]byte("data"))
@@ -96,7 +107,7 @@ func TestWithResponseMetrics(t *testing.T) {
 			} else {
 				t.Error("ResponseWriter should implement Flusher")
 			}
-		}))
+		}), metrics)
 
 		req := httptest.NewRequest(http.MethodGet, "/", nil)
 		rec := httptest.NewRecorder()
@@ -113,9 +124,11 @@ func TestMiddlewareMetricsIntegration(t *testing.T) {
 			w.Write([]byte("ok"))
 		})
 
+		metrics := newTestMetrics()
+
 		// Apply middleware in the same order as NewHandler
-		handler = withConcurrentRequestLimiter(handler, 1, nil)
-		handler = withResponseMetrics(handler)
+		handler = withConcurrentRequestLimiter(handler, 1, nil, metrics)
+		handler = withResponseMetrics(handler, metrics)
 
 		// First request should succeed
 		req1 := httptest.NewRequest(http.MethodGet, "/", nil)
@@ -142,9 +155,9 @@ func TestMiddlewareMetricsIntegration(t *testing.T) {
 		<-done
 
 		// Verify HTTP response metrics were recorded
-		if httpResponsesTotal != nil {
+		if metrics.httpResponsesTotal != nil {
 			ch := make(chan prometheus.Metric, 10)
-			httpResponsesTotal.Collect(ch)
+			metrics.httpResponsesTotal.Collect(ch)
 			close(ch)
 
 			found429 := false
@@ -170,9 +183,11 @@ func TestMiddlewareMetricsIntegration(t *testing.T) {
 			time.Sleep(100 * time.Millisecond)
 		})
 
+		metrics := newTestMetrics()
+
 		// Apply timeout middleware
-		handler = withRetrievalTimeout(handler, 50*time.Millisecond, nil)
-		handler = withResponseMetrics(handler)
+		handler = withRetrievalTimeout(handler, 50*time.Millisecond, nil, metrics)
+		handler = withResponseMetrics(handler, metrics)
 
 		req := httptest.NewRequest(http.MethodGet, "/", nil)
 		rec := httptest.NewRecorder()
@@ -191,9 +206,9 @@ func TestMiddlewareMetricsIntegration(t *testing.T) {
 		}
 
 		// Verify timeout metric has code label
-		if retrievalTimeouts != nil {
+		if metrics.retrievalTimeouts != nil {
 			ch := make(chan prometheus.Metric, 10)
-			retrievalTimeouts.Collect(ch)
+			metrics.retrievalTimeouts.Collect(ch)
 			close(ch)
 
 			found504 := false

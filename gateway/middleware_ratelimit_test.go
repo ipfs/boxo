@@ -18,7 +18,7 @@ func TestWithConcurrentRequestLimiter(t *testing.T) {
 		handler := withConcurrentRequestLimiter(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// Block to simulate a busy handler
 			time.Sleep(100 * time.Millisecond)
-		}), 1, config)
+		}), 1, config, newTestMetrics())
 
 		// First request occupies the slot
 		req1 := httptest.NewRequest(http.MethodGet, "/", nil)
@@ -59,7 +59,7 @@ func TestWithConcurrentRequestLimiter(t *testing.T) {
 			requestCount.Add(1)
 			time.Sleep(50 * time.Millisecond)
 			w.Write([]byte("success"))
-		}), 0, nil)
+		}), 0, nil, newTestMetrics())
 
 		// Send multiple concurrent requests
 		var wg sync.WaitGroup
@@ -98,7 +98,7 @@ func TestWithConcurrentRequestLimiter(t *testing.T) {
 
 			time.Sleep(50 * time.Millisecond)
 			w.Write([]byte("success"))
-		}), limit, nil)
+		}), limit, nil, newTestMetrics())
 
 		// Send more requests than the limit
 		var wg sync.WaitGroup
@@ -143,7 +143,7 @@ func TestWithConcurrentRequestLimiter(t *testing.T) {
 		handler := withConcurrentRequestLimiter(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			time.Sleep(100 * time.Millisecond)
 			w.Write([]byte("success"))
-		}), 1, nil)
+		}), 1, nil, newTestMetrics())
 
 		// First request should succeed
 		req1 := httptest.NewRequest(http.MethodGet, "/", nil)
@@ -190,7 +190,7 @@ func TestWithConcurrentRequestLimiter(t *testing.T) {
 		handler := withConcurrentRequestLimiter(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// Hold the request indefinitely
 			select {}
-		}), 1, nil)
+		}), 1, nil, newTestMetrics())
 
 		// Fill the single slot
 		go func() {
@@ -227,8 +227,9 @@ func TestMiddlewareIntegration(t *testing.T) {
 		})
 
 		// Apply both middlewares
-		handler = withRetrievalTimeout(handler, 50*time.Millisecond, nil)
-		handler = withConcurrentRequestLimiter(handler, 2, nil)
+		metrics := newTestMetrics()
+		handler = withRetrievalTimeout(handler, 50*time.Millisecond, nil, metrics)
+		handler = withConcurrentRequestLimiter(handler, 2, nil, metrics)
 
 		// Test that requests work normally within limits
 		var wg sync.WaitGroup
