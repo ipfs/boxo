@@ -44,7 +44,7 @@ var (
 // Example Prometheus queries:
 //   - Rate limited requests: sum(rate(gw_responses_total{code="429"}[5m]))
 //   - Truncated 200 responses: sum(rate(gw_retrieval_timeouts_total{code="200",truncated="true"}[5m]))
-func initializeMiddlewareMetrics() {
+func initializeMiddlewareMetrics(reg prometheus.Registerer) {
 	// Initialize the HTTP responses counter
 	httpResponsesTotal = registerOrGetMetric(
 		prometheus.NewCounterVec(
@@ -57,6 +57,7 @@ func initializeMiddlewareMetrics() {
 			[]string{"code"},
 		),
 		"gw_responses_total",
+		reg,
 	).(*prometheus.CounterVec)
 
 	// Initialize retrieval timeout metrics
@@ -71,6 +72,7 @@ func initializeMiddlewareMetrics() {
 			[]string{"code", "truncated"}, // code: HTTP status, truncated: "true"/"false"
 		),
 		"gw_retrieval_timeouts_total",
+		reg,
 	).(*prometheus.CounterVec)
 
 	// Initialize the concurrent requests gauge
@@ -84,6 +86,7 @@ func initializeMiddlewareMetrics() {
 			},
 		),
 		"gw_concurrent_requests",
+		reg,
 	).(prometheus.Gauge)
 }
 
@@ -145,8 +148,8 @@ func (w *metricsResponseWriter) Flush() {
 }
 
 // registerOrGetMetric is a helper that registers a Prometheus metric and handles AlreadyRegisteredError
-func registerOrGetMetric(metric prometheus.Collector, name string) prometheus.Collector {
-	if err := prometheus.Register(metric); err != nil {
+func registerOrGetMetric(metric prometheus.Collector, name string, reg prometheus.Registerer) prometheus.Collector {
+	if err := reg.Register(metric); err != nil {
 		if are, ok := err.(prometheus.AlreadyRegisteredError); ok {
 			return are.ExistingCollector
 		}

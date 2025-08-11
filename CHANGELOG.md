@@ -19,6 +19,7 @@ The following emojis are used to highlight certain changes:
 - `gateway`: Added configurable limits for gateway resource protection:
   - `Config.RetrievalTimeout`: Maximum duration between writes of non-empty data to HTTP response body (default: 30s). Returns 504 Gateway Timeout when gateway cannot retrieve content within this period.
   - `Config.MaxConcurrentRequests`: Limits concurrent HTTP requests (default: 1024). Returns 429 Too Many Requests with 60s Retry-After header when exceeded.
+  - `Config.MetricsRegistry`: Optional Prometheus registry for metrics isolation. When nil, uses the default global registry. Useful for testing and deployments with multiple gateway instances.
   - New middleware with Prometheus metrics:
     - `ipfs_http_gw_concurrent_requests`: Gauge tracking number of concurrent requests
     - `ipfs_http_gw_responses_total{code}`: Counter for all HTTP responses by status code

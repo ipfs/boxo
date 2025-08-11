@@ -14,6 +14,7 @@ import (
 	"github.com/ipfs/boxo/ipld/unixfs"
 	"github.com/ipfs/boxo/path"
 	"github.com/ipfs/go-cid"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 // Default values for gateway configuration limits
@@ -81,6 +82,10 @@ type Config struct {
 	// for graceful degradation.
 	// A value of 0 disables the limit.
 	MaxConcurrentRequests int
+
+	// MetricsRegistry is the Prometheus registry to use for metrics.
+	// If nil, prometheus.DefaultRegisterer will be used.
+	MetricsRegistry prometheus.Registerer
 }
 
 // PublicGateway is the specification of an IPFS Public Gateway.

@@ -11,8 +11,6 @@ import (
 )
 
 func TestWithResponseMetrics(t *testing.T) {
-	// Initialize metrics for testing
-	initializeMiddlewareMetrics()
 
 	t.Run("records all response codes", func(t *testing.T) {
 		handler := withResponseMetrics(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -108,8 +106,6 @@ func TestWithResponseMetrics(t *testing.T) {
 }
 
 func TestMiddlewareMetricsIntegration(t *testing.T) {
-	// Initialize metrics for testing
-	initializeMiddlewareMetrics()
 
 	t.Run("separate metrics for middleware events", func(t *testing.T) {
 		// Create a handler that holds the request

@@ -24,6 +24,7 @@ import (
 	carv2 "github.com/ipld/go-car/v2"
 	carbs "github.com/ipld/go-car/v2/blockstore"
 	"github.com/ipld/go-car/v2/storage"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -480,7 +481,7 @@ func TestCarBackendGetFile(t *testing.T) {
 	backend, err := NewCarBackend(fetcher)
 	require.NoError(t, err)
 
-	trustedGatewayServer := httptest.NewServer(NewHandler(Config{DeserializedResponses: true}, backend))
+	trustedGatewayServer := httptest.NewServer(NewHandler(Config{DeserializedResponses: true, MetricsRegistry: prometheus.NewRegistry()}, backend))
 	defer trustedGatewayServer.Close()
 
 	resp, err := http.Get(trustedGatewayServer.URL + "/ipfs/bafybeid3fd2xxdcd3dbj7trb433h2aqssn6xovjbwnkargjv7fuog4xjdi/hamtDir/exampleA")
@@ -584,7 +585,7 @@ func TestCarBackendGetFileRangeRequest(t *testing.T) {
 	backend, err := NewCarBackend(fetcher)
 	require.NoError(t, err)
 
-	trustedGatewayServer := httptest.NewServer(NewHandler(Config{DeserializedResponses: true}, backend))
+	trustedGatewayServer := httptest.NewServer(NewHandler(Config{DeserializedResponses: true, MetricsRegistry: prometheus.NewRegistry()}, backend))
 	defer trustedGatewayServer.Close()
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, trustedGatewayServer.URL+"/ipfs/bafybeigcisqd7m5nf3qmuvjdbakl5bdnh4ocrmacaqkpuh77qjvggmt2sa", nil)
@@ -694,7 +695,7 @@ func TestCarBackendGetFileWithBadBlockReturned(t *testing.T) {
 	backend, err := NewCarBackend(fetcher)
 	require.NoError(t, err)
 
-	trustedGatewayServer := httptest.NewServer(NewHandler(Config{DeserializedResponses: true}, backend))
+	trustedGatewayServer := httptest.NewServer(NewHandler(Config{DeserializedResponses: true, MetricsRegistry: prometheus.NewRegistry()}, backend))
 	defer trustedGatewayServer.Close()
 
 	resp, err := http.Get(trustedGatewayServer.URL + "/ipfs/bafybeigcisqd7m5nf3qmuvjdbakl5bdnh4ocrmacaqkpuh77qjvggmt2sa")
@@ -799,7 +800,7 @@ func TestCarBackendGetHAMTDirectory(t *testing.T) {
 	backend, err := NewCarBackend(fetcher)
 	require.NoError(t, err)
 
-	trustedGatewayServer := httptest.NewServer(NewHandler(Config{DeserializedResponses: true}, backend))
+	trustedGatewayServer := httptest.NewServer(NewHandler(Config{DeserializedResponses: true, MetricsRegistry: prometheus.NewRegistry()}, backend))
 	defer trustedGatewayServer.Close()
 
 	resp, err := http.Get(trustedGatewayServer.URL + "/ipfs/bafybeid3fd2xxdcd3dbj7trb433h2aqssn6xovjbwnkargjv7fuog4xjdi/hamtDir/")

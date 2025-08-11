@@ -68,10 +68,16 @@ type handler struct {
 //
 // [IPFS HTTP Gateway]: https://specs.ipfs.tech/http-gateways/
 func NewHandler(c Config, backend IPFSBackend) http.Handler {
-	// Initialize middleware metrics (safe to call multiple times)
-	initializeMiddlewareMetrics()
+	// Get registry from config or use default
+	reg := c.MetricsRegistry
+	if reg == nil {
+		reg = prometheus.DefaultRegisterer
+	}
 
-	h := newHandlerWithMetrics(&c, backend)
+	// Initialize middleware metrics with the registry
+	initializeMiddlewareMetrics(reg)
+
+	h := newHandlerWithMetrics(&c, backend, reg)
 
 	// Apply middleware in order (innermost to outermost)
 	var handler http.Handler = h
