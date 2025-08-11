@@ -11,20 +11,18 @@ import (
 	"strings"
 	"time"
 
-	// Ensure basic codecs are registered.
-	_ "github.com/ipld/go-ipld-prime/codec/cbor"
-	_ "github.com/ipld/go-ipld-prime/codec/dagcbor"
-	_ "github.com/ipld/go-ipld-prime/codec/dagjson"
-	_ "github.com/ipld/go-ipld-prime/codec/json"
+	"github.com/ipfs/boxo/gateway/assets"
+	"github.com/ipfs/boxo/path"
+	"github.com/ipfs/go-cid"
+	_ "github.com/ipld/go-ipld-prime/codec/cbor"    // Ensure basic codecs are registered.
+	_ "github.com/ipld/go-ipld-prime/codec/dagcbor" // Ensure basic codecs are registered.
+	_ "github.com/ipld/go-ipld-prime/codec/dagjson" // Ensure basic codecs are registered.
+	_ "github.com/ipld/go-ipld-prime/codec/json"    // Ensure basic codecs are registered.
 	"github.com/ipld/go-ipld-prime/multicodec"
 	"github.com/ipld/go-ipld-prime/node/basicnode"
 	mc "github.com/multiformats/go-multicodec"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
-
-	"github.com/ipfs/boxo/gateway/assets"
-	"github.com/ipfs/boxo/path"
-	"github.com/ipfs/go-cid"
 )
 
 // codecToContentType maps the supported IPLD codecs to the HTTP Content
