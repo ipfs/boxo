@@ -2,13 +2,13 @@ package httpnet
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"time"
 
 	"github.com/ipfs/boxo/bitswap/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
-	"go.uber.org/multierr"
 )
 
 // pinger pings connected hosts on regular intervals
@@ -65,22 +65,22 @@ func (pngr *pinger) ping(ctx context.Context, p peer.ID) ping.Result {
 	}
 
 	var result ping.Result
-	var errors error
+	var errs []error
 	for i := 0; i < len(urls); i++ {
 		r := <-results
 		if r.Error != nil {
-			errors = multierr.Append(errors, r.Error)
+			errs = append(errs, r.Error)
 			continue
 		}
 		result.RTT += r.RTT
 	}
 	close(results)
 
-	lenErrors := len(multierr.Errors(errors))
+	lenErrors := len(errs)
 	// if all urls failed return that, otherwise ignore.
 	if lenErrors == len(urls) {
 		return ping.Result{
-			Error: errors,
+			Error: errors.Join(errs...),
 		}
 	}
 	result.RTT = result.RTT / time.Duration(len(urls)-lenErrors)
