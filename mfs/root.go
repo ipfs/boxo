@@ -12,9 +12,9 @@ import (
 
 	dag "github.com/ipfs/boxo/ipld/merkledag"
 	ft "github.com/ipfs/boxo/ipld/unixfs"
+	"github.com/ipfs/boxo/provider"
 	ipld "github.com/ipfs/go-ipld-format"
 	logging "github.com/ipfs/go-log/v2"
-	"github.com/libp2p/go-libp2p/core/routing"
 )
 
 // TODO: Remove if not used.
@@ -99,11 +99,11 @@ type Root struct {
 	dir *Directory
 
 	repub *Republisher
-	prov  routing.ContentProviding
+	prov  provider.MultihashProvider
 }
 
 // NewRoot creates a new Root and starts up a republisher routine for it.
-func NewRoot(ctx context.Context, ds ipld.DAGService, node *dag.ProtoNode, pf PubFunc, prov routing.ContentProviding) (*Root, error) {
+func NewRoot(ctx context.Context, ds ipld.DAGService, node *dag.ProtoNode, pf PubFunc, prov provider.MultihashProvider) (*Root, error) {
 	var repub *Republisher
 	if pf != nil {
 		repub = NewRepublisher(pf, repubQuick, repubLong, node.Cid())
@@ -140,7 +140,7 @@ func NewRoot(ctx context.Context, ds ipld.DAGService, node *dag.ProtoNode, pf Pu
 
 // NewEmptyRoot creates an empty Root directory with the given directory
 // options. A republisher is created if PubFunc is not nil.
-func NewEmptyRoot(ctx context.Context, ds ipld.DAGService, pf PubFunc, prov routing.ContentProviding, opts MkdirOpts) (*Root, error) {
+func NewEmptyRoot(ctx context.Context, ds ipld.DAGService, pf PubFunc, prov provider.MultihashProvider, opts MkdirOpts) (*Root, error) {
 	root := new(Root)
 
 	dir, err := NewEmptyDirectory(ctx, "", root, ds, prov, opts)
@@ -219,9 +219,7 @@ func (kr *Root) updateChildEntry(c child) error {
 
 	if kr.prov != nil {
 		log.Debugf("mfs: provide: %s", c.Node.Cid())
-		if err = kr.prov.Provide(context.TODO(), c.Node.Cid(), true); err != nil {
-			log.Errorf("error providing %s: %s", c.Node.Cid(), err)
-		}
+		kr.prov.StartProviding(false, c.Node.Cid().Hash())
 	}
 
 	if kr.repub != nil {

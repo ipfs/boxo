@@ -14,12 +14,12 @@ import (
 	"github.com/ipfs/boxo/ipld/merkledag/dagutils"
 	ipfspinner "github.com/ipfs/boxo/pinning/pinner"
 	"github.com/ipfs/boxo/pinning/pinner/dsindex"
+	"github.com/ipfs/boxo/provider"
 	"github.com/ipfs/go-cid"
 	ds "github.com/ipfs/go-datastore"
 	"github.com/ipfs/go-datastore/query"
 	ipld "github.com/ipfs/go-ipld-format"
 	logging "github.com/ipfs/go-log/v2"
-	"github.com/libp2p/go-libp2p/core/routing"
 	"github.com/polydawn/refmt/cbor"
 	"github.com/polydawn/refmt/obj/atlas"
 )
@@ -98,8 +98,8 @@ type pinner struct {
 	clean int64
 	dirty int64
 
-	rootsProvider  routing.ContentProviding
-	pinnedProvider routing.ContentProviding
+	rootsProvider  provider.MultihashProvider
+	pinnedProvider provider.MultihashProvider
 }
 
 var _ ipfspinner.Pinner = (*pinner)(nil)
@@ -136,7 +136,7 @@ type Option struct {
 
 // WithPinnedProvider sets a provider for all pinned CIDs to be provided
 // (directly or recursively).
-func WithPinnedProvider(prov routing.ContentProviding) Option {
+func WithPinnedProvider(prov provider.MultihashProvider) Option {
 	return Option{func(p *pinner) {
 		log.Debug("pinned-providing configured")
 		p.pinnedProvider = prov
@@ -145,7 +145,7 @@ func WithPinnedProvider(prov routing.ContentProviding) Option {
 
 // WithRootsProvider sets a provider for root CIDs and direct pins to be
 // provided.
-func WithRootsProvider(prov routing.ContentProviding) Option {
+func WithRootsProvider(prov provider.MultihashProvider) Option {
 	return Option{func(p *pinner) {
 		log.Debug("roots-providing configured")
 		p.rootsProvider = prov
@@ -296,9 +296,7 @@ func (p *pinner) doPinRecursive(ctx context.Context, c cid.Cid, fetch bool, name
 	// we would provide the roots twice.
 	if p.rootsProvider != nil && p.pinnedProvider == nil {
 		log.Debugf("pinner: provide root %s", c)
-		if err := p.rootsProvider.Provide(ctx, c, true); err != nil {
-			log.Debugf("error providing %s: %s", c, err)
-		}
+		p.rootsProvider.StartProviding(false, c.Hash())
 	}
 	return nil
 }
@@ -345,9 +343,7 @@ func (p *pinner) doPinDirect(ctx context.Context, c cid.Cid, name string) error 
 
 	if p.rootsProvider != nil {
 		log.Debugf("pinner: provide direct pin %s", c)
-		if err := p.rootsProvider.Provide(ctx, c, true); err != nil {
-			log.Debugf("error providing %s: %s", c, err)
-		}
+		p.rootsProvider.StartProviding(false, c.Hash())
 	}
 
 	return nil

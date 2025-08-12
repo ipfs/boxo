@@ -8,6 +8,7 @@ import (
 
 	"github.com/gammazero/deque"
 	bserv "github.com/ipfs/boxo/blockservice"
+	"github.com/ipfs/boxo/provider"
 	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
 	format "github.com/ipfs/go-ipld-format"
@@ -15,7 +16,6 @@ import (
 	dagpb "github.com/ipld/go-codec-dagpb"
 	_ "github.com/ipld/go-ipld-prime/codec/raw" // register the IPLD raw codec
 	basicnode "github.com/ipld/go-ipld-prime/node/basic"
-	"github.com/libp2p/go-libp2p/core/routing"
 )
 
 var ipldLegacyDecoder *legacy.Decoder
@@ -304,7 +304,7 @@ type walkOptions struct {
 	SkipRoot     bool
 	Concurrency  int
 	ErrorHandler func(c cid.Cid, err error) error
-	Provider     routing.ContentProviding
+	Provider     provider.MultihashProvider
 }
 
 // WalkOption is a setter for walkOptions
@@ -393,8 +393,8 @@ func OnError(handler func(c cid.Cid, err error) error) WalkOption {
 	}
 }
 
-// WithProvider calls Provide() on every fetched node while traversing a DAG.
-func WithProvider(p routing.ContentProviding) WalkOption {
+// WithProvider calls StartProviding() on every fetched node while traversing a DAG.
+func WithProvider(p provider.MultihashProvider) WalkOption {
 	log.Debug("merkledag provider configured")
 	return func(walkOptions *walkOptions) {
 		walkOptions.Provider = p
@@ -444,9 +444,7 @@ func sequentialWalkDepth(ctx context.Context, getLinks GetLinks, root cid.Cid, d
 	// Successfully fetched "root". Provide it when needed.
 	if prov := options.Provider; prov != nil {
 		log.Debugf("merkledag: provide %s", root)
-		if err := prov.Provide(ctx, root, true); err != nil {
-			log.Debugf("error providing %s: %s", root, err)
-		}
+		prov.StartProviding(false, root.Hash())
 	}
 
 	for _, lnk := range links {
@@ -540,9 +538,7 @@ func parallelWalkDepth(ctx context.Context, getLinks GetLinks, root cid.Cid, vis
 					// Successfully fetched "ci". Provide it when needed,
 					if prov := options.Provider; prov != nil {
 						log.Debugf("merkledag: provide %s", root)
-						if err := prov.Provide(ctx, root, true); err != nil {
-							log.Debugf("error providing %s: %s", root, err)
-						}
+						prov.StartProviding(false, root.Hash())
 					}
 					outLinks := linksDepth{
 						links: links,
