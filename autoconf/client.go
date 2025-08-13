@@ -37,8 +37,8 @@ const (
 	lastRefreshFile        = ".last-refresh"
 
 	// File and directory permission constants
-	filePermOwnerReadWrite = 0600 // Owner read/write only for sensitive cache files
-	dirPermOwnerGroupRead  = 0755 // Owner read/write/execute, group/others read/execute for cache directories
+	filePermOwnerReadWrite = 0o600 // Owner read/write only for sensitive cache files
+	dirPermOwnerGroupRead  = 0o755 // Owner read/write/execute, group/others read/execute for cache directories
 
 	// DefaultRefreshInterval is the default interval for refreshing autoconf data.
 	// This interval strikes a balance between staying up-to-date with network changes
@@ -229,18 +229,6 @@ func (c *Client) getCacheDir() (string, error) {
 	for _, url := range sortedURLs {
 		h.Write([]byte(url))
 	}
-	hash := h.Sum64()
-
-	// Simple flat structure - just the hash as directory name
-	hashStr := fmt.Sprintf("%016x", hash)
-	return filepath.Join(c.cacheDir, hashStr), nil
-}
-
-// getCacheDirForURL returns the cache directory for a specific URL (for backward compatibility)
-func (c *Client) getCacheDirForURL(configURL string) (string, error) {
-	// Use FNV-1a for fast, uniform hashing (standard library)
-	h := fnv.New64a()
-	h.Write([]byte(configURL))
 	hash := h.Sum64()
 
 	// Simple flat structure - just the hash as directory name

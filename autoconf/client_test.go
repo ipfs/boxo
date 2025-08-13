@@ -128,7 +128,7 @@ func TestCacheMetadata(t *testing.T) {
 	require.NoError(t, err)
 
 	cacheDir := filepath.Join(tmpDir, "autoconf", "example.com")
-	err = os.MkdirAll(cacheDir, 0755)
+	err = os.MkdirAll(cacheDir, 0o755)
 	require.NoError(t, err)
 
 	// Test writing metadata directly (since writeMetadata is now inlined in saveToCache)

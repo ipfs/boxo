@@ -126,34 +126,6 @@ func GroupByKnownCapabilities(endpoints []string, supportsRead, supportsWrite bo
 	return grouped, nil
 }
 
-// extractUniqueBaseURLs processes a list of routing URLs and returns unique base URLs.
-// Base URL is the URL without any path (e.g., "https://example.com" from "https://example.com/routing/v1/providers").
-// This is useful when you need to create routing clients that expect base URLs.
-func extractUniqueBaseURLs(endpoints []string) []string {
-	baseURLSet := make(map[string]struct{}, len(endpoints))
-	var result []string
-
-	for _, endpoint := range endpoints {
-		endpoint = strings.TrimSpace(endpoint)
-		if endpoint == "" {
-			continue
-		}
-
-		baseURL, _, err := parseAndValidateRoutingURL(endpoint)
-		if err != nil {
-			log.Debugf("Skipping invalid endpoint %q: %v", endpoint, err)
-			continue
-		}
-
-		if _, exists := baseURLSet[baseURL]; !exists {
-			baseURLSet[baseURL] = struct{}{}
-			result = append(result, baseURL)
-		}
-	}
-
-	return result
-}
-
 // parseAndValidateRoutingURL extracts base URL and validates routing path in one step.
 // Returns error if URL is invalid or has unsupported routing path
 func parseAndValidateRoutingURL(endpoint string) (baseURL string, path string, err error) {
@@ -179,19 +151,6 @@ func parseAndValidateRoutingURL(endpoint string) (baseURL string, path string, e
 	return baseURL, path, nil
 }
 
-// filterValidRoutingURLs filters out URLs with unsupported routing paths
-func filterValidRoutingURLs(urls []string) []string {
-	var filtered []string
-	for _, urlStr := range urls {
-		if _, _, err := parseAndValidateRoutingURL(urlStr); err != nil {
-			log.Debugf("Skipping invalid routing URL %q: %v", urlStr, err)
-			continue
-		}
-		filtered = append(filtered, urlStr)
-	}
-	return filtered
-}
-
 // buildEndpointURL constructs a URL from baseURL and path, ensuring no trailing slash
 func buildEndpointURL(baseURL, path string) string {
 	// Always trim trailing slash from baseURL
@@ -205,14 +164,4 @@ func buildEndpointURL(baseURL, path string) string {
 	// Construct and ensure no trailing slash
 	fullURL := cleanBase + path
 	return strings.TrimRight(fullURL, "/")
-}
-
-// buildEndpointURLs creates URLs from base URL and paths, ensuring no trailing slashes
-func buildEndpointURLs(baseURL string, paths []string) []string {
-	urls := make([]string, 0, len(paths))
-	for _, path := range paths {
-		url := buildEndpointURL(baseURL, path)
-		urls = append(urls, url)
-	}
-	return urls
 }

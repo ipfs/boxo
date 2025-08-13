@@ -208,7 +208,7 @@ func (c *Client) fetchFromRemoteRaw(ctx context.Context, configURL, cacheDir str
 		return nil, nil, fmt.Errorf("invalid config URL: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, "GET", configURL, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, configURL, nil)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to create request: %w", err)
 	}
