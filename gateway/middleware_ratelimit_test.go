@@ -124,10 +124,13 @@ func TestWithConcurrentRequestLimiter(t *testing.T) {
 		successCount := 0
 		rejectCount := 0
 		for _, code := range results {
-			if code == http.StatusOK {
+			switch code {
+			case http.StatusOK:
 				successCount++
-			} else if code == http.StatusTooManyRequests {
+			case http.StatusTooManyRequests:
 				rejectCount++
+			default:
+				t.Errorf("unexpected http status: %d", code)
 			}
 		}
 
