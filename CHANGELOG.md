@@ -24,6 +24,7 @@ The following emojis are used to highlight certain changes:
     - `ipfs_http_gw_concurrent_requests`: Gauge tracking number of concurrent requests
     - `ipfs_http_gw_responses_total{code}`: Counter for all HTTP responses by status code
     - `ipfs_http_gw_retrieval_timeouts_total{code,truncated}`: Counter for retrieval timeout events with details on truncation
+- `namesys/IPNSPublisher`: option to `PublishOptions` that allows for setting a custom sequence number for the IPNS record with proper validation to prevent unintentional replay attacks. [#962](https://github.com/ipfs/boxo/pull/962)
 
 ### Changed
 
@@ -35,6 +36,7 @@ The following emojis are used to highlight certain changes:
   - Provide directly from pinner/merkledag on dag traversal when `provider` is set (via Option).
   - Provide from MFS whenever there is a call to `DAGService.Add` and `provider` is set (via constructor param).
 - upgrade to `go-libp2p` [v0.43.0](https://github.com/libp2p/go-libp2p/releases/tag/v0.43.0)
+- replace `uber-go/multierr` with `errors.Join` [#996](https://github.com/ipfs/boxo/pull/996)
 
 ### Removed
 

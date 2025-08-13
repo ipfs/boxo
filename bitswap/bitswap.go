@@ -2,6 +2,7 @@ package bitswap
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/ipfs/boxo/bitswap/client"
@@ -17,7 +18,6 @@ import (
 	"github.com/ipfs/go-metrics-interface"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/routing"
-	"go.uber.org/multierr"
 )
 
 var log = logging.Logger("bitswap")
@@ -97,7 +97,7 @@ func New(ctx context.Context, net network.BitSwapNetwork, providerFinder routing
 
 func (bs *Bitswap) NotifyNewBlocks(ctx context.Context, blks ...blocks.Block) error {
 	if bs.Server != nil {
-		return multierr.Combine(
+		return errors.Join(
 			bs.Client.NotifyNewBlocks(ctx, blks...),
 			bs.Server.NotifyNewBlocks(ctx, blks...),
 		)

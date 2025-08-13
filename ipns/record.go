@@ -20,7 +20,6 @@ import (
 	basicnode "github.com/ipld/go-ipld-prime/node/basic"
 	ic "github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/peer"
-	"go.uber.org/multierr"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -56,7 +55,7 @@ func UnmarshalRecord(data []byte) (*Record, error) {
 	var pb ipns_pb.IpnsRecord
 	err := proto.Unmarshal(data, &pb)
 	if err != nil {
-		return nil, multierr.Combine(ErrInvalidRecord, err)
+		return nil, errors.Join(ErrInvalidRecord, err)
 	}
 
 	record := &Record{
@@ -65,13 +64,13 @@ func UnmarshalRecord(data []byte) (*Record, error) {
 
 	// Ensure the record has DAG-CBOR data because we need it.
 	if len(pb.GetData()) == 0 {
-		return nil, multierr.Combine(ErrInvalidRecord, ErrDataMissing)
+		return nil, errors.Join(ErrInvalidRecord, ErrDataMissing)
 	}
 
 	// Decode CBOR data.
 	builder := basicnode.Prototype__Map{}.NewBuilder()
 	if err := dagcbor.Decode(builder, bytes.NewReader(pb.GetData())); err != nil {
-		return nil, multierr.Combine(ErrInvalidRecord, err)
+		return nil, errors.Join(ErrInvalidRecord, err)
 	}
 	record.node = builder.Build()
 
@@ -106,7 +105,7 @@ func (rec *Record) Value() (path.Path, error) {
 	if value[0] == '/' {
 		p, err := path.NewPath(string(value))
 		if err != nil {
-			return nil, multierr.Combine(ErrInvalidPath, err)
+			return nil, errors.Join(ErrInvalidPath, err)
 		}
 		// done, finish fast
 		return p, nil
@@ -115,7 +114,7 @@ func (rec *Record) Value() (path.Path, error) {
 	// fallback: for legacy/optimization reasons, the value could be a valid CID in byte form
 	binaryCid, err := cid.Cast(value)
 	if err != nil {
-		return nil, multierr.Combine(ErrInvalidPath, err)
+		return nil, errors.Join(ErrInvalidPath, err)
 	}
 	p := path.FromCid(binaryCid)
 
@@ -149,7 +148,7 @@ func (rec *Record) Validity() (time.Time, error) {
 
 		v, err := util.ParseRFC3339(string(value))
 		if err != nil {
-			return time.Time{}, multierr.Combine(ErrInvalidValidity, err)
+			return time.Time{}, errors.Join(ErrInvalidValidity, err)
 		}
 		return v, nil
 	default:
@@ -186,12 +185,12 @@ func (rec *Record) PubKey() (ic.PubKey, error) {
 func (rec *Record) getBytesValue(key string) ([]byte, error) {
 	node, err := rec.node.LookupByString(key)
 	if err != nil {
-		return nil, multierr.Combine(ErrInvalidRecord, err)
+		return nil, errors.Join(ErrInvalidRecord, err)
 	}
 
 	value, err := node.AsBytes()
 	if err != nil {
-		return nil, multierr.Combine(ErrInvalidRecord, err)
+		return nil, errors.Join(ErrInvalidRecord, err)
 	}
 
 	return value, nil
@@ -200,12 +199,12 @@ func (rec *Record) getBytesValue(key string) ([]byte, error) {
 func (rec *Record) getIntValue(key string) (int64, error) {
 	node, err := rec.node.LookupByString(key)
 	if err != nil {
-		return -1, multierr.Combine(ErrInvalidRecord, err)
+		return -1, errors.Join(ErrInvalidRecord, err)
 	}
 
 	value, err := node.AsInt()
 	if err != nil {
-		return -1, multierr.Combine(ErrInvalidRecord, err)
+		return -1, errors.Join(ErrInvalidRecord, err)
 	}
 
 	return value, nil
@@ -483,20 +482,22 @@ func compare(a, b *Record) (int, error) {
 // ExtractPublicKey extracts a [crypto.PubKey] matching the given [Name] from
 // the IPNS Record, if possible.
 func ExtractPublicKey(rec *Record, name Name) (ic.PubKey, error) {
-	if pk, err := rec.PubKey(); err == nil {
-		expPid, err := peer.IDFromPublicKey(pk)
-		if err != nil {
-			return nil, multierr.Combine(ErrInvalidPublicKey, err)
+	pk, err := rec.PubKey()
+	if err != nil {
+		if !errors.Is(err, ErrPublicKeyNotFound) {
+			return nil, errors.Join(ErrInvalidPublicKey, err)
 		}
-
-		if !name.Equal(NameFromPeer(expPid)) {
-			return nil, ErrPublicKeyMismatch
-		}
-
-		return pk, nil
-	} else if !errors.Is(err, ErrPublicKeyNotFound) {
-		return nil, multierr.Combine(ErrInvalidPublicKey, err)
-	} else {
 		return name.Peer().ExtractPublicKey()
 	}
+
+	expPid, err := peer.IDFromPublicKey(pk)
+	if err != nil {
+		return nil, errors.Join(ErrInvalidPublicKey, err)
+	}
+
+	if !name.Equal(NameFromPeer(expPid)) {
+		return nil, ErrPublicKeyMismatch
+	}
+
+	return pk, nil
 }
