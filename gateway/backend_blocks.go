@@ -176,7 +176,17 @@ func (bb *BlocksBackend) Get(ctx context.Context, path path.ImmutablePath, range
 
 						return md, NewGetResponseFromReader(file, fileSize), nil
 					}
+				} else {
+					// Log that UnixFS file creation failed during range optimization attempt
+					log.Debugw("failed to create UnixFS file for range request optimization",
+						"path", path,
+						"error", err)
 				}
+			} else {
+				// Log that protobuf decoding failed during range optimization attempt
+				log.Debugw("failed to decode protobuf for range request optimization",
+					"path", path,
+					"error", err)
 			}
 		}
 		// Fall back to regular path for non-files or if optimization fails
