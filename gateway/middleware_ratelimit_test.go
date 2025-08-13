@@ -192,7 +192,7 @@ func TestWithConcurrentRequestLimiter(t *testing.T) {
 	t.Run("Retry-After is static", func(t *testing.T) {
 		done := make(chan struct{})
 		defer close(done) // Ensure goroutine cleanup
-		
+
 		handler := withConcurrentRequestLimiter(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// Hold the request until test cleanup
 			<-done

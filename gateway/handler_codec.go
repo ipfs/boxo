@@ -297,6 +297,9 @@ func (i *handler) serveCodecConverted(ctx context.Context, w http.ResponseWriter
 		return true
 	}
 
+	log.Debugw("failed to write codec response",
+		"path", contentPath,
+		"error", err)
 	return false
 }
 

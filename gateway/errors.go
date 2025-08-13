@@ -229,6 +229,12 @@ func webError(w http.ResponseWriter, r *http.Request, c *Config, err error, defa
 		code = gwErr.StatusCode
 	}
 
+	log.Debugw("serving error response",
+		"path", r.URL.Path,
+		"method", r.Method,
+		"error", err,
+		"code", code)
+
 	writeErrorResponse(w, r, c, code, err.Error())
 }
 
