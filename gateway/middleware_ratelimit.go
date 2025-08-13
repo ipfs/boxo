@@ -36,18 +36,16 @@ func withConcurrentRequestLimiter(handler http.Handler, limit int, c *Config, me
 	}
 
 	// Create semaphore (buffered channel)
+	// Uses inverted pattern: starts empty, acquire by sending, release by receiving
 	semaphore := make(chan struct{}, limit)
-	for i := 0; i < limit; i++ {
-		semaphore <- struct{}{}
-	}
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		select {
-		case <-semaphore:
+		case semaphore <- struct{}{}:
 			// Acquired a slot
 			metrics.incConcurrentRequests()
 			defer func() {
-				semaphore <- struct{}{} // Release slot
+				<-semaphore // Release slot
 				metrics.decConcurrentRequests()
 			}()
 			handler.ServeHTTP(w, r)
