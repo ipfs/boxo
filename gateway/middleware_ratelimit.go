@@ -56,6 +56,11 @@ func withConcurrentRequestLimiter(handler http.Handler, limit int, c *Config, me
 			// At capacity - reject with 429
 			metrics.recordResponse(http.StatusTooManyRequests)
 			// No need for separate rate limits metric - 429 responses ONLY come from this middleware
+			log.Debugw("request rejected - at capacity",
+				"path", r.URL.Path,
+				"method", r.Method,
+				"remoteAddr", r.RemoteAddr,
+				"code", http.StatusTooManyRequests)
 
 			// Prevent caching of rate limit responses
 			w.Header().Set("Cache-Control", "no-store")

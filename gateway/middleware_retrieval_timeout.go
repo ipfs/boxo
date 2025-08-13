@@ -49,11 +49,19 @@ func withRetrievalTimeout(handler http.Handler, timeout time.Duration, c *Config
 					tw.mu.Lock()
 					if !tw.timedOut && !tw.handlerComplete {
 						tw.timedOut = true
+						log.Debugw("retrieval timeout triggered",
+							"path", r.URL.Path,
+							"headerSent", tw.wroteHeader,
+							"bytesWritten", tw.bytesWritten)
 
 						if !tw.wroteHeader {
 							// Headers not sent yet, we can send 504
 							metrics.recordTimeout(http.StatusGatewayTimeout, false)
 							message := "Unable to retrieve content within timeout period"
+							log.Debugw("sending 504 gateway timeout",
+								"path", tw.request.URL.Path,
+								"method", tw.request.Method,
+								"remoteAddr", tw.request.RemoteAddr)
 							writeErrorResponse(tw.ResponseWriter, tw.request, tw.config, http.StatusGatewayTimeout, message)
 						} else {
 							// Headers already sent, response is being truncated
@@ -76,9 +84,16 @@ func withRetrievalTimeout(handler http.Handler, timeout time.Duration, c *Config
 										tcpConn.SetLinger(0)
 									}
 									conn.Close()
-									middlewareLog.Debugw("response truncated due to timeout",
+									log.Debugw("response truncated due to timeout",
+										"path", tw.request.URL.Path,
+										"method", tw.request.Method,
+										"remoteAddr", tw.request.RemoteAddr,
 										"status", statusCode,
 										"bytesWritten", tw.bytesWritten)
+								} else {
+									log.Warnw("failed to hijack connection for timeout reset",
+										"path", tw.request.URL.Path,
+										"error", err)
 								}
 							}
 						}

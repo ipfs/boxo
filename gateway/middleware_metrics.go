@@ -7,11 +7,11 @@ import (
 	"net/http"
 	"strconv"
 
-	logging "github.com/ipfs/go-log/v2"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
-var middlewareLog = logging.Logger("boxo/gateway/middleware")
+// Use the main gateway logger for consistency
+// var log is defined in handler.go
 
 // middlewareMetrics holds metrics used by gateway middleware
 type middlewareMetrics struct {
@@ -191,7 +191,7 @@ func registerOrGetMetric(metric prometheus.Collector, name string, reg prometheu
 		if are, ok := err.(prometheus.AlreadyRegisteredError); ok {
 			return are.ExistingCollector
 		}
-		middlewareLog.Errorf("failed to register %s: %v", name, err)
+		log.Errorf("failed to register %s: %v", name, err)
 	}
 	return metric
 }
