@@ -190,10 +190,8 @@ func writeErrorResponse(w http.ResponseWriter, r *http.Request, c *Config, statu
 			_, _ = w.Write([]byte(fmt.Sprintf("error during body generation: %v", err)))
 		}
 	} else {
-		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-		w.Header().Set("X-Content-Type-Options", "nosniff")
-		w.WriteHeader(statusCode)
-		fmt.Fprintln(w, message)
+		// plain text response
+		http.Error(w, message, statusCode)
 	}
 }
 
