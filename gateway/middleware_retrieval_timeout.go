@@ -35,19 +35,16 @@ func withRetrievalTimeout(handler http.Handler, timeout time.Duration, c *Config
 			ResponseWriter: w,
 			timeout:        timeout,
 			timer:          time.NewTimer(timeout),
-			done:           handlerDone,
-			timeoutSignal:  timeoutChan,
 			request:        r,
 			config:         c,
 		}
 
 		// Start the timeout monitoring goroutine
 		go func() {
-			for {
-				select {
-				case <-tw.timer.C:
-					tw.mu.Lock()
-					if !tw.timedOut && !tw.handlerComplete {
+			select {
+			case <-tw.timer.C:
+				tw.mu.Lock()
+				if !tw.timedOut && !tw.handlerComplete {
 						tw.timedOut = true
 						log.Debugw("retrieval timeout triggered",
 							"path", r.URL.Path,
@@ -102,14 +99,11 @@ func withRetrievalTimeout(handler http.Handler, timeout time.Duration, c *Config
 						close(timeoutChan)
 					}
 					tw.mu.Unlock()
-					return
 
 				case <-handlerDone:
 					// Handler completed, stop timer and exit
 					tw.timer.Stop()
-					return
 				}
-			}
 		}()
 
 		// Run handler in a goroutine so we can interrupt it on timeout
@@ -142,8 +136,6 @@ type timeoutWriter struct {
 	timedOut        bool
 	wroteHeader     bool
 	headerCode      int
-	done            chan struct{}
-	timeoutSignal   chan struct{}
 	hijacked        bool
 	handlerComplete bool
 	bytesWritten    int64
