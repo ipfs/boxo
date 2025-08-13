@@ -15,20 +15,28 @@ import (
 func TestWithConcurrentRequestLimiter(t *testing.T) {
 	t.Run("returns HTML error when Accept header includes text/html", func(t *testing.T) {
 		config := &Config{DisableHTMLErrors: false}
+		blockChan := make(chan struct{})
+		defer close(blockChan)
+		started := make(chan struct{})
+
 		handler := withConcurrentRequestLimiter(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			select {
+			case <-started:
+				// Already closed, this is a subsequent request
+			default:
+				close(started) // Signal first request has started
+			}
 			// Block to simulate a busy handler
-			time.Sleep(100 * time.Millisecond)
+			<-blockChan
 		}), 1, config, newTestMetrics())
 
 		// First request occupies the slot
 		req1 := httptest.NewRequest(http.MethodGet, "/", nil)
 		rec1 := httptest.NewRecorder()
-		go func() {
-			handler.ServeHTTP(rec1, req1)
-		}()
+		go handler.ServeHTTP(rec1, req1)
 
-		// Give first request time to start
-		time.Sleep(10 * time.Millisecond)
+		// Wait for first request to start and acquire the semaphore
+		<-started
 
 		// Second request with HTML accept should get HTML error
 		req2 := httptest.NewRequest(http.MethodGet, "/", nil)
@@ -57,7 +65,6 @@ func TestWithConcurrentRequestLimiter(t *testing.T) {
 		var requestCount atomic.Int32
 		handler := withConcurrentRequestLimiter(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			requestCount.Add(1)
-			time.Sleep(50 * time.Millisecond)
 			w.Write([]byte("success"))
 		}), 0, nil, newTestMetrics())
 
@@ -81,8 +88,14 @@ func TestWithConcurrentRequestLimiter(t *testing.T) {
 
 	t.Run("limits concurrent requests", func(t *testing.T) {
 		const limit = 2
+		const numRequests = 5
 		var concurrent atomic.Int32
 		var maxConcurrent atomic.Int32
+
+		// Barrier to ensure all handlers run concurrently
+		startBarrier := make(chan struct{})
+		var ready sync.WaitGroup
+		ready.Add(numRequests)
 
 		handler := withConcurrentRequestLimiter(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			cur := concurrent.Add(1)
@@ -96,14 +109,15 @@ func TestWithConcurrentRequestLimiter(t *testing.T) {
 				}
 			}
 
-			time.Sleep(50 * time.Millisecond)
+			ready.Done()   // Signal this handler is ready
+			<-startBarrier // Wait for all handlers to be ready
 			w.Write([]byte("success"))
 		}), limit, nil, newTestMetrics())
 
 		// Send more requests than the limit
 		var wg sync.WaitGroup
-		results := make([]int, 5)
-		for i := 0; i < 5; i++ {
+		results := make([]int, numRequests)
+		for i := 0; i < numRequests; i++ {
 			wg.Add(1)
 			go func(idx int) {
 				defer wg.Done()
@@ -111,8 +125,16 @@ func TestWithConcurrentRequestLimiter(t *testing.T) {
 				rec := httptest.NewRecorder()
 				handler.ServeHTTP(rec, req)
 				results[idx] = rec.Code
+				// If this request was rejected, it won't call ready.Done()
+				if rec.Code == http.StatusTooManyRequests {
+					ready.Done()
+				}
 			}(i)
 		}
+
+		// Wait for all handlers to be ready, then release them
+		ready.Wait()
+		close(startBarrier)
 		wg.Wait()
 
 		// Check that max concurrent never exceeded limit
@@ -143,20 +165,28 @@ func TestWithConcurrentRequestLimiter(t *testing.T) {
 	})
 
 	t.Run("returns 429 with Retry-After and Cache-Control headers", func(t *testing.T) {
+		blockChan := make(chan struct{})
+		defer close(blockChan)
+		started := make(chan struct{})
+
 		handler := withConcurrentRequestLimiter(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			time.Sleep(100 * time.Millisecond)
+			select {
+			case <-started:
+				// Already closed
+			default:
+				close(started) // Signal first request has started
+			}
+			<-blockChan
 			w.Write([]byte("success"))
 		}), 1, nil, newTestMetrics())
 
 		// First request should succeed
 		req1 := httptest.NewRequest(http.MethodGet, "/", nil)
 		rec1 := httptest.NewRecorder()
-		go func() {
-			handler.ServeHTTP(rec1, req1)
-		}()
+		go handler.ServeHTTP(rec1, req1)
 
-		// Give first request time to start
-		time.Sleep(10 * time.Millisecond)
+		// Wait for first request to start
+		<-started
 
 		// Second request should be rejected
 		req2 := httptest.NewRequest(http.MethodGet, "/", nil)
@@ -192,8 +222,10 @@ func TestWithConcurrentRequestLimiter(t *testing.T) {
 	t.Run("Retry-After is static", func(t *testing.T) {
 		done := make(chan struct{})
 		defer close(done) // Ensure goroutine cleanup
+		started := make(chan struct{})
 
 		handler := withConcurrentRequestLimiter(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			close(started) // Signal that handler has started
 			// Hold the request until test cleanup
 			<-done
 		}), 1, nil, newTestMetrics())
@@ -205,7 +237,7 @@ func TestWithConcurrentRequestLimiter(t *testing.T) {
 			handler.ServeHTTP(rec, req)
 		}()
 
-		time.Sleep(10 * time.Millisecond)
+		<-started // Wait for handler to start
 
 		// Generate many rejections and verify Retry-After stays constant
 		for i := 0; i < 20; i++ {
