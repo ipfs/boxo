@@ -32,7 +32,6 @@ import (
 	"github.com/ipld/go-ipld-prime/traversal"
 	"github.com/multiformats/go-multicodec"
 	"github.com/prometheus/client_golang/prometheus"
-	"go.uber.org/multierr"
 )
 
 var ErrFetcherUnexpectedEOF = fmt.Errorf("failed to fetch IPLD data")
@@ -726,7 +725,7 @@ func fetchWithPartialRetries[T any](ctx context.Context, p path.ImmutablePath, i
 
 		if err != nil {
 			lsys := getCarLinksystem(func(ctx context.Context, cid cid.Cid) (blocks.Block, error) {
-				return nil, multierr.Append(ErrFetcherUnexpectedEOF, format.ErrNotFound{Cid: cid})
+				return nil, errors.Join(ErrFetcherUnexpectedEOF, format.ErrNotFound{Cid: cid})
 			})
 			for {
 				select {
