@@ -50,11 +50,14 @@ func TestWithRetrievalTimeout(t *testing.T) {
 		}
 	})
 	t.Run("timeout on initial retrieval block", func(t *testing.T) {
+		blockChan := make(chan struct{})
+		defer close(blockChan) // Ensure goroutine cleanup
+
 		// Simulate a handler that blocks indefinitely on initial retrieval
 		// (e.g., searching for providers that don't exist)
 		handler := withRetrievalTimeout(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// Block forever - simulating stuck provider search
-			select {}
+			// Block until test cleanup - simulating stuck provider search
+			<-blockChan
 		}), 50*time.Millisecond, nil, newTestMetrics())
 
 		req := httptest.NewRequest(http.MethodGet, "/ipfs/bafkreif6lrhgz3fpiwypdk65qrqiey7svgpggruhbylrgv32l3izkqpsc4", nil)
