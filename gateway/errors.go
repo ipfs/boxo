@@ -187,7 +187,7 @@ func writeErrorResponse(w http.ResponseWriter, r *http.Request, c *Config, statu
 			Error:      message,
 		})
 		if err != nil {
-			_, _ = w.Write([]byte(fmt.Sprintf("error during body generation: %v", err)))
+			fmt.Fprintf(w, "error during body generation: %v", err)
 		}
 	} else {
 		// plain text response

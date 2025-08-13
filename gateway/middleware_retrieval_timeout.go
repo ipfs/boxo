@@ -45,65 +45,65 @@ func withRetrievalTimeout(handler http.Handler, timeout time.Duration, c *Config
 			case <-tw.timer.C:
 				tw.mu.Lock()
 				if !tw.timedOut && !tw.handlerComplete {
-						tw.timedOut = true
-						log.Debugw("retrieval timeout triggered",
-							"path", r.URL.Path,
-							"headerSent", tw.wroteHeader,
-							"bytesWritten", tw.bytesWritten)
+					tw.timedOut = true
+					log.Debugw("retrieval timeout triggered",
+						"path", r.URL.Path,
+						"headerSent", tw.wroteHeader,
+						"bytesWritten", tw.bytesWritten)
 
-						if !tw.wroteHeader {
-							// Headers not sent yet, we can send 504
-							metrics.recordTimeout(http.StatusGatewayTimeout, false)
-							message := "Unable to retrieve content within timeout period"
-							log.Debugw("sending 504 gateway timeout",
-								"path", tw.request.URL.Path,
-								"method", tw.request.Method,
-								"remoteAddr", tw.request.RemoteAddr)
-							writeErrorResponse(tw.ResponseWriter, tw.request, tw.config, http.StatusGatewayTimeout, message)
-						} else {
-							// Headers already sent, response is being truncated
-							statusCode := tw.headerCode
-							if statusCode == 0 {
-								statusCode = http.StatusOK
-							}
-							metrics.recordTimeout(statusCode, true)
+					if !tw.wroteHeader {
+						// Headers not sent yet, we can send 504
+						metrics.recordTimeout(http.StatusGatewayTimeout, false)
+						message := "Unable to retrieve content within timeout period"
+						log.Debugw("sending 504 gateway timeout",
+							"path", tw.request.URL.Path,
+							"method", tw.request.Method,
+							"remoteAddr", tw.request.RemoteAddr)
+						writeErrorResponse(tw.ResponseWriter, tw.request, tw.config, http.StatusGatewayTimeout, message)
+					} else {
+						// Headers already sent, response is being truncated
+						statusCode := tw.headerCode
+						if statusCode == 0 {
+							statusCode = http.StatusOK
+						}
+						metrics.recordTimeout(statusCode, true)
 
-							// Try to write truncation message (best effort)
-							tw.ResponseWriter.Write([]byte(truncationMessage))
+						// Try to write truncation message (best effort)
+						fmt.Fprint(tw.ResponseWriter, truncationMessage)
 
-							// Try to hijack and force connection reset
-							if hijacker, ok := tw.ResponseWriter.(http.Hijacker); ok {
-								conn, _, err := hijacker.Hijack()
-								if err == nil {
-									tw.hijacked = true
-									// Force TCP RST instead of graceful close
-									if tcpConn, ok := conn.(*net.TCPConn); ok {
-										tcpConn.SetLinger(0)
-									}
-									conn.Close()
-									log.Debugw("response truncated due to timeout",
-										"path", tw.request.URL.Path,
-										"method", tw.request.Method,
-										"remoteAddr", tw.request.RemoteAddr,
-										"status", statusCode,
-										"bytesWritten", tw.bytesWritten)
-								} else {
-									log.Warnw("failed to hijack connection for timeout reset",
-										"path", tw.request.URL.Path,
-										"error", err)
+						// Try to hijack and force connection reset
+						if hijacker, ok := tw.ResponseWriter.(http.Hijacker); ok {
+							conn, _, err := hijacker.Hijack()
+							if err == nil {
+								tw.hijacked = true
+								// Force TCP RST instead of graceful close
+								if tcpConn, ok := conn.(*net.TCPConn); ok {
+									tcpConn.SetLinger(0)
 								}
+								conn.Close()
+								log.Debugw("response truncated due to timeout",
+									"path", tw.request.URL.Path,
+									"method", tw.request.Method,
+									"remoteAddr", tw.request.RemoteAddr,
+									"status", statusCode,
+									"bytesWritten", tw.bytesWritten)
+							} else {
+								log.Warnw("failed to hijack connection for timeout reset",
+									"path", tw.request.URL.Path,
+									"error", err)
 							}
 						}
-
-						// Signal timeout to potentially waiting handler
-						close(timeoutChan)
 					}
-					tw.mu.Unlock()
 
-				case <-handlerDone:
-					// Handler completed, stop timer and exit
-					tw.timer.Stop()
+					// Signal timeout to potentially waiting handler
+					close(timeoutChan)
 				}
+				tw.mu.Unlock()
+
+			case <-handlerDone:
+				// Handler completed, stop timer and exit
+				tw.timer.Stop()
+			}
 		}()
 
 		// Run handler in a goroutine so we can interrupt it on timeout
