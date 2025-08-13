@@ -108,13 +108,11 @@ func withRetrievalTimeout(handler http.Handler, timeout time.Duration, c *Config
 
 		// Run handler in a goroutine so we can interrupt it on timeout
 		go func() {
-			defer func() {
-				tw.mu.Lock()
-				tw.handlerComplete = true
-				tw.mu.Unlock()
-				close(handlerDone)
-			}()
+			defer close(handlerDone) // Always signal completion, even on panic
 			handler.ServeHTTP(tw, r)
+			tw.mu.Lock()
+			tw.handlerComplete = true
+			tw.mu.Unlock()
 		}()
 
 		// Wait for either handler completion or timeout
