@@ -16,6 +16,7 @@ The following emojis are used to highlight certain changes:
 
 ### Added
 
+- `autoconf`: Client library for fetching, caching and expanding IPFS network configurations using "auto" placeholders
 - `namesys/IPNSPublisher`: option to `PublishOptions` that allows for setting a custom sequence number for the IPNS record with proper validation to prevent unintentional replay attacks. [#962](https://github.com/ipfs/boxo/pull/962)
 
 ### Changed
