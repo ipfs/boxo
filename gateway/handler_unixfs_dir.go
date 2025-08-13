@@ -221,7 +221,7 @@ func (i *handler) serveDirectory(ctx context.Context, w http.ResponseWriter, r *
 	rq.logger.Debugw("request processed", "tplDataDNSLink", globalData.DNSLink, "tplDataSize", size, "tplDataBackLink", backLink, "tplDataHash", hash)
 
 	if err := assets.DirectoryTemplate.Execute(w, tplData); err != nil {
-		_, _ = w.Write([]byte(fmt.Sprintf("error during body generation: %v", err)))
+		_, _ = fmt.Fprintf(w, "error during body generation: %v", err)
 		return false
 	}
 

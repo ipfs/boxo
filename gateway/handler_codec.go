@@ -206,7 +206,7 @@ func (i *handler) serveCodecHTML(ctx context.Context, w http.ResponseWriter, r *
 		Node:       parseNode(blockCid, blockData),
 	})
 	if err != nil {
-		_, _ = w.Write([]byte(fmt.Sprintf("error during body generation: %v", err)))
+		_, _ = fmt.Fprintf(w, "error during body generation: %v", err)
 	}
 
 	return err == nil
