@@ -54,6 +54,14 @@ func TestOnlyIfCachedTimeoutBehavior(t *testing.T) {
 			expectedMaxTime:  2 * time.Second,        // Should complete shortly after backend responds
 			description:      "Should wait for backend without timeout",
 		},
+		{
+			name:             "Quick backend response",
+			backendDelay:     10 * time.Millisecond,
+			retrievalTimeout: 5 * time.Second,
+			expectedMinTime:  5 * time.Millisecond,
+			expectedMaxTime:  100 * time.Millisecond,
+			description:      "Should return quickly when backend responds fast",
+		},
 	}
 
 	for _, tc := range testCases {
@@ -82,4 +90,41 @@ func TestOnlyIfCachedTimeoutBehavior(t *testing.T) {
 			require.Less(t, elapsed, tc.expectedMaxTime, tc.description)
 		})
 	}
+}
+
+// Test that only-if-cached correctly handles different HTTP methods
+func TestOnlyIfCachedMethods(t *testing.T) {
+	// Use a valid CID that is not present in the cache
+	testPath, _ := path.NewPath("/ipfs/bafkreicm2cerwpdtah2rd7rxg5jcaqsj52blfuaprkurromr5y6p3a5zlu")
+
+	// Create a mock backend that returns cached=false
+	backend := &slowBackend{delay: 10 * time.Millisecond}
+	h := &handler{
+		backend: backend,
+		config:  &Config{RetrievalTimeout: 1 * time.Second},
+	}
+
+	t.Run("HEAD method returns 412 when not cached", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodHead, "/ipfs/QmTest", nil)
+		req.Header.Set("Cache-Control", "only-if-cached")
+		rec := httptest.NewRecorder()
+
+		handled := h.handleOnlyIfCached(rec, req, testPath)
+
+		require.True(t, handled)
+		require.Equal(t, http.StatusPreconditionFailed, rec.Code)
+		require.Empty(t, rec.Body.String(), "HEAD response should have no body")
+	})
+
+	t.Run("GET method returns 412 with error message when not cached", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/ipfs/QmTest", nil)
+		req.Header.Set("Cache-Control", "only-if-cached")
+		rec := httptest.NewRecorder()
+
+		handled := h.handleOnlyIfCached(rec, req, testPath)
+
+		require.True(t, handled)
+		require.Equal(t, http.StatusPreconditionFailed, rec.Code)
+		require.Contains(t, rec.Body.String(), "not in local datastore")
+	})
 }
