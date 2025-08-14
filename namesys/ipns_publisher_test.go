@@ -118,3 +118,88 @@ func (d *checkSyncDS) Sync(ctx context.Context, prefix ds.Key) error {
 	d.syncKeys[prefix] = struct{}{}
 	return d.Datastore.Sync(ctx, prefix)
 }
+
+func TestCustomSequenceValidation(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+
+	// Create test identity
+	privKey, pubKey, err := ci.GenerateKeyPairWithReader(ci.Ed25519, 2048, rand.Reader)
+	require.NoError(t, err)
+
+	pid, err := peer.IDFromPublicKey(pubKey)
+	require.NoError(t, err)
+
+	// Setup publisher
+	dstore := dssync.MutexWrap(ds.NewMapDatastore())
+	serv := mockrouting.NewServer()
+	r := serv.ClientWithDatastore(ctx, testutil.NewIdentity(pid, testutil.ZeroLocalTCPAddress, privKey, pubKey), dstore)
+	publisher := NewIPNSPublisher(r, dstore)
+
+	value1, err := path.NewPath("/ipfs/bafkreifjjcie6lypi6ny7amxnfftagclbuxndqonfipmb64f2km2devei4")
+	require.NoError(t, err)
+
+	value2, err := path.NewPath("/ipfs/bafkreihzrqy23ynilblgil62wy7gv22o4gklv2frcsgbwntnhptmzcq5tq")
+	require.NoError(t, err)
+
+	t.Run("custom sequence with no existing record", func(t *testing.T) {
+		// Should work with any sequence number when no previous record exists
+		err := publisher.Publish(ctx, privKey, value1, PublishWithSequence(42))
+		require.NoError(t, err)
+
+		// Verify the record was created with the custom sequence
+		name := ipns.NameFromPeer(pid)
+		rec, err := publisher.GetPublished(ctx, name, false)
+		require.NoError(t, err)
+		require.NotNil(t, rec)
+
+		seq, err := rec.Sequence()
+		require.NoError(t, err)
+		require.Equal(t, uint64(42), seq)
+	})
+
+	t.Run("custom sequence greater than existing", func(t *testing.T) {
+		// Should work with sequence greater than existing (42)
+		err := publisher.Publish(ctx, privKey, value2, PublishWithSequence(50))
+		require.NoError(t, err)
+
+		// Verify the record was updated
+		name := ipns.NameFromPeer(pid)
+		rec, err := publisher.GetPublished(ctx, name, false)
+		require.NoError(t, err)
+		require.NotNil(t, rec)
+
+		seq, err := rec.Sequence()
+		require.NoError(t, err)
+		require.Equal(t, uint64(50), seq)
+	})
+
+	t.Run("custom sequence equal to existing", func(t *testing.T) {
+		// Should fail with sequence equal to existing (50)
+		err := publisher.Publish(ctx, privKey, value1, PublishWithSequence(50))
+		require.ErrorIs(t, err, ErrInvalidSequence)
+	})
+
+	t.Run("custom sequence less than existing", func(t *testing.T) {
+		// Should fail with sequence less than existing (50)
+		err := publisher.Publish(ctx, privKey, value2, PublishWithSequence(30))
+		require.ErrorIs(t, err, ErrInvalidSequence)
+	})
+
+	t.Run("no custom sequence with existing record", func(t *testing.T) {
+		// Should work normally, incrementing from 50 to 51
+		err := publisher.Publish(ctx, privKey, value1) // Different value to trigger increment
+		require.NoError(t, err)
+
+		// Verify sequence was incremented
+		name := ipns.NameFromPeer(pid)
+		rec, err := publisher.GetPublished(ctx, name, false)
+		require.NoError(t, err)
+		require.NotNil(t, rec)
+
+		seq, err := rec.Sequence()
+		require.NoError(t, err)
+		require.Equal(t, uint64(51), seq)
+	})
+}

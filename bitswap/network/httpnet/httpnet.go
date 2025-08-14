@@ -26,7 +26,6 @@ import (
 	"github.com/libp2p/go-libp2p/core/peerstore"
 	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
 	"github.com/multiformats/go-multiaddr"
-	"go.uber.org/multierr"
 )
 
 var log = logging.Logger("httpnet")
@@ -528,7 +527,7 @@ func (ht *Network) Connect(ctx context.Context, pi peer.AddrInfo) error {
 	}
 	urls = filteredURLs
 	if len(urls) == 0 {
-		return multierr.Combine(errs...)
+		return errors.Join(errs...)
 	}
 	if len(urls) > ht.maxHTTPAddressesPerPeer {
 		urls = urls[0:ht.maxHTTPAddressesPerPeer]
@@ -547,7 +546,7 @@ func (ht *Network) Connect(ctx context.Context, pi peer.AddrInfo) error {
 			errs = append(errs, fmt.Errorf("%s: %s", u.Multiaddress.String(), err))
 			// abort if context cancelled
 			if ctxErr := ctx.Err(); ctxErr != nil {
-				return multierr.Combine(errs...)
+				return errors.Join(errs...)
 			}
 		} else {
 			workingAddrs = append(workingAddrs, u.Multiaddress)
@@ -561,7 +560,7 @@ func (ht *Network) Connect(ctx context.Context, pi peer.AddrInfo) error {
 		if err != nil {
 			errs = append(errs, fmt.Errorf("%s: %s", u.Multiaddress.String(), err))
 			if ctxErr := ctx.Err(); ctxErr != nil {
-				return multierr.Combine(errs...)
+				return errors.Join(errs...)
 			}
 			continue
 		}
@@ -570,7 +569,7 @@ func (ht *Network) Connect(ctx context.Context, pi peer.AddrInfo) error {
 
 	// Bail out if no working urls found.
 	if len(workingAddrs) == 0 {
-		err := multierr.Combine(errs...)
+		err := errors.Join(errs...)
 		log.Debug(err)
 		return err
 	}

@@ -16,7 +16,6 @@ import (
 	"github.com/ipfs/go-cid"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
-	"go.uber.org/multierr"
 )
 
 const (
@@ -91,7 +90,7 @@ func (i *handler) serveCAR(ctx context.Context, w http.ResponseWriter, r *http.R
 
 	_, copyErr := io.Copy(w, carFile)
 	carErr := carFile.Close()
-	streamErr := multierr.Combine(carErr, copyErr)
+	streamErr := errors.Join(carErr, copyErr)
 	if streamErr != nil {
 		// Update fail metric
 		i.carStreamFailMetric.WithLabelValues(rq.contentPath.Namespace()).Observe(time.Since(rq.begin).Seconds())

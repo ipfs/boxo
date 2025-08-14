@@ -16,6 +16,8 @@ The following emojis are used to highlight certain changes:
 
 ### Added
 
+- `namesys/IPNSPublisher`: option to `PublishOptions` that allows for setting a custom sequence number for the IPNS record with proper validation to prevent unintentional replay attacks. [#962](https://github.com/ipfs/boxo/pull/962)
+
 ### Changed
 
 - `bitswap/network`: The connection event manager now has a `SetListeners` method. Both `bsnet` and `httpnet` now have options to provide the `ConnectionEventManager` during `New(...)`. This allows sharing the connection event manager when using both. The connection manager SHOULD be shared when using both networks with the `network.Router` utility.
@@ -25,6 +27,7 @@ The following emojis are used to highlight certain changes:
   - Provide directly from pinner/merkledag on dag traversal when `provider` is set (via Option).
   - Provide from MFS whenever there is a call to `DAGService.Add` and `provider` is set (via constructor param).
 - upgrade to `go-libp2p` [v0.43.0](https://github.com/libp2p/go-libp2p/releases/tag/v0.43.0)
+- replace `uber-go/multierr` with `errors.Join` [#996](https://github.com/ipfs/boxo/pull/996)
 
 ### Removed
 
