@@ -11,8 +11,8 @@ import (
 	dag "github.com/ipfs/boxo/ipld/merkledag"
 	ft "github.com/ipfs/boxo/ipld/unixfs"
 	mod "github.com/ipfs/boxo/ipld/unixfs/mod"
+	"github.com/ipfs/boxo/provider"
 	ipld "github.com/ipfs/go-ipld-format"
-	"github.com/libp2p/go-libp2p/core/routing"
 )
 
 // File represents a file in the MFS, its logic its mainly targeted
@@ -41,7 +41,7 @@ type File struct {
 // NewFile returns a NewFile object with the given parameters. If the CID
 // version is non-zero RawLeaves will be enabled. A nil providing parameter
 // means that MFS will not provide content to the routing system.
-func NewFile(name string, node ipld.Node, parent parent, dserv ipld.DAGService, providing routing.ContentProviding) (*File, error) {
+func NewFile(name string, node ipld.Node, parent parent, dserv ipld.DAGService, providing provider.MultihashProvider) (*File, error) {
 	fi := &File{
 		inode: inode{
 			name:       name,
@@ -275,9 +275,7 @@ func (fi *File) setNodeData(data []byte) error {
 
 	if fi.prov != nil {
 		log.Debugf("mfs: provide: %s", nd.Cid())
-		if err = fi.prov.Provide(context.TODO(), nd.Cid(), true); err != nil {
-			log.Errorf("error providing %s: %s", nd.Cid(), err)
-		}
+		fi.prov.StartProviding(false, nd.Cid().Hash())
 	}
 
 	fi.nodeLock.Lock()

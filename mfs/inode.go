@@ -1,8 +1,8 @@
 package mfs
 
 import (
+	"github.com/ipfs/boxo/provider"
 	ipld "github.com/ipfs/go-ipld-format"
-	"github.com/libp2p/go-libp2p/core/routing"
 )
 
 // inode abstracts the common characteristics of the MFS `File`
@@ -21,5 +21,5 @@ type inode struct {
 	dagService ipld.DAGService
 
 	// provider used to announce CIDs
-	prov routing.ContentProviding
+	prov provider.MultihashProvider
 }
