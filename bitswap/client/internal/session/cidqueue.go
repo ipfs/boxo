@@ -49,7 +49,8 @@ func (cq *cidQueue) len() int {
 
 func (cq *cidQueue) gc() {
 	if cq.elems.Len() > cq.eset.Len() {
-		for i := 0; i < cq.elems.Len(); i++ {
+		n := cq.elems.Len()
+		for i := 0; i < n; i++ {
 			c := cq.elems.PopFront()
 			if cq.eset.Has(c) {
 				cq.elems.PushBack(c)
