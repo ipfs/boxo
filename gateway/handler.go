@@ -346,8 +346,7 @@ func (i *handler) getOrHeadHandler(w http.ResponseWriter, r *http.Request) {
 		logger.Debugw("serving codec", "path", contentPath)
 		success = i.serveCodec(r.Context(), w, r, rq)
 	default: // catch-all for unsuported application/vnd.*
-		err := fmt.Errorf("unsupported format %q", responseFormat)
-		i.webError(w, r, err, http.StatusBadRequest)
+		i.webError(w, r, errUnsupportedFormat, http.StatusBadRequest)
 	}
 }
 
@@ -953,11 +952,11 @@ func handleProtocolHandlerRedirect(w http.ResponseWriter, r *http.Request, c *Co
 	if uriParam := r.URL.Query().Get("uri"); uriParam != "" {
 		u, err := url.Parse(uriParam)
 		if err != nil {
-			webError(w, r, c, fmt.Errorf("failed to parse uri query parameter: %w", err), http.StatusBadRequest)
+			webError(w, r, c, errInvalidURIQueryParameter, http.StatusBadRequest)
 			return true
 		}
 		if u.Scheme != "ipfs" && u.Scheme != "ipns" {
-			webError(w, r, c, fmt.Errorf("uri query parameter scheme must be ipfs or ipns: %w", err), http.StatusBadRequest)
+			webError(w, r, c, errInvalidURIScheme, http.StatusBadRequest)
 			return true
 		}
 

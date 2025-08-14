@@ -24,6 +24,16 @@ var (
 	ErrBadGateway          = NewErrorStatusCodeFromStatus(http.StatusBadGateway)
 	ErrServiceUnavailable  = NewErrorStatusCodeFromStatus(http.StatusServiceUnavailable)
 	ErrTooManyRequests     = NewErrorStatusCodeFromStatus(http.StatusTooManyRequests)
+
+	// Errors for user input validation (prevent user input in logs)
+	errUnsupportedFormat        = errors.New("unsupported response format requested")
+	errConversionNotSupported   = errors.New("converting to requested format is not supported")
+	errInvalidURIQueryParameter = errors.New("failed to parse uri query parameter")
+	errInvalidURIScheme         = errors.New("uri query parameter scheme must be ipfs or ipns")
+	errUnsupportedCarScope      = errors.New("unsupported application/vnd.ipld.car scope parameter")
+	errUnsupportedCarOrder      = errors.New("unsupported application/vnd.ipld.car order parameter")
+	errUnsupportedCarDups       = errors.New("unsupported application/vnd.ipld.car dups parameter")
+	errIndexNotReadable         = errors.New("index.html could not be read: not a file")
 )
 
 // ErrorRetryAfter wraps any error with "retry after" hint. When an error of this type

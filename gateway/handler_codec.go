@@ -144,8 +144,7 @@ func (i *handler) renderCodec(ctx context.Context, w http.ResponseWriter, r *htt
 	// Let's first get the codecs that can be used with this content type.
 	toCodec, ok := contentTypeToCodec[rq.responseFormat]
 	if !ok {
-		err := fmt.Errorf("converting from %q to %q is not supported", cidCodec.String(), rq.responseFormat)
-		i.webError(w, r, err, http.StatusBadRequest)
+		i.webError(w, r, errConversionNotSupported, http.StatusBadRequest)
 		return false
 	}
 

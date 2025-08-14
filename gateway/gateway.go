@@ -3,7 +3,6 @@ package gateway
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io"
 	"strconv"
 	"strings"
@@ -268,7 +267,7 @@ func NewDuplicateBlocksPolicy(dupsValue string) (DuplicateBlocksPolicy, error) {
 	case "":
 		return DuplicateBlocksUnspecified, nil
 	}
-	return 0, fmt.Errorf("unsupported application/vnd.ipld.car content type dups parameter: %q", dupsValue)
+	return 0, errUnsupportedCarDups
 }
 
 func (d DuplicateBlocksPolicy) Bool() bool {
