@@ -212,6 +212,7 @@ func (c *Client) fetchFromRemoteRaw(ctx context.Context, configURL, cacheDir str
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to create request: %w", err)
 	}
+	req.Close = true // Don't keep connection alive for infrequent requests
 
 	// Add user agent
 	if c.userAgent != "" {
