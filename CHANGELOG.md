@@ -29,6 +29,7 @@ The following emojis are used to highlight certain changes:
   - Provide from MFS whenever there is a call to `DAGService.Add` and `provider` is set (via constructor param).
 - upgrade to `go-libp2p` [v0.43.0](https://github.com/libp2p/go-libp2p/releases/tag/v0.43.0)
 - replace `uber-go/multierr` with `errors.Join` [#996](https://github.com/ipfs/boxo/pull/996)
+- updated Go in `go.mod` to 1.24.0 [#999](https://github.com/ipfs/boxo/pull/999)
 
 ### Removed
 
