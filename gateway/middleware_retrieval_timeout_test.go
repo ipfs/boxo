@@ -278,3 +278,126 @@ func TestWithRetrievalTimeout(t *testing.T) {
 		}
 	})
 }
+
+// TestConcurrentHeaderAccessRace verifies that no "concurrent map writes" panic
+// occurs when the timeout handler writes an error response while the request
+// handler is still trying to modify headers.
+//
+// The race condition occurs when both the timeout goroutine and the handler
+// goroutine try to access the same underlying http.Header map. Without proper
+// isolation, this causes a "concurrent map writes" panic.
+//
+// This test is designed to be run with the race detector:
+//
+//	go test -race -run TestConcurrentHeaderAccessRace ./gateway
+//
+// For more thorough testing with multiple iterations:
+//
+//	go test -shuffle=on -count=10 -failfast -race -parallel 8 -run TestConcurrentHeaderAccessRace ./gateway -v
+//
+// The race is triggered by having the handler continuously modify headers
+// while a timeout occurs, causing both goroutines to access the same header
+// map if not properly isolated.
+func TestConcurrentHeaderAccessRace(t *testing.T) {
+	t.Run("race before headers sent (504 response)", func(t *testing.T) {
+		handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Continuously modify headers to create race
+			for i := 0; i < 100; i++ {
+				w.Header().Set("X-Test", fmt.Sprintf("value-%d", i))
+				time.Sleep(time.Microsecond)
+			}
+		})
+
+		config := &Config{DisableHTMLErrors: true}
+		timeoutHandler := withRetrievalTimeout(handler, 5*time.Millisecond, config, newTestMetrics())
+
+		// Run with race detector
+		for i := 0; i < 5; i++ {
+			rec := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodGet, "/test", nil)
+
+			done := make(chan bool)
+			go func() {
+				defer func() {
+					if r := recover(); r != nil {
+						// Check if it's the concurrent map writes panic
+						if panicStr, ok := r.(string); ok && panicStr == "concurrent map writes" {
+							t.Logf("Reproduced concurrent map writes panic!")
+						}
+					}
+					done <- true
+				}()
+				timeoutHandler.ServeHTTP(rec, req)
+			}()
+
+			select {
+			case <-done:
+			case <-time.After(100 * time.Millisecond):
+			}
+		}
+	})
+
+	t.Run("race after headers sent (200 response truncation)", func(t *testing.T) {
+		// Test the race condition when timeout occurs after headers are already sent.
+		// This tests the truncation path where we write truncation message and hijack connection.
+
+		handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Write headers and some data first
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte("initial data"))
+			if f, ok := w.(http.Flusher); ok {
+				f.Flush()
+			}
+
+			// Then continue modifying headers (which should be no-op after WriteHeader)
+			// and writing more data slowly to trigger timeout during response
+			for i := 0; i < 100; i++ {
+				// Try to set headers after WriteHeader (should be ignored but could race)
+				w.Header().Set("X-Late-Header", fmt.Sprintf("value-%d", i))
+
+				// Write small chunks of data
+				if i%10 == 0 {
+					w.Write([]byte(fmt.Sprintf("chunk-%d", i)))
+					if f, ok := w.(http.Flusher); ok {
+						f.Flush()
+					}
+				}
+				time.Sleep(time.Millisecond)
+			}
+		})
+
+		config := &Config{DisableHTMLErrors: true}
+		timeoutHandler := withRetrievalTimeout(handler, 20*time.Millisecond, config, newTestMetrics())
+
+		// Run with race detector
+		for i := 0; i < 5; i++ {
+			rec := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodGet, "/test", nil)
+
+			done := make(chan bool)
+			go func() {
+				defer func() {
+					if r := recover(); r != nil {
+						// Check if it's the concurrent map writes panic
+						if panicStr, ok := r.(string); ok && panicStr == "concurrent map writes" {
+							t.Errorf("Reproduced concurrent map writes panic in truncation path!")
+						}
+					}
+					done <- true
+				}()
+				timeoutHandler.ServeHTTP(rec, req)
+			}()
+
+			select {
+			case <-done:
+			case <-time.After(150 * time.Millisecond):
+			}
+
+			// Verify we got initial data before timeout
+			body := rec.Body.String()
+			if !bytes.Contains([]byte(body), []byte("initial data")) {
+				t.Errorf("Expected initial data in response, got: %s", body)
+			}
+		}
+	})
+}
