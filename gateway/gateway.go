@@ -23,24 +23,15 @@ const (
 	DefaultRetrievalTimeout = 30 * time.Second
 
 	// DefaultMaxConcurrentRequests is the default maximum number of concurrent HTTP requests
-	// that the gateway will process. This default value of 1024 is conservative and suitable
-	// for most single-server deployments with stock nginx (512-1024 connections) or lightly
-	// tuned reverse proxies.
+	// that the gateway will process. The default value of 4096 is suitable for most deployments
+	// and aligns with common reverse proxy configurations (e.g., nginx with 8 workers × 1024 connections).
 	//
-	// If your gateway is returning many HTTP 429 (Too Many Requests) responses while having
-	// available resources (CPU, memory, file descriptors), consider increasing this value.
+	// When to adjust this value:
+	//  - Too many HTTP 429 responses with available resources: increase the value
+	//  - High memory usage or resource exhaustion: decrease the value
 	//
-	// To determine the optimal value:
-	//  1. Check your reverse proxy's limits:
-	//     - nginx: worker_processes × worker_connections ÷ 2 (each proxied request uses 2 connections)
-	//     - Apache: MaxRequestWorkers
-	//     - Caddy: typically much higher (8192+)
-	//  2. Monitor your gateway's 429 response rate
-	//  3. Set MaxConcurrentRequests slightly below your reverse proxy's limit
-	//
-	// Example: nginx with 8 workers × 1024 connections = 4096 max proxied requests
-	// In this case, set MaxConcurrentRequests to 4000-4096.
-	DefaultMaxConcurrentRequests = 1024
+	// See the MaxConcurrentRequests field documentation for detailed tuning guidance.
+	DefaultMaxConcurrentRequests = 4096
 )
 
 // Config is the configuration used when creating a new gateway handler.
@@ -89,13 +80,17 @@ type Config struct {
 	// A value of 0 disables this timeout.
 	RetrievalTimeout time.Duration
 
-	// MaxConcurrentRequests limits the number of concurrent HTTP requests handled by
-	// the gateway. Requests beyond this limit receive a 429 Too Many Requests
-	// response with a Retry-After header.
+	// MaxConcurrentRequests sets the maximum number of concurrent HTTP requests
+	// that the gateway will process. This limit protects against resource exhaustion
+	// by constraining memory usage, file descriptors, and concurrent goroutines.
 	//
-	// Important: If your gateway returns many 429 responses but has available resources
-	// (CPU, memory, file descriptors), you should increase this value. A too-low limit
-	// will artificially constrain your gateway's throughput.
+	// The default value of 4096 works well for most deployments. Adjust only if you
+	// experience specific symptoms:
+	//
+	// Symptoms and solutions:
+	//  - Many HTTP 429 responses with low resource usage: increase this value
+	//  - High memory usage or resource exhaustion: decrease this value
+	//  - Poor throughput despite available resources: increase this value
 	//
 	// How to tune this value:
 	//
@@ -103,25 +98,19 @@ type Config struct {
 	//     - nginx: worker_processes × worker_connections ÷ 2
 	//     - Example: 8 workers × 1024 connections = 4096 max proxied requests
 	//     - Check: nginx -T | grep -E 'worker_processes|worker_connections'
+	//     - Apache: Check MaxRequestWorkers in httpd.conf
+	//     - HAProxy: Check global maxconn and frontend/backend limits
+	//     - Caddy/Traefik: Check system limits (ulimit -n)
 	//
 	//  2. Monitor your gateway metrics:
 	//     - Count of 429 responses (indicates limit is too low)
 	//     - Active connection count (should stay below limit)
 	//     - Resource utilization (CPU, memory, file descriptors)
 	//
-	//  3. Set MaxConcurrentRequests to match your reverse proxy:
+	//  3. Set MaxConcurrentRequests to match your deployment:
 	//     - Start with proxy capacity (e.g., 4096 for nginx example above)
 	//     - Reduce by 5-10% if you want safety margin
-	//     - Increase if your proxy has higher limits
-	//
-	//  Common symptoms of misconfiguration:
-	//     - Too low: Many 429 errors, low resource usage, poor throughput
-	//     - Too high: Memory exhaustion, file descriptor limits, OOM errors
-	//
-	//  Production recommendations:
-	//     - Stock nginx (512 connections): 256-400
-	//     - Tuned nginx (1024 per worker): 2000-4000
-	//     - High-performance setup (10K+ per worker): 8000-40000
+	//     - Increase if your proxy has higher limits or if using CDN
 	//
 	// A value of 0 disables the limit entirely (use with caution).
 	MaxConcurrentRequests int
