@@ -24,7 +24,23 @@ const (
 	DefaultRetrievalTimeout = 30 * time.Second
 
 	// DefaultMaxConcurrentRequests is the default maximum number of concurrent HTTP requests
-	// that the gateway will process.
+	// that the gateway will process. This default value of 1024 is conservative and suitable
+	// for most single-server deployments with stock nginx (512-1024 connections) or lightly
+	// tuned reverse proxies.
+	//
+	// If your gateway is returning many HTTP 429 (Too Many Requests) responses while having
+	// available resources (CPU, memory, file descriptors), consider increasing this value.
+	//
+	// To determine the optimal value:
+	//  1. Check your reverse proxy's limits:
+	//     - nginx: worker_processes × worker_connections ÷ 2 (each proxied request uses 2 connections)
+	//     - Apache: MaxRequestWorkers
+	//     - Caddy: typically much higher (8192+)
+	//  2. Monitor your gateway's 429 response rate
+	//  3. Set MaxConcurrentRequests slightly below your reverse proxy's limit
+	//
+	// Example: nginx with 8 workers × 1024 connections = 4096 max proxied requests
+	// In this case, set MaxConcurrentRequests to 4000-4096.
 	DefaultMaxConcurrentRequests = 1024
 )
 
@@ -76,11 +92,39 @@ type Config struct {
 
 	// MaxConcurrentRequests limits the number of concurrent HTTP requests handled by
 	// the gateway. Requests beyond this limit receive a 429 Too Many Requests
-	// response with a Retry-After header. High-load deployments may need to tune
-	// this value based on their reverse proxy configuration (e.g., nginx's
-	// worker_connections). Set this slightly below your reverse proxy's limit
-	// for graceful degradation.
-	// A value of 0 disables the limit.
+	// response with a Retry-After header.
+	//
+	// Important: If your gateway returns many 429 responses but has available resources
+	// (CPU, memory, file descriptors), you should increase this value. A too-low limit
+	// will artificially constrain your gateway's throughput.
+	//
+	// How to tune this value:
+	//
+	//  1. Calculate your reverse proxy's capacity:
+	//     - nginx: worker_processes × worker_connections ÷ 2
+	//     - Example: 8 workers × 1024 connections = 4096 max proxied requests
+	//     - Check: nginx -T | grep -E 'worker_processes|worker_connections'
+	//
+	//  2. Monitor your gateway metrics:
+	//     - Count of 429 responses (indicates limit is too low)
+	//     - Active connection count (should stay below limit)
+	//     - Resource utilization (CPU, memory, file descriptors)
+	//
+	//  3. Set MaxConcurrentRequests to match your reverse proxy:
+	//     - Start with proxy capacity (e.g., 4096 for nginx example above)
+	//     - Reduce by 5-10% if you want safety margin
+	//     - Increase if your proxy has higher limits
+	//
+	//  Common symptoms of misconfiguration:
+	//     - Too low: Many 429 errors, low resource usage, poor throughput
+	//     - Too high: Memory exhaustion, file descriptor limits, OOM errors
+	//
+	//  Production recommendations:
+	//     - Stock nginx (512 connections): 256-400
+	//     - Tuned nginx (1024 per worker): 2000-4000
+	//     - High-performance setup (10K+ per worker): 8000-40000
+	//
+	// A value of 0 disables the limit entirely (use with caution).
 	MaxConcurrentRequests int
 
 	// MetricsRegistry is the Prometheus registry to use for metrics.

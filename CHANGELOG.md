@@ -29,6 +29,8 @@ The following emojis are used to highlight certain changes:
 ### Changed
 
 - `gateway`: The gateway now enforces default limits for request handling. To restore previous unlimited behavior set both `RetrievalTimeout` and `MaxConcurrentRequests` to `0`.
+  > [!IMPORTANT]
+  > If your gateway returns many HTTP 429 responses while having available resources (CPU, memory), you may need to increase `MaxConcurrentRequests` to match your reverse proxy capacity. See the [`MaxConcurrentRequests` godoc](https://pkg.go.dev/github.com/ipfs/boxo/gateway#Config) for detailed tuning guidance.
 - `bitswap/network`: The connection event manager now has a `SetListeners` method. Both `bsnet` and `httpnet` now have options to provide the `ConnectionEventManager` during `New(...)`. This allows sharing the connection event manager when using both. The connection manager SHOULD be shared when using both networks with the `network.Router` utility.
 - `provider`: Distribute the responsability of providing new blocks to the places that play a role in the different providing strategies [#976](https://github.com/ipfs/boxo/pull/976). Refactor the logic to perform Provides, when the component has been given a provider:
   - Remove `providing.Exchange`
