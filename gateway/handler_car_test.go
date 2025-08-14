@@ -1,6 +1,7 @@
 package gateway
 
 import (
+	"errors"
 	"net/http"
 	"net/url"
 	"testing"
@@ -120,22 +121,25 @@ func TestCarParams(t *testing.T) {
 
 		// below ensure the implicit default (DFS and no duplicates) is correctly inferred
 		// from the value read from Accept header
-		tests := []string{
-			"application/vnd.ipld.car; dups=invalid",
-			"application/vnd.ipld.car; order=invalid",
-			"application/vnd.ipld.car; order=dfs; dups=invalid",
-			"application/vnd.ipld.car; order=invalid; dups=y",
+		tests := []struct {
+			acceptHeader string
+			expectedErr  error
+		}{
+			{"application/vnd.ipld.car; dups=invalid", errUnsupportedCarDups},
+			{"application/vnd.ipld.car; order=invalid", errUnsupportedCarOrder},
+			{"application/vnd.ipld.car; order=dfs; dups=invalid", errUnsupportedCarDups},
+			{"application/vnd.ipld.car; order=invalid; dups=y", errUnsupportedCarOrder},
 		}
 		for _, test := range tests {
 			r := mustNewRequest(t, http.MethodGet, "http://example.com/", nil)
-			r.Header.Set("Accept", test)
+			r.Header.Set("Accept", test.acceptHeader)
 
 			mediaType, formatParams, err := customResponseFormat(r)
 			assert.NoError(t, err)
 			assert.Equal(t, carResponseFormat, mediaType)
 
 			_, err = buildCarParams(r, formatParams)
-			assert.ErrorContains(t, err, "unsupported application/vnd.ipld.car content type")
+			assert.True(t, errors.Is(err, test.expectedErr), "expected error %v, got %v", test.expectedErr, err)
 		}
 	})
 }

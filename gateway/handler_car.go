@@ -136,8 +136,7 @@ func buildCarParams(r *http.Request, contentTypeParams map[string]string) (CarPa
 		case DagScopeEntity, DagScopeAll, DagScopeBlock:
 			params.Scope = s
 		default:
-			err := fmt.Errorf("unsupported application/vnd.ipld.car dag-scope URL parameter: %q", scopeStr)
-			return CarParams{}, err
+			return CarParams{}, errUnsupportedCarScope
 		}
 	} else {
 		params.Scope = DagScopeAll
@@ -174,7 +173,7 @@ func buildCarParams(r *http.Request, contentTypeParams map[string]string) (CarPa
 		case DagOrderUnknown, DagOrderDFS:
 			params.Order = order
 		default:
-			return CarParams{}, fmt.Errorf("unsupported application/vnd.ipld.car content type order parameter: %q", order)
+			return CarParams{}, errUnsupportedCarOrder
 		}
 	} else {
 		// when order is not specified, we use DFS as the implicit default
