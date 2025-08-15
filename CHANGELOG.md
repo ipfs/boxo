@@ -28,6 +28,7 @@ The following emojis are used to highlight certain changes:
     - `ipfs_http_gw_responses_total{code}`: Counter for all HTTP responses by status code
     - `ipfs_http_gw_retrieval_timeouts_total{code,truncated}`: Counter for retrieval timeout events with details on truncation
 - `namesys/IPNSPublisher`: option to `PublishOptions` that allows for setting a custom sequence number for the IPNS record with proper validation to prevent unintentional replay attacks. [#962](https://github.com/ipfs/boxo/pull/962)
+- `blockstore`: Added `ValidatingBlockstore` wrapper. This replaces the `HashOnRead` blockstore API.
 
 ### Changed
 - `bitswap/network`: The connection event manager now has a `SetListeners` method. Both `bsnet` and `httpnet` now have options to provide the `ConnectionEventManager` during `New(...)`. This allows sharing the connection event manager when using both. The connection manager SHOULD be shared when using both networks with the `network.Router` utility.
@@ -41,6 +42,8 @@ The following emojis are used to highlight certain changes:
 - updated Go in `go.mod` to 1.24.0 [#999](https://github.com/ipfs/boxo/pull/999)
 
 ### Removed
+
+- `blockstore`: Removed HashOnRead API. This is a potentially BREAKING CHANGE for any users of the HashOnRead API. Use the `ValidatingBlocksore` instead.
 
 ### Fixed
 
