@@ -44,6 +44,7 @@ The following emojis are used to highlight certain changes:
 ### Removed
 
 - `blockstore`: Removed HashOnRead API. This is a potentially BREAKING CHANGE for any users of the HashOnRead API. Use the `ValidatingBlocksore` instead.
+  - The `HashOnRead` function was also removed from `Filestore`. To use this functionality, provide a `ValidatingBlockstore` when creating a new `Filestore`.
 
 ### Fixed
 
