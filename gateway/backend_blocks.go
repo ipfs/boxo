@@ -27,13 +27,12 @@ import (
 	"github.com/ipfs/go-unixfsnode/data"
 	"github.com/ipld/go-car/v2"
 	"github.com/ipld/go-car/v2/storage"
-	dagpb "github.com/ipld/go-codec-dagpb"
+	dagpb "github.com/ipld/go-codec-dagpb" // Ensure basic codecs are registered.
 	"github.com/ipld/go-ipld-prime"
-	// Ensure basic codecs are registered.
-	_ "github.com/ipld/go-ipld-prime/codec/cbor"
-	_ "github.com/ipld/go-ipld-prime/codec/dagcbor"
-	_ "github.com/ipld/go-ipld-prime/codec/dagjson"
-	_ "github.com/ipld/go-ipld-prime/codec/json"
+	_ "github.com/ipld/go-ipld-prime/codec/cbor"    // Ensure basic codecs are registered.
+	_ "github.com/ipld/go-ipld-prime/codec/dagcbor" // Ensure basic codecs are registered.
+	_ "github.com/ipld/go-ipld-prime/codec/dagjson" // Ensure basic codecs are registered.
+	_ "github.com/ipld/go-ipld-prime/codec/json"    // Ensure basic codecs are registered.
 	"github.com/ipld/go-ipld-prime/datamodel"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	"github.com/ipld/go-ipld-prime/node/basicnode"
@@ -113,17 +112,51 @@ func NewRemoteBlocksBackend(gatewayURL []string, httpClient *http.Client, opts .
 }
 
 func (bb *BlocksBackend) Get(ctx context.Context, path path.ImmutablePath, ranges ...ByteRange) (ContentPathMetadata, *GetResponse, error) {
-	md, nd, err := bb.getNode(ctx, path)
-	if err != nil {
-		return md, nil, err
-	}
-
 	// Only a single range is supported in responses to HTTP Range Requests.
 	// When more than one is passed in the Range header, this library will
 	// return a response for the first one and ignores remaining ones.
 	var ra *ByteRange
 	if len(ranges) > 0 {
 		ra = &ranges[0]
+	}
+
+	// For range requests on UnixFS files, we can optimize by only fetching
+	// the root block first to determine if it's a file, then create a
+	// UnixfsFile that will lazily fetch only the blocks needed for the range
+	if ra != nil {
+		// Get just the root block first
+		roots, lastSeg, remainder, err := bb.getPathRoots(ctx, path)
+		if err != nil {
+			return ContentPathMetadata{}, nil, err
+		}
+
+		md := ContentPathMetadata{
+			PathSegmentRoots:     roots,
+			LastSegment:          lastSeg,
+			LastSegmentRemainder: remainder,
+		}
+
+		lastRoot := lastSeg.RootCid()
+
+		// Fetch only the root block to check if it's a UnixFS file
+		rootBlock, err := bb.blockService.GetBlock(ctx, lastRoot)
+		if err != nil {
+			return md, nil, err
+		}
+
+		// Try to optimize for dag-pb blocks that might be UnixFS files
+		if rootCodec := lastRoot.Prefix().GetCodec(); rootCodec == uint64(mc.DagPb) {
+			if unixfsFileResponse := loadUnixFSFileWithLazyBlocks(ctx, path, rootBlock, &md, ra, bb.dagService); unixfsFileResponse != nil {
+				return md, unixfsFileResponse, nil
+			}
+		}
+		// Fall back to regular path for non-files or if optimization fails
+	}
+
+	// Regular path for non-range requests or when optimization doesn't apply
+	md, nd, err := bb.getNode(ctx, path)
+	if err != nil {
+		return md, nil, err
 	}
 
 	rootCodec := nd.Cid().Prefix().GetCodec()
@@ -193,6 +226,70 @@ func (bb *BlocksBackend) Get(ctx context.Context, path path.ImmutablePath, range
 	}
 
 	return ContentPathMetadata{}, nil, fmt.Errorf("data was not a valid file or directory: %w", ErrInternalServerError) // TODO: should there be a gateway invalid content type to abstract over the various IPLD error types?
+}
+
+// loadUnixFSFileWithLazyBlocks attempts to load a UnixFS file in a way that only
+// fetches the blocks necessary for the requested byte range.
+//
+// This optimization is only possible for dag-pb files. It decodes the root block,
+// creates a UnixFS file reader, and seeks to the range start. This avoids fetching
+// unnecessary blocks when serving range requests for large files.
+//
+// Returns nil if the content is not a UnixFS file or if any step fails.
+func loadUnixFSFileWithLazyBlocks(ctx context.Context, path path.ImmutablePath, rootBlock blocks.Block, md *ContentPathMetadata, ra *ByteRange, dagService format.DAGService) *GetResponse {
+	// Try to decode as protobuf
+	nd, err := merkledag.DecodeProtobuf(rootBlock.RawData())
+	if err != nil {
+		log.Debugw("failed to decode protobuf for range request optimization",
+			"path", path,
+			"error", err)
+		return nil
+	}
+
+	// Try to create a UnixFS file - this will only fetch blocks as needed
+	f, err := ufile.NewUnixfsFile(ctx, dagService, nd)
+	if err != nil {
+		log.Debugw("failed to create UnixFS file for range request optimization",
+			"path", path,
+			"error", err)
+		return nil
+	}
+
+	// Check if it's actually a file
+	file, ok := f.(files.File)
+	if !ok {
+		// Not a file, can't optimize
+		return nil
+	}
+
+	// Get file size for range calculations
+	fileSize, err := f.Size()
+	if err != nil {
+		log.Debugw("failed to get file size for range request optimization",
+			"path", path,
+			"error", err)
+		return nil
+	}
+
+	// Set modification time if available
+	if mtime := f.ModTime(); !mtime.IsZero() {
+		md.ModTime = mtime
+	}
+
+	// Seek to the start of the requested range
+	if err := seekToRangeStart(file, ra, fileSize); err != nil {
+		log.Debugw("failed to seek to range start",
+			"path", path,
+			"error", err)
+		return nil
+	}
+
+	// Handle symlinks specially
+	if s, ok := f.(*files.Symlink); ok {
+		return NewGetResponseFromSymlink(s, fileSize)
+	}
+
+	return NewGetResponseFromReader(file, fileSize)
 }
 
 func (bb *BlocksBackend) GetAll(ctx context.Context, path path.ImmutablePath) (ContentPathMetadata, files.Node, error) {
