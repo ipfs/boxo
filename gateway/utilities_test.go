@@ -22,6 +22,7 @@ import (
 	carblockstore "github.com/ipld/go-car/v2/blockstore"
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/routing"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -233,6 +234,7 @@ func newTestServerAndNode(t *testing.T, fixturesFile string) (*httptest.Server, 
 func newTestServer(t *testing.T, backend IPFSBackend) *httptest.Server {
 	return newTestServerWithConfig(t, backend, Config{
 		DeserializedResponses: true,
+		MetricsRegistry:       prometheus.NewRegistry(),
 	})
 }
 
@@ -241,6 +243,10 @@ func newTestServerWithConfig(t *testing.T, backend IPFSBackend, config Config) *
 }
 
 func newTestServerWithConfigAndHeaders(t *testing.T, backend IPFSBackend, config Config, headers map[string][]string) *httptest.Server {
+	// Ensure each test has its own isolated metrics registry
+	if config.MetricsRegistry == nil {
+		config.MetricsRegistry = prometheus.NewRegistry()
+	}
 	handler := NewHandler(config, backend)
 	mux := http.NewServeMux()
 	mux.Handle("/ipfs/", handler)
