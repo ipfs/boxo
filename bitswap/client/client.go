@@ -34,7 +34,6 @@ import (
 	"github.com/libp2p/go-libp2p/core/routing"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
-	"go.uber.org/zap/zapcore"
 )
 
 var log = logging.Logger("bitswap/client")
@@ -491,7 +490,7 @@ func (bs *Client) receiveBlocksFrom(ctx context.Context, from peer.ID, blks []bl
 	}
 
 	wanted, notWanted := bs.sim.SplitWantedUnwanted(blks)
-	if log.Level().Enabled(zapcore.DebugLevel) {
+	if log.LevelEnabled(logging.LevelDebug) {
 		for _, b := range notWanted {
 			log.Debugf("[recv] block not in wantlist; cid=%s, peer=%s", b.Cid(), from)
 		}
@@ -537,7 +536,7 @@ func (bs *Client) ReceiveMessage(ctx context.Context, p peer.ID, incoming bsmsg.
 
 	if len(iblocks) > 0 {
 		bs.updateReceiveCounters(iblocks)
-		if log.Level().Enabled(zapcore.DebugLevel) {
+		if log.LevelEnabled(logging.LevelDebug) {
 			for _, b := range iblocks {
 				log.Debugf("[recv] block; cid=%s, peer=%s", b.Cid(), p)
 			}
