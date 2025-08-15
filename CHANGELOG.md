@@ -16,6 +16,19 @@ The following emojis are used to highlight certain changes:
 
 ### Added
 
+### Changed
+
+### Removed
+
+### Fixed
+
+### Security
+
+
+## [v0.34.0]
+
+### Added
+
 - `autoconf`: Client library for fetching, caching and expanding IPFS network configurations using "auto" placeholders
 - `gateway`: Added configurable limits for gateway resource protection:
   - `Config.RetrievalTimeout`: Maximum duration between writes of non-empty data to HTTP response body (default: 30s). Returns 504 Gateway Timeout when gateway cannot retrieve content within this period.
@@ -45,10 +58,6 @@ The following emojis are used to highlight certain changes:
 
 - `blockstore`: Removed HashOnRead API. This is a potentially BREAKING CHANGE for any users of the HashOnRead API. Use the `ValidatingBlocksore` instead.
   - The `HashOnRead` function was also removed from `Filestore`. To use this functionality, provide a `ValidatingBlockstore` when creating a new `Filestore`.
-
-### Fixed
-
-### Security
 
 
 ## [v0.33.1]
