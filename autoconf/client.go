@@ -73,8 +73,14 @@ type Client struct {
 	urls            []string       // Required: autoconf URLs (can be multiple for load balancing)
 	refreshInterval time.Duration  // Required: refresh interval for autoconf data
 	fallbackFunc    func() *Config // Optional: fallback function if fetch fails
-	updater         *BackgroundUpdater
-	updaterMu       sync.Mutex // Protects updater field
+
+	// Background refresh callbacks
+	onNewVersion   func(oldVersion, newVersion int64, configURL string) // Called when new version detected
+	onRefresh      func(*Response)                                      // Called after successful refresh
+	onRefreshError func(error)                                          // Called when refresh fails
+
+	updater   *backgroundUpdater
+	updaterMu sync.Mutex // Protects updater field
 }
 
 // Option is a function that configures the client
@@ -208,6 +214,36 @@ func WithRefreshInterval(interval time.Duration) Option {
 func WithFallback(fallbackFunc func() *Config) Option {
 	return func(c *Client) error {
 		c.fallbackFunc = fallbackFunc
+		return nil
+	}
+}
+
+// WithOnNewVersion sets a callback for when a new config version is detected during background refresh.
+// The callback receives the old version, new version, and the config URL that was used.
+// This is useful for logging or triggering application restarts when configuration changes.
+func WithOnNewVersion(callback func(oldVersion, newVersion int64, configURL string)) Option {
+	return func(c *Client) error {
+		c.onNewVersion = callback
+		return nil
+	}
+}
+
+// WithOnRefresh sets a callback for successful background refresh checks.
+// The callback receives the Response containing the refreshed config and metadata.
+// This is useful for persisting metadata or triggering dependent operations.
+func WithOnRefresh(callback func(*Response)) Option {
+	return func(c *Client) error {
+		c.onRefresh = callback
+		return nil
+	}
+}
+
+// WithOnRefreshError sets a callback for background refresh errors.
+// The callback receives the error that occurred during the refresh attempt.
+// This is useful for custom error handling, alerting, or fallback strategies.
+func WithOnRefreshError(callback func(error)) Option {
+	return func(c *Client) error {
+		c.onRefreshError = callback
 		return nil
 	}
 }

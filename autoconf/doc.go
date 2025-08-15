@@ -29,6 +29,17 @@
 //	    autoconf.WithCacheDir("/path/to/cache"),
 //	    autoconf.WithUserAgent("my-app/1.0"),
 //	    autoconf.WithFallback(autoconf.GetMainnetFallbackConfig), // Explicit fallback
+//
+//	    // Optional callbacks for background refresh checks
+//	    autoconf.WithOnNewVersion(func(oldVer, newVer int64, url string) {
+//	        log.Printf("Config updated from v%d to v%d at %s", oldVer, newVer, url)
+//	    }),
+//	    autoconf.WithOnRefresh(func(resp *autoconf.Response) {
+//	        log.Printf("Config refreshed: v%s", resp.Version)
+//	    }),
+//	    autoconf.WithOnRefreshError(func(err error) {
+//	        log.Printf("Refresh failed: %v", err)
+//	    }),
 //	)
 //
 // # Method Overview
@@ -55,7 +66,8 @@
 //	defer client.Stop()  // Optional: explicit shutdown
 //
 // This primes the cache with the latest config and starts a background service that
-// periodically checks for updates and logs when new versions are available.
+// periodically checks for updates. If no callbacks were configured via WithOnNewVersion,
+// WithOnRefresh, or WithOnRefreshError, default callbacks will be used for logging.
 //
 // # Config Expansion
 //

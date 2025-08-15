@@ -63,6 +63,20 @@ client, err := autoconf.NewClient(
     autoconf.WithCacheSize(autoconf.DefaultCacheSize),
     autoconf.WithTimeout(autoconf.DefaultTimeout),
     autoconf.WithFallback(autoconf.GetMainnetFallbackConfig), // Explicit fallback
+    
+    // Optional callbacks for background refresh checks
+    autoconf.WithOnNewVersion(func(oldVer, newVer int64, url string) {
+        log.Printf("Config updated from v%d to v%d at %s", oldVer, newVer, url)
+        // Trigger application restart or reload config
+    }),
+    autoconf.WithOnRefresh(func(resp *autoconf.Response) {
+        log.Printf("Config refreshed: v%s at %s", resp.Version, resp.FetchTime)
+        // Could persist metadata or trigger dependent operations
+    }),
+    autoconf.WithOnRefreshError(func(err error) {
+        log.Printf("Refresh failed: %v", err)
+        // Could send alert or switch to backup endpoint
+    }),
 )
 if err != nil {
     // handle
@@ -141,6 +155,16 @@ func runService(ctx context.Context) error {
         autoconf.WithCacheDir("/app/data/autoconf"),
         autoconf.WithUserAgent("myapp/1.2.3"),
         autoconf.WithRefreshInterval(12*time.Hour),
+        
+        // Custom callbacks for monitoring
+        autoconf.WithOnNewVersion(func(oldVer, newVer int64, url string) {
+            metrics.RecordConfigUpdate(oldVer, newVer)
+            log.Infof("New config version %d available", newVer)
+        }),
+        autoconf.WithOnRefreshError(func(err error) {
+            metrics.RecordConfigError()
+            alerting.SendAlert("AutoConf refresh failed", err)
+        }),
     )
     if err != nil {
         return err
@@ -224,18 +248,26 @@ $CACHE_DIR/
 ## Configuration Options
 
 ### Client Options
+
+#### Basic Configuration
+- `WithURL(url)`: Add an autoconf URL (can be called multiple times for load balancing)
+- `WithRefreshInterval(duration)`: Set refresh interval for autoconf data (default: 24h)
 - `WithCacheDir(dir)`: Set custom cache directory
-- `WithHTTPClient(client)`: Use custom HTTP client
 - `WithCacheSize(n)`: Set maximum cached versions (default: 3)
+- `WithFallback(func)`: Set fallback function that returns config when fetch fails
+
+#### HTTP Configuration
+- `WithHTTPClient(client)`: Use custom HTTP client
 - `WithUserAgent(ua)`: Set HTTP user-agent
 - `WithTimeout(duration)`: Set HTTP timeout (default: 5s)
 - `WithTLSInsecureSkipVerify(bool)`: Skip TLS verification (for testing)
 
-### Background Updater Options
-- `WithUpdateInterval(duration)`: Set update check interval (default: 24h)
-- `WithOnVersionChange(callback)`: Called when new config version is detected
-- `WithOnUpdateSuccess(callback)`: Called on successful update for metadata persistence
-- `WithOnUpdateError(callback)`: Called when update fails
+#### Background Refresh Callbacks
+- `WithOnNewVersion(func(oldVersion, newVersion int64, configURL string))`: Called when new config version is detected during refresh
+- `WithOnRefresh(func(*Response))`: Called after successful refresh with response metadata
+- `WithOnRefreshError(func(error))`: Called when refresh fails with the error
+
+These callbacks are optional. If not provided, the client will use default callbacks that log to the configured logger.
 
 ## Error Handling
 

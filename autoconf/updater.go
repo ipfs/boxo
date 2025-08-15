@@ -14,12 +14,12 @@ const (
 	backoffMaxMinutes   = 24 * 60        // Maximum backoff in minutes (1440 minutes = 24 hours)
 )
 
-// BackgroundUpdater handles periodic autoconf updates
-type BackgroundUpdater struct {
-	client          *Client
-	onVersionChange func(oldVersion, newVersion int64, configURL string)
-	onUpdateSuccess func(*Response)
-	onUpdateError   func(error)
+// backgroundUpdater handles periodic autoconf refresh checks
+type backgroundUpdater struct {
+	client         *Client
+	onNewVersion   func(oldVersion, newVersion int64, configURL string)
+	onRefresh      func(*Response)
+	onRefreshError func(error)
 
 	// Internal state
 	ctx     context.Context
@@ -29,56 +29,22 @@ type BackgroundUpdater struct {
 	mu      sync.Mutex
 }
 
-// UpdaterOption configures the background updater
-type UpdaterOption func(*BackgroundUpdater) error
-
-// NewBackgroundUpdater creates a new background updater
-func NewBackgroundUpdater(client *Client, options ...UpdaterOption) (*BackgroundUpdater, error) {
+// newBackgroundUpdater creates a new background updater
+func newBackgroundUpdater(client *Client) *backgroundUpdater {
 	if client == nil {
 		panic("autoconf: client cannot be nil")
 	}
 
-	updater := &BackgroundUpdater{
-		client: client,
-	}
-
-	for _, opt := range options {
-		if err := opt(updater); err != nil {
-			return nil, fmt.Errorf("failed to apply updater option: %w", err)
-		}
-	}
-
-	return updater, nil
-}
-
-// WithOnVersionChange sets a callback for when a new version is detected
-// The callback receives oldVersion, newVersion, and configURL
-func WithOnVersionChange(callback func(oldVersion, newVersion int64, configURL string)) UpdaterOption {
-	return func(u *BackgroundUpdater) error {
-		u.onVersionChange = callback
-		return nil
-	}
-}
-
-// WithOnUpdateSuccess sets a callback for successful updates
-// The callback receives the Response for metadata persistence
-func WithOnUpdateSuccess(callback func(*Response)) UpdaterOption {
-	return func(u *BackgroundUpdater) error {
-		u.onUpdateSuccess = callback
-		return nil
-	}
-}
-
-// WithOnUpdateError sets a callback for update errors
-func WithOnUpdateError(callback func(error)) UpdaterOption {
-	return func(u *BackgroundUpdater) error {
-		u.onUpdateError = callback
-		return nil
+	return &backgroundUpdater{
+		client:         client,
+		onNewVersion:   client.onNewVersion,
+		onRefresh:      client.onRefresh,
+		onRefreshError: client.onRefreshError,
 	}
 }
 
 // Start begins the background updater
-func (u *BackgroundUpdater) Start(ctx context.Context) error {
+func (u *backgroundUpdater) Start(ctx context.Context) error {
 	u.mu.Lock()
 	defer u.mu.Unlock()
 
@@ -97,7 +63,7 @@ func (u *BackgroundUpdater) Start(ctx context.Context) error {
 }
 
 // Stop gracefully stops the background updater
-func (u *BackgroundUpdater) Stop() {
+func (u *backgroundUpdater) Stop() {
 	u.mu.Lock()
 	defer u.mu.Unlock()
 
@@ -113,7 +79,7 @@ func (u *BackgroundUpdater) Stop() {
 }
 
 // runUpdater is the main updater loop
-func (u *BackgroundUpdater) runUpdater() {
+func (u *backgroundUpdater) runUpdater() {
 	defer u.wg.Done()
 
 	ticker := time.NewTicker(u.client.refreshInterval)
@@ -133,8 +99,8 @@ func (u *BackgroundUpdater) runUpdater() {
 				failureCount++
 				backoff := u.calculateBackoffDelay(failureCount)
 
-				if u.onUpdateError != nil {
-					u.onUpdateError(fmt.Errorf("autoconf background update failed (attempt %d): %w, retrying in %v", failureCount, err, backoff))
+				if u.onRefreshError != nil {
+					u.onRefreshError(fmt.Errorf("autoconf background refresh failed (attempt %d): %w, retrying in %v", failureCount, err, backoff))
 				}
 
 				// Stop regular ticker and wait for backoff
@@ -149,19 +115,19 @@ func (u *BackgroundUpdater) runUpdater() {
 			} else {
 				// Success - reset failure count
 				if failureCount > 0 {
-					log.Debugf("autoconf background update succeeded after retries")
+					log.Debugf("autoconf background refresh succeeded after retries")
 					failureCount = 0
 				} else {
-					log.Debug("autoconf background update succeeded")
+					log.Debug("autoconf background refresh succeeded")
 				}
 			}
 		}
 	}
 }
 
-// performUpdate performs a single background autoconf update
-func (u *BackgroundUpdater) performUpdate() error {
-	log.Debug("background update check starting")
+// performUpdate performs a single background autoconf refresh check
+func (u *backgroundUpdater) performUpdate() error {
+	log.Debug("background refresh check starting")
 
 	// Get the current cached version before fetching
 	cacheDir, cacheDirErr := u.client.getCacheDir()
@@ -186,23 +152,23 @@ func (u *BackgroundUpdater) performUpdate() error {
 		} else {
 			log.Infof("fetched autoconf version %d (updated from %d)", resp.Config.AutoConfVersion, oldVersion)
 		}
-		if u.onVersionChange != nil {
+		if u.onNewVersion != nil {
 			// Pass the selected URL that was used for this fetch
 			configURL := u.client.selectURL()
-			u.onVersionChange(oldVersion, resp.Config.AutoConfVersion, configURL)
+			u.onNewVersion(oldVersion, resp.Config.AutoConfVersion, configURL)
 		}
 	}
 
-	// Notify success callback for metadata persistence
-	if u.onUpdateSuccess != nil {
-		u.onUpdateSuccess(resp)
+	// Notify refresh callback for metadata persistence
+	if u.onRefresh != nil {
+		u.onRefresh(resp)
 	}
 
 	return nil
 }
 
 // calculateBackoffDelay calculates exponential backoff delay capped at 24 hours
-func (u *BackgroundUpdater) calculateBackoffDelay(failureCount int) time.Duration {
+func (u *backgroundUpdater) calculateBackoffDelay(failureCount int) time.Duration {
 	// Start with 1 minute, double each time: 1m, 2m, 4m, 8m, 16m, 32m, 1h4m, 2h8m, 4h16m, 8h32m, 17h4m
 	// Cap at 24 hours
 	if failureCount <= 0 {
