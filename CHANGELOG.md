@@ -16,6 +16,7 @@ The following emojis are used to highlight certain changes:
 
 ### Added
 
+- `autoconf`: Client library for fetching, caching and expanding IPFS network configurations using "auto" placeholders
 - `gateway`: Added configurable limits for gateway resource protection:
   - `Config.RetrievalTimeout`: Maximum duration between writes of non-empty data to HTTP response body (default: 30s). Returns 504 Gateway Timeout when gateway cannot retrieve content within this period.
   - `Config.MaxConcurrentRequests`: Limits concurrent HTTP requests (default: 4096, suitable for most deployments). Returns 429 Too Many Requests with 60s Retry-After header when exceeded. To restore previous unlimited behavior set both `RetrievalTimeout` and `MaxConcurrentRequests` to `0`.
