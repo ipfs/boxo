@@ -17,7 +17,6 @@ import (
 	peer "github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/routing"
 	"go.opentelemetry.io/otel/trace"
-	"go.uber.org/zap/zapcore"
 )
 
 var log = logging.Logger("bitswap/session")
@@ -206,7 +205,7 @@ func (s *Session) ReceiveFrom(from peer.ID, ks []cid.Cid, haves []cid.Cid, dontH
 
 func (s *Session) logReceiveFrom(from peer.ID, interestedKs []cid.Cid, haves []cid.Cid, dontHaves []cid.Cid) {
 	// Save some CPU cycles if log level is higher than debug
-	if !log.Level().Enabled(zapcore.DebugLevel) {
+	if !log.LevelEnabled(logging.LevelDebug) {
 		return
 	}
 
