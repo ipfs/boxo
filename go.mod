@@ -29,7 +29,7 @@ require (
 	github.com/ipfs/go-log/v2 v2.8.1
 	github.com/ipfs/go-metrics-interface v0.3.0
 	github.com/ipfs/go-peertaskqueue v0.8.2
-	github.com/ipfs/go-test v0.2.2
+	github.com/ipfs/go-test v0.2.3
 	github.com/ipfs/go-unixfsnode v1.10.1
 	github.com/ipld/go-car/v2 v2.14.3
 	github.com/ipld/go-codec-dagpb v1.7.0
