@@ -436,14 +436,46 @@ func (bs *Client) GetBlock(ctx context.Context, k cid.Cid) (blocks.Block, error)
 // [github.com/ipfs/boxo/bitswap/client/traceability.Block] assertable
 // [blocks.Block].
 //
-// NB: Your request remains open until the context expires. To conserve
-// resources, provide a context with a reasonably short deadline (ie. not one
-// that lasts throughout the lifetime of the server)
+// When the provided context is canceled, GetBlocks will stop returning blocks
+// and the returned channel will be closed.
 func (bs *Client) GetBlocks(ctx context.Context, keys []cid.Cid) (<-chan blocks.Block, error) {
 	ctx, span := internal.StartSpan(ctx, "GetBlocks", trace.WithAttributes(attribute.Int("NumKeys", len(keys))))
 	defer span.End()
-	session := bs.sm.NewSession(ctx, bs.provSearchDelay, bs.rebroadcastDelay)
-	return session.GetBlocks(ctx, keys)
+
+	sessCtx, cancelSession := context.WithCancel(ctx)
+	session := bs.sm.NewSession(sessCtx, bs.provSearchDelay, bs.rebroadcastDelay)
+
+	blocksChan, err := session.GetBlocks(ctx, keys)
+	if err != nil {
+		cancelSession()
+		return nil, err
+	}
+
+	out := make(chan blocks.Block)
+	go func() {
+		defer func() {
+			close(out)
+			cancelSession()
+		}()
+
+		for {
+			select {
+			case blk, ok := <-blocksChan:
+				if !ok {
+					return
+				}
+				select {
+				case out <- blk:
+				case <-ctx.Done():
+					return
+				}
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+
+	return out, nil
 }
 
 // NotifyNewBlocks announces the existence of blocks to this bitswap service.
