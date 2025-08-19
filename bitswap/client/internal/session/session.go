@@ -96,7 +96,7 @@ type op struct {
 type Session struct {
 	// dependencies
 	ctx            context.Context
-	shutdown       func()
+	cancel         func()
 	sm             SessionManager
 	pm             PeerManager
 	sprm           SessionPeerManager
@@ -129,7 +129,6 @@ type Session struct {
 // New creates a new bitswap session whose lifetime is bounded by the
 // given context.
 func New(
-	ctx context.Context,
 	sm SessionManager,
 	id uint64,
 	sprm SessionPeerManager,
@@ -143,12 +142,12 @@ func New(
 	self peer.ID,
 	havesReceivedGauge bspm.Gauge,
 ) *Session {
-	ctx, cancel := context.WithCancel(ctx)
+	ctx, cancel := context.WithCancel(context.Background())
 	s := &Session{
 		sw:                  newSessionWants(broadcastLiveWantsLimit),
 		tickDelayReqs:       make(chan time.Duration),
 		ctx:                 ctx,
-		shutdown:            cancel,
+		cancel:              cancel,
 		sm:                  sm,
 		pm:                  pm,
 		sprm:                sprm,
@@ -174,8 +173,8 @@ func (s *Session) ID() uint64 {
 	return s.id
 }
 
-func (s *Session) Shutdown() {
-	s.shutdown()
+func (s *Session) Close() {
+	s.cancel()
 }
 
 // ReceiveFrom receives incoming blocks from the given peer.

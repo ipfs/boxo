@@ -300,7 +300,6 @@ func New(parent context.Context, network bsnet.BitSwapNetwork, providerFinder ro
 	}
 
 	sessionFactory := func(
-		sessctx context.Context,
 		sessmgr bssession.SessionManager,
 		id uint64,
 		spm bssession.SessionPeerManager,
@@ -322,9 +321,9 @@ func New(parent context.Context, network bsnet.BitSwapNetwork, providerFinder ro
 		} else if providerFinder != nil {
 			sessionProvFinder = providerFinder
 		}
-		return bssession.New(sessctx, sessmgr, id, spm, sessionProvFinder, sim, pm, bpm, notif, provSearchDelay, rebroadcastDelay, self, bs.havesReceivedGauge)
+		return bssession.New(sessmgr, id, spm, sessionProvFinder, sim, pm, bpm, notif, provSearchDelay, rebroadcastDelay, self, bs.havesReceivedGauge)
 	}
-	sessionPeerManagerFactory := func(ctx context.Context, id uint64) bssession.SessionPeerManager {
+	sessionPeerManagerFactory := func(id uint64) bssession.SessionPeerManager {
 		return bsspm.New(id, network)
 	}
 	notif := notifications.New(bs.traceBlock)
@@ -443,18 +442,11 @@ func (bs *Client) GetBlocks(ctx context.Context, keys []cid.Cid) (<-chan blocks.
 	ctx, span := internal.StartSpan(ctx, "GetBlocks", trace.WithAttributes(attribute.Int("NumKeys", len(keys))))
 	defer span.End()
 
-	// Temporary session closed indepentendly of cancellation ctx.
-	sessCtx, cancelSession := context.WithCancel(context.Background())
-
-	// Preserve retrieval.State from the original request context if present
-	if retrievalState := retrieval.StateFromContext(ctx); retrievalState != nil {
-		sessCtx = context.WithValue(sessCtx, retrieval.ContextKey, retrievalState)
-	}
-	session := bs.sm.NewSession(sessCtx, bs.provSearchDelay, bs.rebroadcastDelay)
+	session := bs.sm.NewSession(bs.provSearchDelay, bs.rebroadcastDelay, retrieval.StateFromContext(ctx))
 
 	blocksChan, err := session.GetBlocks(ctx, keys)
 	if err != nil {
-		cancelSession()
+		session.Close()
 		return nil, err
 	}
 
@@ -462,7 +454,7 @@ func (bs *Client) GetBlocks(ctx context.Context, keys []cid.Cid) (<-chan blocks.
 	go func() {
 		defer func() {
 			close(out)
-			cancelSession()
+			session.Close()
 		}()
 
 		ctxDone := ctx.Done()
@@ -712,5 +704,10 @@ func (bs *Client) IsOnline() bool {
 func (bs *Client) NewSession(ctx context.Context) exchange.Fetcher {
 	ctx, span := internal.StartSpan(ctx, "NewSession")
 	defer span.End()
-	return bs.sm.NewSession(ctx, bs.provSearchDelay, bs.rebroadcastDelay)
+
+	session := bs.sm.NewSession(bs.provSearchDelay, bs.rebroadcastDelay)
+	context.AfterFunc(ctx, func() {
+		session.Close()
+	})
+	return session
 }
