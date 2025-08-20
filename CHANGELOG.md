@@ -16,10 +16,34 @@ The following emojis are used to highlight certain changes:
 
 ### Added
 
-- `namesys/IPNSPublisher`: option to `PublishOptions` that allows for setting a custom sequence number for the IPNS record with proper validation to prevent unintentional replay attacks. [#962](https://github.com/ipfs/boxo/pull/962)
-
 ### Changed
 
+### Removed
+
+### Fixed
+
+### Security
+
+
+## [v0.34.0]
+
+### Added
+
+- `autoconf`: Client library for fetching, caching and expanding IPFS network configurations using "auto" placeholders
+- `gateway`: Added configurable limits for gateway resource protection:
+  - `Config.RetrievalTimeout`: Maximum duration between writes of non-empty data to HTTP response body (default: 30s). Returns 504 Gateway Timeout when gateway cannot retrieve content within this period.
+  - `Config.MaxConcurrentRequests`: Limits concurrent HTTP requests (default: 4096, suitable for most deployments). Returns 429 Too Many Requests with 60s Retry-After header when exceeded. To restore previous unlimited behavior set both `RetrievalTimeout` and `MaxConcurrentRequests` to `0`.
+    > [!IMPORTANT]
+    > If your gateway returns many HTTP 429 responses while having available resources (CPU, memory), increase `MaxConcurrentRequests`. If experiencing high load or resource exhaustion, decrease it. See the [`MaxConcurrentRequests` godoc](https://pkg.go.dev/github.com/ipfs/boxo/gateway#Config) for detailed tuning guidance.
+  - `Config.MetricsRegistry`: Optional Prometheus registry for metrics isolation. When nil, uses the default global registry. Useful for testing and deployments with multiple gateway instances.
+  - New middleware with Prometheus metrics:
+    - `ipfs_http_gw_concurrent_requests`: Gauge tracking number of concurrent requests
+    - `ipfs_http_gw_responses_total{code}`: Counter for all HTTP responses by status code
+    - `ipfs_http_gw_retrieval_timeouts_total{code,truncated}`: Counter for retrieval timeout events with details on truncation
+- `namesys/IPNSPublisher`: option to `PublishOptions` that allows for setting a custom sequence number for the IPNS record with proper validation to prevent unintentional replay attacks. [#962](https://github.com/ipfs/boxo/pull/962)
+- `blockstore`: Added `ValidatingBlockstore` wrapper. This replaces the `HashOnRead` blockstore API.
+
+### Changed
 - `bitswap/network`: The connection event manager now has a `SetListeners` method. Both `bsnet` and `httpnet` now have options to provide the `ConnectionEventManager` during `New(...)`. This allows sharing the connection event manager when using both. The connection manager SHOULD be shared when using both networks with the `network.Router` utility.
 - `provider`: Distribute the responsability of providing new blocks to the places that play a role in the different providing strategies [#976](https://github.com/ipfs/boxo/pull/976). Refactor the logic to perform Provides, when the component has been given a provider:
   - Remove `providing.Exchange`
@@ -28,12 +52,12 @@ The following emojis are used to highlight certain changes:
   - Provide from MFS whenever there is a call to `DAGService.Add` and `provider` is set (via constructor param).
 - upgrade to `go-libp2p` [v0.43.0](https://github.com/libp2p/go-libp2p/releases/tag/v0.43.0)
 - replace `uber-go/multierr` with `errors.Join` [#996](https://github.com/ipfs/boxo/pull/996)
+- updated Go in `go.mod` to 1.24.0 [#999](https://github.com/ipfs/boxo/pull/999)
 
 ### Removed
 
-### Fixed
-
-### Security
+- `blockstore`: Removed HashOnRead API. This is a potentially BREAKING CHANGE for any users of the HashOnRead API. Use the `ValidatingBlocksore` instead.
+  - The `HashOnRead` function was also removed from `Filestore`. To use this functionality, provide a `ValidatingBlockstore` when creating a new `Filestore`.
 
 
 ## [v0.33.1]

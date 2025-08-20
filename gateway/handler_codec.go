@@ -14,11 +14,10 @@ import (
 	"github.com/ipfs/boxo/gateway/assets"
 	"github.com/ipfs/boxo/path"
 	"github.com/ipfs/go-cid"
-	// Ensure basic codecs are registered.
-	_ "github.com/ipld/go-ipld-prime/codec/cbor"
-	_ "github.com/ipld/go-ipld-prime/codec/dagcbor"
-	_ "github.com/ipld/go-ipld-prime/codec/dagjson"
-	_ "github.com/ipld/go-ipld-prime/codec/json"
+	_ "github.com/ipld/go-ipld-prime/codec/cbor"    // Ensure basic codecs are registered.
+	_ "github.com/ipld/go-ipld-prime/codec/dagcbor" // Ensure basic codecs are registered.
+	_ "github.com/ipld/go-ipld-prime/codec/dagjson" // Ensure basic codecs are registered.
+	_ "github.com/ipld/go-ipld-prime/codec/json"    // Ensure basic codecs are registered.
 	"github.com/ipld/go-ipld-prime/multicodec"
 	"github.com/ipld/go-ipld-prime/node/basicnode"
 	mc "github.com/multiformats/go-multicodec"
@@ -145,8 +144,7 @@ func (i *handler) renderCodec(ctx context.Context, w http.ResponseWriter, r *htt
 	// Let's first get the codecs that can be used with this content type.
 	toCodec, ok := contentTypeToCodec[rq.responseFormat]
 	if !ok {
-		err := fmt.Errorf("converting from %q to %q is not supported", cidCodec.String(), rq.responseFormat)
-		i.webError(w, r, err, http.StatusBadRequest)
+		i.webError(w, r, errConversionNotSupported, http.StatusBadRequest)
 		return false
 	}
 
@@ -207,7 +205,7 @@ func (i *handler) serveCodecHTML(ctx context.Context, w http.ResponseWriter, r *
 		Node:       parseNode(blockCid, blockData),
 	})
 	if err != nil {
-		_, _ = w.Write([]byte(fmt.Sprintf("error during body generation: %v", err)))
+		_, _ = fmt.Fprintf(w, "error during body generation: %v", err)
 	}
 
 	return err == nil
@@ -298,6 +296,9 @@ func (i *handler) serveCodecConverted(ctx context.Context, w http.ResponseWriter
 		return true
 	}
 
+	log.Debugw("failed to write codec response",
+		"path", contentPath,
+		"error", err)
 	return false
 }
 

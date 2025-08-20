@@ -60,10 +60,6 @@ type Blockstore interface {
 	// When underlying blockstore is operating on Multihash and codec information
 	// is not preserved, returned CIDs will use Raw (0x55) codec.
 	AllKeysChan(ctx context.Context) (<-chan cid.Cid, error)
-
-	// HashOnRead specifies if every read block should be
-	// rehashed to make sure it matches its CID.
-	HashOnRead(enabled bool)
 }
 
 // Viewer can be implemented by blockstores that offer zero-copy access to
@@ -182,14 +178,9 @@ func NewBlockstoreNoPrefix(d ds.Batching) Blockstore {
 type blockstore struct {
 	datastore ds.Batching
 
-	rehash       atomic.Bool
 	writeThrough bool
 	noPrefix     bool
 	provider     provider.MultihashProvider
-}
-
-func (bs *blockstore) HashOnRead(enabled bool) {
-	bs.rehash.Store(enabled)
 }
 
 func (bs *blockstore) Get(ctx context.Context, k cid.Cid) (blocks.Block, error) {
@@ -203,18 +194,6 @@ func (bs *blockstore) Get(ctx context.Context, k cid.Cid) (blocks.Block, error) 
 	}
 	if err != nil {
 		return nil, err
-	}
-	if bs.rehash.Load() {
-		rbcid, err := k.Prefix().Sum(bdata)
-		if err != nil {
-			return nil, err
-		}
-
-		if !rbcid.Equals(k) {
-			return nil, ErrHashMismatch
-		}
-
-		return blocks.NewBlockWithCid(bdata, rbcid)
 	}
 	return blocks.NewBlockWithCid(bdata, k)
 }
