@@ -442,7 +442,8 @@ func (bs *Client) GetBlocks(ctx context.Context, keys []cid.Cid) (<-chan blocks.
 	ctx, span := internal.StartSpan(ctx, "GetBlocks", trace.WithAttributes(attribute.Int("NumKeys", len(keys))))
 	defer span.End()
 
-	sessCtx, cancelSession := context.WithCancel(ctx)
+	// Temporary session closed indepentendly of cancellation ctx.
+	sessCtx, cancelSession := context.WithCancel(context.Background())
 	session := bs.sm.NewSession(sessCtx, bs.provSearchDelay, bs.rebroadcastDelay)
 
 	blocksChan, err := session.GetBlocks(ctx, keys)
@@ -458,6 +459,7 @@ func (bs *Client) GetBlocks(ctx context.Context, keys []cid.Cid) (<-chan blocks.
 			cancelSession()
 		}()
 
+		ctxDone := ctx.Done()
 		for {
 			select {
 			case blk, ok := <-blocksChan:
@@ -466,10 +468,10 @@ func (bs *Client) GetBlocks(ctx context.Context, keys []cid.Cid) (<-chan blocks.
 				}
 				select {
 				case out <- blk:
-				case <-ctx.Done():
+				case <-ctxDone:
 					return
 				}
-			case <-ctx.Done():
+			case <-ctxDone:
 				return
 			}
 		}

@@ -104,6 +104,8 @@ func handleIncoming(ctx, sessctx context.Context, remaining *cid.Set, in <-chan 
 		cfun(remaining.Keys())
 	}()
 
+	ctxDone := ctx.Done()
+	sessDone := sessctx.Done()
 	for {
 		select {
 		case blk, ok := <-in:
@@ -116,14 +118,14 @@ func handleIncoming(ctx, sessctx context.Context, remaining *cid.Set, in <-chan 
 			remaining.Remove(blk.Cid())
 			select {
 			case out <- blk:
-			case <-ctx.Done():
+			case <-ctxDone:
 				return
-			case <-sessctx.Done():
+			case <-sessDone:
 				return
 			}
-		case <-ctx.Done():
+		case <-ctxDone:
 			return
-		case <-sessctx.Done():
+		case <-sessDone:
 			return
 		}
 	}
