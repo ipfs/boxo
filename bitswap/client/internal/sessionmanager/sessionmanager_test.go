@@ -67,11 +67,11 @@ type fakePeerManager struct {
 	cancels []cid.Cid
 }
 
-func (*fakePeerManager) RegisterSession(peer.ID, bspm.Session)                         {}
-func (*fakePeerManager) UnregisterSession(uint64)                                      {}
-func (*fakePeerManager) SendWants(context.Context, peer.ID, []cid.Cid, []cid.Cid) bool { return true }
-func (*fakePeerManager) BroadcastWantHaves(context.Context, []cid.Cid)                 {}
-func (fpm *fakePeerManager) SendCancels(ctx context.Context, cancels []cid.Cid) {
+func (*fakePeerManager) RegisterSession(peer.ID, bspm.Session)        {}
+func (*fakePeerManager) UnregisterSession(uint64)                     {}
+func (*fakePeerManager) SendWants(peer.ID, []cid.Cid, []cid.Cid) bool { return true }
+func (*fakePeerManager) BroadcastWantHaves([]cid.Cid)                 {}
+func (fpm *fakePeerManager) SendCancels(cancels []cid.Cid) {
 	fpm.lk.Lock()
 	defer fpm.lk.Unlock()
 	fpm.cancels = append(fpm.cancels, cancels...)
@@ -116,7 +116,7 @@ func TestReceiveFrom(t *testing.T) {
 	sim := bssim.New()
 	bpm := bsbpm.New()
 	pm := &fakePeerManager{}
-	sm := New(ctx, sessionFactory, sim, peerManagerFactory, bpm, pm, notif, "")
+	sm := New(sessionFactory, sim, peerManagerFactory, bpm, pm, notif, "")
 
 	p := peer.ID(strconv.Itoa(123))
 	block := blocks.NewBlock([]byte("block"))
@@ -163,7 +163,7 @@ func TestReceiveBlocksWhenManagerShutdown(t *testing.T) {
 	sim := bssim.New()
 	bpm := bsbpm.New()
 	pm := &fakePeerManager{}
-	sm := New(ctx, sessionFactory, sim, peerManagerFactory, bpm, pm, notif, "")
+	sm := New(sessionFactory, sim, peerManagerFactory, bpm, pm, notif, "")
 
 	p := peer.ID(strconv.Itoa(123))
 	block := blocks.NewBlock([]byte("block"))
@@ -200,7 +200,7 @@ func TestReceiveBlocksWhenSessionContextCancelled(t *testing.T) {
 	sim := bssim.New()
 	bpm := bsbpm.New()
 	pm := &fakePeerManager{}
-	sm := New(ctx, sessionFactory, sim, peerManagerFactory, bpm, pm, notif, "")
+	sm := New(sessionFactory, sim, peerManagerFactory, bpm, pm, notif, "")
 
 	p := peer.ID(strconv.Itoa(123))
 	block := blocks.NewBlock([]byte("block"))
@@ -237,7 +237,7 @@ func TestShutdown(t *testing.T) {
 	sim := bssim.New()
 	bpm := bsbpm.New()
 	pm := &fakePeerManager{}
-	sm := New(ctx, sessionFactory, sim, peerManagerFactory, bpm, pm, notif, "")
+	sm := New(sessionFactory, sim, peerManagerFactory, bpm, pm, notif, "")
 
 	p := peer.ID(strconv.Itoa(123))
 	block := blocks.NewBlock([]byte("block"))

@@ -1,7 +1,6 @@
 package session
 
 import (
-	"context"
 	"sync"
 	"testing"
 	"time"
@@ -79,11 +78,11 @@ func (pm *mockPeerManager) has(p peer.ID, sid uint64) bool {
 	return false
 }
 
-func (*mockPeerManager) UnregisterSession(uint64)                      {}
-func (*mockPeerManager) BroadcastWantHaves(context.Context, []cid.Cid) {}
-func (*mockPeerManager) SendCancels(context.Context, []cid.Cid)        {}
+func (*mockPeerManager) UnregisterSession(uint64)     {}
+func (*mockPeerManager) BroadcastWantHaves([]cid.Cid) {}
+func (*mockPeerManager) SendCancels([]cid.Cid)        {}
 
-func (pm *mockPeerManager) SendWants(ctx context.Context, p peer.ID, wantBlocks []cid.Cid, wantHaves []cid.Cid) bool {
+func (pm *mockPeerManager) SendWants(p peer.ID, wantBlocks []cid.Cid, wantHaves []cid.Cid) bool {
 	pm.lk.Lock()
 	defer pm.lk.Unlock()
 

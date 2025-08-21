@@ -146,17 +146,14 @@ func newFakePeerManager() *fakePeerManager {
 
 func (pm *fakePeerManager) RegisterSession(peer.ID, bspm.Session) {}
 func (pm *fakePeerManager) UnregisterSession(uint64)              {}
-func (pm *fakePeerManager) SendWants(context.Context, peer.ID, []cid.Cid, []cid.Cid) bool {
+func (pm *fakePeerManager) SendWants(peer.ID, []cid.Cid, []cid.Cid) bool {
 	return true
 }
 
-func (pm *fakePeerManager) BroadcastWantHaves(ctx context.Context, cids []cid.Cid) {
-	select {
-	case pm.wantReqs <- wantReq{cids}:
-	case <-ctx.Done():
-	}
+func (pm *fakePeerManager) BroadcastWantHaves(cids []cid.Cid) {
+	pm.wantReqs <- wantReq{cids}
 }
-func (pm *fakePeerManager) SendCancels(ctx context.Context, cancels []cid.Cid) {}
+func (pm *fakePeerManager) SendCancels(cancels []cid.Cid) {}
 
 func TestSessionGetBlocks(t *testing.T) {
 	fpm := newFakePeerManager()
