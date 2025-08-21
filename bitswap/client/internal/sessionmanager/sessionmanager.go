@@ -46,7 +46,6 @@ type PeerManagerFactory func(id uint64) bssession.SessionPeerManager
 // SessionManager is responsible for creating, managing, and dispatching to
 // sessions.
 type SessionManager struct {
-	ctx                    context.Context
 	sessionFactory         SessionFactory
 	sessionInterestManager *bssim.SessionInterestManager
 	peerManagerFactory     PeerManagerFactory
@@ -66,11 +65,10 @@ type SessionManager struct {
 }
 
 // New creates a new SessionManager.
-func New(ctx context.Context, sessionFactory SessionFactory, sessionInterestManager *bssim.SessionInterestManager, peerManagerFactory PeerManagerFactory,
+func New(sessionFactory SessionFactory, sessionInterestManager *bssim.SessionInterestManager, peerManagerFactory PeerManagerFactory,
 	blockPresenceManager *bsbpm.BlockPresenceManager, peerManager bssession.PeerManager, notif notifications.PubSub, self peer.ID,
 ) *SessionManager {
 	return &SessionManager{
-		ctx:                    ctx,
 		sessionFactory:         sessionFactory,
 		sessionInterestManager: sessionInterestManager,
 		peerManagerFactory:     peerManagerFactory,
@@ -192,5 +190,5 @@ func (sm *SessionManager) cancelWants(wants []cid.Cid) {
 	// Send CANCEL to all peers for blocks that no session is interested in
 	// anymore.
 	// Note: use bitswap context because session context may already be Done.
-	sm.peerManager.SendCancels(sm.ctx, wants)
+	sm.peerManager.SendCancels(wants)
 }

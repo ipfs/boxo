@@ -35,12 +35,12 @@ type PeerManager interface {
 	// interested in a peer's connection state
 	UnregisterSession(uint64)
 	// SendWants tells the PeerManager to send wants to the given peer
-	SendWants(ctx context.Context, peerId peer.ID, wantBlocks []cid.Cid, wantHaves []cid.Cid) bool
+	SendWants(peerId peer.ID, wantBlocks []cid.Cid, wantHaves []cid.Cid) bool
 	// BroadcastWantHaves sends want-haves to all connected peers (used for
 	// session discovery)
-	BroadcastWantHaves(context.Context, []cid.Cid)
+	BroadcastWantHaves([]cid.Cid)
 	// SendCancels tells the PeerManager to send cancels to all peers
-	SendCancels(context.Context, []cid.Cid)
+	SendCancels([]cid.Cid)
 }
 
 // SessionManager manages all the sessions
@@ -481,7 +481,7 @@ func (s *Session) wantBlocks(ctx context.Context, newks []cid.Cid) {
 // Send want-haves to all connected peers
 func (s *Session) broadcastWantHaves(ctx context.Context, wants []cid.Cid) {
 	log.Debugw("broadcastWantHaves", "session", s.id, "cids", wants)
-	s.pm.BroadcastWantHaves(ctx, wants)
+	s.pm.BroadcastWantHaves(wants)
 }
 
 // The session will broadcast if it has outstanding wants and doesn't receive

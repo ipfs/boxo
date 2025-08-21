@@ -327,7 +327,7 @@ func New(parent context.Context, network bsnet.BitSwapNetwork, providerFinder ro
 		return bsspm.New(id, network)
 	}
 	notif := notifications.New(bs.traceBlock)
-	sm = bssm.New(ctx, sessionFactory, sim, sessionPeerManagerFactory, bpm, pm, notif, network.Self())
+	sm = bssm.New(sessionFactory, sim, sessionPeerManagerFactory, bpm, pm, notif, network.Self())
 
 	bs.sm = sm
 	bs.notif = notif
