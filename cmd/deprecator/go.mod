@@ -1,6 +1,6 @@
 module github.com/ipfs/boxo/cmd/deprecator
 
-go 1.23
+go 1.24
 
 require (
 	github.com/dave/dst v0.27.2
