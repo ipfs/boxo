@@ -12,12 +12,18 @@ import (
 	"github.com/gammazero/chanqueue"
 	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-cidutil"
+	mh "github.com/multiformats/go-multihash"
 )
 
 // Provider announces blocks to the network
 type Provider interface {
 	// Provide takes a cid and makes an attempt to announce it to the network
 	Provide(context.Context, cid.Cid, bool) error
+}
+
+// MultihashProvider is the interface implementing StartProviding.
+type MultihashProvider interface {
+	StartProviding(force bool, keys ...mh.Multihash)
 }
 
 // Reprovider reannounces blocks to the network

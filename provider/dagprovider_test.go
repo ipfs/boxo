@@ -1,4 +1,4 @@
-package provider
+package provider_test
 
 import (
 	"context"
@@ -12,6 +12,7 @@ import (
 	bsfetcher "github.com/ipfs/boxo/fetcher/impl/blockservice"
 	"github.com/ipfs/boxo/ipld/merkledag"
 	mdutils "github.com/ipfs/boxo/ipld/merkledag/test"
+	"github.com/ipfs/boxo/provider"
 	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-datastore"
 	dssync "github.com/ipfs/go-datastore/sync"
@@ -27,7 +28,7 @@ type dagProviderHelper struct {
 	BlockService   blockservice.BlockService
 	FetcherFactory fetcher.Factory
 	DAGService     format.DAGService
-	KeyChanF       KeyChanFunc
+	KeyChanF       provider.KeyChanFunc
 	Cids           []cid.Cid
 }
 
@@ -49,7 +50,7 @@ func makeDAGProvider(t *testing.T, ctx context.Context, fanout, depth uint) *dag
 	require.NoError(t, err)
 	t.Logf("Generated %d CIDs. Root: %s", len(allCids), root)
 
-	keyChanF := NewDAGProvider(root, unixFSFetcher)
+	keyChanF := provider.NewDAGProvider(root, unixFSFetcher)
 	return &dagProviderHelper{
 		Datastore:      ds,
 		Blockstore:     bs,
