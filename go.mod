@@ -5,10 +5,10 @@ go 1.24.0
 require (
 	github.com/alecthomas/units v0.0.0-20240927000941-0f3dac36c52b
 	github.com/cespare/xxhash/v2 v2.3.0
+	github.com/coder/quartz v0.2.1
 	github.com/crackcomm/go-gitignore v0.0.0-20241020182519-7843d2ba8fdf
 	github.com/cskr/pubsub v1.0.2
 	github.com/dustin/go-humanize v1.0.1
-	github.com/filecoin-project/go-clock v0.1.0
 	github.com/gabriel-vasile/mimetype v1.4.9
 	github.com/gammazero/chanqueue v1.1.1
 	github.com/gammazero/deque v1.1.0
@@ -28,7 +28,7 @@ require (
 	github.com/ipfs/go-ipld-legacy v0.2.2
 	github.com/ipfs/go-log/v2 v2.8.1
 	github.com/ipfs/go-metrics-interface v0.3.0
-	github.com/ipfs/go-peertaskqueue v0.8.2
+	github.com/ipfs/go-peertaskqueue v0.8.3-0.20250825195544-4c2f6be58ebd
 	github.com/ipfs/go-test v0.2.3
 	github.com/ipfs/go-unixfsnode v1.10.1
 	github.com/ipld/go-car/v2 v2.14.3
@@ -85,6 +85,7 @@ require (
 	github.com/davidlazar/go-crypto v0.0.0-20200604182044-b73af7476f6c // indirect
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.4.0 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
+	github.com/filecoin-project/go-clock v0.1.0 // indirect
 	github.com/flynn/noise v1.1.0 // indirect
 	github.com/francoispqt/gojay v1.2.13 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect

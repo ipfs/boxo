@@ -7,7 +7,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/filecoin-project/go-clock"
+	"github.com/coder/quartz"
 	bswl "github.com/ipfs/boxo/bitswap/client/wantlist"
 	bsmsg "github.com/ipfs/boxo/bitswap/message"
 	pb "github.com/ipfs/boxo/bitswap/message/pb"
@@ -100,7 +100,7 @@ type MessageQueue struct {
 	msg bsmsg.BitSwapMessage
 
 	// For simulating time -- uses mock in test
-	clock clock.Clock
+	clock quartz.Clock
 
 	// Used to track things that happen asynchronously -- used only in test
 	events chan<- messageEvent
@@ -298,11 +298,11 @@ func newMessageQueue(
 	sendErrorBackoff time.Duration,
 	maxValidLatency time.Duration,
 	dhTimeoutMgr DontHaveTimeoutManager,
-	clk clock.Clock,
+	clk quartz.Clock,
 	events chan<- messageEvent,
 ) *MessageQueue {
 	if clk == nil {
-		clk = clock.New()
+		clk = quartz.NewReal()
 	}
 	ctx, cancel := context.WithCancel(ctx)
 	return &MessageQueue{
@@ -486,7 +486,7 @@ func (mq *MessageQueue) runQueue() {
 	defer mq.onShutdown()
 
 	// Create a timer for debouncing scheduled work.
-	scheduleWork := mq.clock.Timer(0)
+	scheduleWork := mq.clock.NewTimer(0)
 	if !scheduleWork.Stop() {
 		// Need to drain the timer if Stop() returns false
 		// See: https://golang.org/pkg/time/#Timer.Stop
@@ -496,7 +496,7 @@ func (mq *MessageQueue) runQueue() {
 	perPeerDelay := mq.perPeerDelay
 	hasWorkChan := mq.outgoingWork
 
-	rebroadcastTimer := mq.clock.Timer(runRebroadcastsInterval)
+	rebroadcastTimer := mq.clock.NewTimer(runRebroadcastsInterval)
 	defer rebroadcastTimer.Stop()
 
 	for {

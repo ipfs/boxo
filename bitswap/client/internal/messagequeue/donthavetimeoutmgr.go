@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/filecoin-project/go-clock"
+	"github.com/coder/quartz"
 	"github.com/gammazero/deque"
 	cid "github.com/ipfs/go-cid"
 	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
@@ -44,7 +44,7 @@ type DontHaveTimeoutConfig struct {
 	timeoutsSignal chan<- struct{}
 
 	// clock is a mockable time api used for testing.
-	clock clock.Clock
+	clock quartz.Clock
 }
 
 func DefaultDontHaveTimeoutConfig() *DontHaveTimeoutConfig {
@@ -102,7 +102,7 @@ type dontHaveTimeoutMgr struct {
 	// ewma of message latency (time from message sent to response received)
 	messageLatency *latencyEwma
 	// timer used to wait until want at front of queue expires
-	checkForTimeoutsTimer *clock.Timer
+	checkForTimeoutsTimer *quartz.Timer
 }
 
 // newDontHaveTimeoutMgr creates a new dontHaveTimeoutMgr
@@ -118,7 +118,7 @@ func newDontHaveTimeoutMgr(pc PeerConnection, onDontHaveTimeout func([]cid.Cid, 
 		cfg = DefaultDontHaveTimeoutConfig()
 	}
 	if cfg.clock == nil {
-		cfg.clock = clock.New()
+		cfg.clock = quartz.NewReal()
 	}
 	ctx, shutdown := context.WithCancel(context.Background())
 	return &dontHaveTimeoutMgr{
@@ -270,10 +270,11 @@ func (dhtm *dontHaveTimeoutMgr) checkForTimeouts() {
 
 	// Schedule the next check for the moment when the oldest pending want will
 	// timeout
+	const timerTag = "checkForTimeout"
 	oldestStart := dhtm.wantQueue.Front().sent
 	until := oldestStart.Add(dhtm.timeout).Sub(now)
 	if dhtm.checkForTimeoutsTimer == nil {
-		dhtm.checkForTimeoutsTimer = dhtm.config.clock.Timer(until)
+		dhtm.checkForTimeoutsTimer = dhtm.config.clock.NewTimer(until, timerTag)
 		go func() {
 			for {
 				select {
@@ -287,8 +288,8 @@ func (dhtm *dontHaveTimeoutMgr) checkForTimeouts() {
 			}
 		}()
 	} else {
-		dhtm.checkForTimeoutsTimer.Stop()
-		dhtm.checkForTimeoutsTimer.Reset(until)
+		dhtm.checkForTimeoutsTimer.Stop(timerTag)
+		dhtm.checkForTimeoutsTimer.Reset(until, timerTag)
 	}
 }
 

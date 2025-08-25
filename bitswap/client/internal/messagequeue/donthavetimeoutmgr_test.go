@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/filecoin-project/go-clock"
+	"github.com/coder/quartz"
 	cid "github.com/ipfs/go-cid"
 	"github.com/ipfs/go-test/random"
 	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
@@ -17,12 +17,12 @@ type mockPeerConn struct {
 	err       error
 	latency   time.Duration
 	latencies []time.Duration
-	clock     clock.Clock
+	clock     quartz.Clock
 	pinged    chan struct{}
 }
 
 func (pc *mockPeerConn) Ping(ctx context.Context) ping.Result {
-	timer := pc.clock.Timer(pc.latency)
+	timer := pc.clock.NewTimer(pc.latency, "mockPeerConn.Ping")
 	pc.pinged <- struct{}{}
 	select {
 	case <-timer.C:
@@ -72,6 +72,26 @@ func (tr *timeoutRecorder) clear() {
 	tr.timedOutKs = nil
 }
 
+// quartzAdd advances the time by the given duration through any events that
+// happen before or at the final time.
+//
+// TODO: Replace calls to quartzAdd with calls to clock.Advance and
+// clock.AdvanceNext to provide better control over time events.
+func quartzAdd(c *quartz.Mock, d time.Duration) {
+	for d > 0 {
+		next, ok := c.Peek()
+		if !ok || next >= d {
+			c.Advance(d)
+			time.Sleep(time.Millisecond)
+			return
+		}
+		<-c.Advance(next).Done()
+		d -= next
+		// give some real time to process after timer has popped.
+		time.Sleep(time.Millisecond)
+	}
+}
+
 func TestDontHaveTimeoutMgrTimeout(t *testing.T) {
 	t.Parallel()
 	firstks := random.Cids(2)
@@ -80,7 +100,7 @@ func TestDontHaveTimeoutMgrTimeout(t *testing.T) {
 	latMultiplier := 2
 	expProcessTime := 5 * time.Millisecond
 	expectedTimeout := expProcessTime + latency*time.Duration(latMultiplier)
-	clock := clock.NewMock()
+	clock := quartz.NewMock(t)
 	pinged := make(chan struct{})
 	pc := &mockPeerConn{latency: latency, clock: clock, pinged: pinged}
 	tr := timeoutRecorder{}
@@ -99,7 +119,7 @@ func TestDontHaveTimeoutMgrTimeout(t *testing.T) {
 	dhtm.AddPending(firstks)
 
 	// Wait for less than the expected timeout
-	clock.Add(expectedTimeout - 10*time.Millisecond)
+	quartzAdd(clock, expectedTimeout-10*time.Millisecond)
 
 	// At this stage no keys should have timed out
 	if tr.timedOutCount() > 0 {
@@ -110,7 +130,7 @@ func TestDontHaveTimeoutMgrTimeout(t *testing.T) {
 	dhtm.AddPending(secondks)
 
 	// Wait until after the expected timeout
-	clock.Add(20 * time.Millisecond)
+	quartzAdd(clock, 20*time.Millisecond)
 
 	canRetry := true
 
@@ -120,7 +140,7 @@ retry:
 	case <-time.After(2 * time.Second):
 		if canRetry {
 			canRetry = false
-			clock.Add(10 * time.Millisecond)
+			quartzAdd(clock, 10*time.Millisecond)
 			goto retry
 		}
 		t.Fatal("timed out waiting for timeouts")
@@ -134,7 +154,7 @@ retry:
 	tr.clear()
 
 	// Sleep until the second set of keys should have timed out
-	clock.Add(expectedTimeout + 10*time.Millisecond)
+	quartzAdd(clock, expectedTimeout+10*time.Millisecond)
 
 	<-timeoutsTriggered
 
@@ -153,7 +173,7 @@ func TestDontHaveTimeoutMgrCancel(t *testing.T) {
 	latMultiplier := 1
 	expProcessTime := time.Duration(0)
 	expectedTimeout := latency
-	clock := clock.NewMock()
+	clock := quartz.NewMock(t)
 	pinged := make(chan struct{})
 	pc := &mockPeerConn{latency: latency, clock: clock, pinged: pinged}
 	tr := timeoutRecorder{}
@@ -171,14 +191,14 @@ func TestDontHaveTimeoutMgrCancel(t *testing.T) {
 
 	// Add keys
 	dhtm.AddPending(ks)
-	clock.Add(5 * time.Millisecond)
+	quartzAdd(clock, 5*time.Millisecond)
 
 	// Cancel keys
 	cancelCount := 1
 	dhtm.CancelPending(ks[:cancelCount])
 
 	// Wait for the expected timeout
-	clock.Add(expectedTimeout)
+	quartzAdd(clock, expectedTimeout)
 
 	<-timeoutsTriggered
 
@@ -195,7 +215,7 @@ func TestDontHaveTimeoutWantCancelWant(t *testing.T) {
 	latMultiplier := 1
 	expProcessTime := time.Duration(0)
 	expectedTimeout := latency
-	clock := clock.NewMock()
+	clock := quartz.NewMock(t)
 	pinged := make(chan struct{})
 	pc := &mockPeerConn{latency: latency, clock: clock, pinged: pinged}
 	tr := timeoutRecorder{}
@@ -215,18 +235,18 @@ func TestDontHaveTimeoutWantCancelWant(t *testing.T) {
 	dhtm.AddPending(ks)
 
 	// Wait for a short time
-	clock.Add(expectedTimeout - 10*time.Millisecond)
+	quartzAdd(clock, expectedTimeout-10*time.Millisecond)
 
 	// Cancel two keys
 	dhtm.CancelPending(ks[:2])
 
-	clock.Add(5 * time.Millisecond)
+	quartzAdd(clock, 5*time.Millisecond)
 
 	// Add back one cancelled key
 	dhtm.AddPending(ks[:1])
 
 	// Wait till after initial timeout
-	clock.Add(10 * time.Millisecond)
+	quartzAdd(clock, 10*time.Millisecond)
 
 	<-timeoutsTriggered
 
@@ -236,7 +256,7 @@ func TestDontHaveTimeoutWantCancelWant(t *testing.T) {
 	}
 
 	// Wait till after added back key should time out
-	clock.Add(latency)
+	quartzAdd(clock, latency)
 
 	<-timeoutsTriggered
 
@@ -252,7 +272,7 @@ func TestDontHaveTimeoutRepeatedAddPending(t *testing.T) {
 	latency := time.Millisecond * 5
 	latMultiplier := 1
 	expProcessTime := time.Duration(0)
-	clock := clock.NewMock()
+	clock := quartz.NewMock(t)
 	pinged := make(chan struct{})
 	pc := &mockPeerConn{latency: latency, clock: clock, pinged: pinged}
 	tr := timeoutRecorder{}
@@ -276,7 +296,7 @@ func TestDontHaveTimeoutRepeatedAddPending(t *testing.T) {
 	}
 
 	// Wait for the expected timeout
-	clock.Add(latency + 5*time.Millisecond)
+	quartzAdd(clock, latency+5*time.Millisecond)
 
 	<-timeoutsTriggered
 
@@ -293,7 +313,7 @@ func TestDontHaveTimeoutMgrMessageLatency(t *testing.T) {
 	latMultiplier := 1
 	expProcessTime := time.Duration(0)
 	msgLatencyMultiplier := 1
-	clock := clock.NewMock()
+	clock := quartz.NewMock(t)
 	pinged := make(chan struct{})
 	pc := &mockPeerConn{latency: latency, clock: clock, pinged: pinged}
 	tr := timeoutRecorder{}
@@ -320,7 +340,7 @@ func TestDontHaveTimeoutMgrMessageLatency(t *testing.T) {
 	// = 40ms
 
 	// Wait for less than the expected timeout
-	clock.Add(25 * time.Millisecond)
+	quartzAdd(clock, 25*time.Millisecond)
 
 	// Receive two message latency updates
 	dhtm.UpdateMessageLatency(time.Millisecond * 20)
@@ -334,7 +354,7 @@ func TestDontHaveTimeoutMgrMessageLatency(t *testing.T) {
 	// the keys should have timed out
 
 	// Give the queue some time to process the updates
-	clock.Add(5 * time.Millisecond)
+	quartzAdd(clock, 5*time.Millisecond)
 
 	<-timeoutsTriggered
 
@@ -346,7 +366,7 @@ func TestDontHaveTimeoutMgrMessageLatency(t *testing.T) {
 func TestDontHaveTimeoutMgrMessageLatencyMax(t *testing.T) {
 	t.Parallel()
 	ks := random.Cids(2)
-	clock := clock.NewMock()
+	clock := quartz.NewMock(t)
 	pinged := make(chan struct{})
 	pc := &mockPeerConn{latency: time.Second, clock: clock, pinged: pinged}
 	tr := timeoutRecorder{}
@@ -373,7 +393,7 @@ func TestDontHaveTimeoutMgrMessageLatencyMax(t *testing.T) {
 	dhtm.UpdateMessageLatency(testMaxTimeout * 4)
 
 	// Sleep until just after the maximum timeout
-	clock.Add(testMaxTimeout + 5*time.Millisecond)
+	quartzAdd(clock, testMaxTimeout+5*time.Millisecond)
 
 	<-timeoutsTriggered
 
@@ -392,7 +412,7 @@ func TestDontHaveTimeoutMgrUsesDefaultTimeoutIfPingError(t *testing.T) {
 	defaultTimeout := 10 * time.Millisecond
 	expectedTimeout := expProcessTime + defaultTimeout
 	tr := timeoutRecorder{}
-	clock := clock.NewMock()
+	clock := quartz.NewMock(t)
 	pinged := make(chan struct{})
 	pc := &mockPeerConn{latency: latency, clock: clock, pinged: pinged, err: errors.New("ping error")}
 	timeoutsTriggered := make(chan struct{})
@@ -413,7 +433,7 @@ func TestDontHaveTimeoutMgrUsesDefaultTimeoutIfPingError(t *testing.T) {
 	dhtm.AddPending(ks)
 
 	// Sleep for less than the expected timeout
-	clock.Add(expectedTimeout - 5*time.Millisecond)
+	quartzAdd(clock, expectedTimeout-5*time.Millisecond)
 
 	// At this stage no timeout should have happened yet
 	if tr.timedOutCount() > 0 {
@@ -421,7 +441,7 @@ func TestDontHaveTimeoutMgrUsesDefaultTimeoutIfPingError(t *testing.T) {
 	}
 
 	// Sleep until after the expected timeout
-	clock.Add(10 * time.Millisecond)
+	quartzAdd(clock, 10*time.Millisecond)
 
 	<-timeoutsTriggered
 
@@ -438,7 +458,7 @@ func TestDontHaveTimeoutMgrUsesDefaultTimeoutIfLatencyLonger(t *testing.T) {
 	latMultiplier := 1
 	expProcessTime := time.Duration(0)
 	defaultTimeout := 100 * time.Millisecond
-	clock := clock.NewMock()
+	clock := quartz.NewMock(t)
 	pinged := make(chan struct{})
 	pc := &mockPeerConn{latency: latency, clock: clock, pinged: pinged}
 	tr := timeoutRecorder{}
@@ -461,7 +481,7 @@ func TestDontHaveTimeoutMgrUsesDefaultTimeoutIfLatencyLonger(t *testing.T) {
 	dhtm.AddPending(ks)
 
 	// Sleep for less than the default timeout
-	clock.Add(defaultTimeout - 50*time.Millisecond)
+	quartzAdd(clock, defaultTimeout-50*time.Millisecond)
 
 	// At this stage no timeout should have happened yet
 	if tr.timedOutCount() > 0 {
@@ -469,7 +489,7 @@ func TestDontHaveTimeoutMgrUsesDefaultTimeoutIfLatencyLonger(t *testing.T) {
 	}
 
 	// Sleep until after the default timeout
-	clock.Add(defaultTimeout * 2)
+	quartzAdd(clock, defaultTimeout*2)
 
 	<-timeoutsTriggered
 
@@ -485,7 +505,7 @@ func TestDontHaveTimeoutNoTimeoutAfterShutdown(t *testing.T) {
 	latency := time.Millisecond * 10
 	latMultiplier := 1
 	expProcessTime := time.Duration(0)
-	clock := clock.NewMock()
+	clock := quartz.NewMock(t)
 	pinged := make(chan struct{})
 	pc := &mockPeerConn{latency: latency, clock: clock, pinged: pinged}
 	tr := timeoutRecorder{}
@@ -506,13 +526,13 @@ func TestDontHaveTimeoutNoTimeoutAfterShutdown(t *testing.T) {
 	dhtm.AddPending(ks)
 
 	// Wait less than the timeout
-	clock.Add(latency - 5*time.Millisecond)
+	quartzAdd(clock, latency-5*time.Millisecond)
 
 	// Shutdown the manager
 	dhtm.Shutdown()
 
 	// Wait for the expected timeout
-	clock.Add(10 * time.Millisecond)
+	quartzAdd(clock, 10*time.Millisecond)
 
 	// Manager was shut down so timeout should not have fired
 	if tr.timedOutCount() != 0 {
