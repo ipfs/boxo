@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/filecoin-project/go-clock"
+	"github.com/coder/quartz"
 	ipns "github.com/ipfs/boxo/ipns"
 	"github.com/ipfs/boxo/path"
 	"github.com/ipfs/boxo/routing/http/server"
@@ -459,7 +459,7 @@ func TestClient_Provide(t *testing.T) {
 				client.addrs = nil
 			}
 
-			clock := clock.NewMock()
+			clock := quartz.NewMock(t)
 			clock.Set(time.Now())
 			client.clock = clock
 

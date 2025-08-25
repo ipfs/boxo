@@ -14,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/filecoin-project/go-clock"
+	"github.com/coder/quartz"
 	ipns "github.com/ipfs/boxo/ipns"
 	"github.com/ipfs/boxo/routing/http/contentrouter"
 	"github.com/ipfs/boxo/routing/http/filters"
@@ -67,7 +67,7 @@ const (
 type Client struct {
 	baseURL    string
 	httpClient httpClient
-	clock      clock.Clock
+	clock      quartz.Clock
 	accepts    string
 
 	peerID   peer.ID
@@ -206,7 +206,7 @@ func New(baseURL string, opts ...Option) (*Client, error) {
 	client := &Client{
 		baseURL:        normalizedURL,
 		httpClient:     newDefaultHTTPClient(defaultUserAgent),
-		clock:          clock.New(),
+		clock:          quartz.NewReal(),
 		accepts:        strings.Join([]string{mediaTypeNDJSON, mediaTypeJSON}, ","),
 		protocolFilter: DefaultProtocolFilter, // can be customized via WithProtocolFilter
 	}

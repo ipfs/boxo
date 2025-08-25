@@ -4,7 +4,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/filecoin-project/go-clock"
+	"github.com/coder/quartz"
 	peer "github.com/libp2p/go-libp2p/core/peer"
 )
 
@@ -57,7 +57,7 @@ type scoreledger struct {
 	// the record lock
 	lock sync.RWMutex
 
-	clock clock.Clock
+	clock quartz.Clock
 }
 
 // Receipt is a summary of the ledger for a given peer
@@ -117,7 +117,7 @@ type DefaultScoreLedger struct {
 	peerSampleInterval time.Duration
 	// used by the tests to detect when a sample is taken
 	sampleCh chan struct{}
-	clock    clock.Clock
+	clock    quartz.Clock
 }
 
 // scoreWorker keeps track of how "useful" our peers are, updating scores in the
@@ -138,7 +138,7 @@ type DefaultScoreLedger struct {
 // adjust it ±25% based on our debt ratio. Peers that have historically been
 // more useful to us than we are to them get the highest score.
 func (dsl *DefaultScoreLedger) scoreWorker() {
-	ticker := dsl.clock.Ticker(dsl.peerSampleInterval)
+	ticker := dsl.clock.NewTicker(dsl.peerSampleInterval)
 	defer ticker.Stop()
 
 	type update struct {
@@ -240,7 +240,7 @@ func (dsl *DefaultScoreLedger) find(p peer.ID) *scoreledger {
 }
 
 // Returns a new scoreledger.
-func newScoreLedger(p peer.ID, clock clock.Clock) *scoreledger {
+func newScoreLedger(p peer.ID, clock quartz.Clock) *scoreledger {
 	return &scoreledger{
 		partner: p,
 		clock:   clock,
@@ -338,13 +338,13 @@ func NewDefaultScoreLedger() *DefaultScoreLedger {
 		ledgerMap:          make(map[peer.ID]*scoreledger),
 		closing:            make(chan struct{}),
 		peerSampleInterval: shortTerm,
-		clock:              clock.New(),
+		clock:              quartz.NewReal(),
 	}
 }
 
 // Creates a new instance of the default score ledger with testing
 // parameters.
-func NewTestScoreLedger(peerSampleInterval time.Duration, sampleCh chan struct{}, clock clock.Clock) *DefaultScoreLedger {
+func NewTestScoreLedger(peerSampleInterval time.Duration, sampleCh chan struct{}, clock quartz.Clock) *DefaultScoreLedger {
 	dsl := NewDefaultScoreLedger()
 	dsl.peerSampleInterval = peerSampleInterval
 	dsl.sampleCh = sampleCh

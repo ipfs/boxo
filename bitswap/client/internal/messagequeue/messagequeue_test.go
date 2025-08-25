@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/filecoin-project/go-clock"
+	"github.com/coder/quartz"
 	bsmsg "github.com/ipfs/boxo/bitswap/message"
 	pb "github.com/ipfs/boxo/bitswap/message/pb"
 	bsnet "github.com/ipfs/boxo/bitswap/network"
@@ -425,7 +425,7 @@ func TestWantlistRebroadcast(t *testing.T) {
 	fakenet := &fakeMessageNetwork{nil, nil, fakeSender}
 	peerID := random.Peers(1)[0]
 	dhtm := &fakeDontHaveTimeoutMgr{}
-	clock := clock.NewMock()
+	clock := quartz.NewMock(t)
 	events := make(chan messageEvent, 1)
 	messageQueue := newMessageQueue(ctx, peerID, fakenet, maxMessageSize, sendErrorBackoff, maxValidLatency, dhtm, clock, events)
 	bcstwh := random.Cids(10)
@@ -436,7 +436,7 @@ func TestWantlistRebroadcast(t *testing.T) {
 	messageQueue.Startup()
 	defer messageQueue.Shutdown()
 	messageQueue.AddBroadcastWantHaves(bcstwh)
-	clock.Add(maxSendMessageDelay)
+	quartzAdd(clock, maxSendMessageDelay)
 	expectEvent(t, events, messageQueued)
 	message := <-messagesSent
 	expectEvent(t, events, messageFinishedSending)
@@ -457,9 +457,9 @@ func TestWantlistRebroadcast(t *testing.T) {
 
 	// Send out some regular wants and collect them
 	messageQueue.AddWants(wantBlocks, wantHaves)
-	clock.Add(maxSendMessageDelay)
+	quartzAdd(clock, maxSendMessageDelay)
 	expectEvent(t, events, messageQueued)
-	clock.Add(10 * time.Millisecond)
+	quartzAdd(clock, 10*time.Millisecond)
 	message = <-messagesSent
 	expectEvent(t, events, messageFinishedSending)
 
@@ -487,9 +487,9 @@ func TestWantlistRebroadcast(t *testing.T) {
 	// Cancel some of the wants
 	cancels := append([]cid.Cid{bcstwh[0]}, wantHaves[0], wantBlocks[0])
 	messageQueue.AddCancels(cancels)
-	clock.Add(maxSendMessageDelay)
+	quartzAdd(clock, maxSendMessageDelay)
 	expectEvent(t, events, messageQueued)
-	clock.Add(10 * time.Millisecond)
+	quartzAdd(clock, 10*time.Millisecond)
 	message = <-messagesSent
 	expectEvent(t, events, messageFinishedSending)
 
@@ -531,7 +531,7 @@ func TestSendingLargeMessages(t *testing.T) {
 	wantBlocks := random.Cids(10)
 	entrySize := 44
 	maxMsgSize := entrySize * 3 // 3 wants
-	messageQueue := newMessageQueue(ctx, peerID, fakenet, maxMsgSize, sendErrorBackoff, maxValidLatency, dhtm, clock.New(), nil)
+	messageQueue := newMessageQueue(ctx, peerID, fakenet, maxMsgSize, sendErrorBackoff, maxValidLatency, dhtm, quartz.NewReal(), nil)
 
 	messageQueue.Startup()
 	defer messageQueue.Shutdown()
@@ -615,7 +615,7 @@ func TestSendToPeerThatDoesntSupportHaveMonitorsTimeouts(t *testing.T) {
 	peerID := random.Peers(1)[0]
 
 	dhtm := &fakeDontHaveTimeoutMgr{}
-	messageQueue := newMessageQueue(ctx, peerID, fakenet, maxMessageSize, sendErrorBackoff, maxValidLatency, dhtm, clock.New(), nil)
+	messageQueue := newMessageQueue(ctx, peerID, fakenet, maxMessageSize, sendErrorBackoff, maxValidLatency, dhtm, quartz.NewReal(), nil)
 	messageQueue.Startup()
 	defer messageQueue.Shutdown()
 
@@ -648,7 +648,7 @@ func TestResponseReceived(t *testing.T) {
 	peerID := random.Peers(1)[0]
 
 	dhtm := &fakeDontHaveTimeoutMgr{}
-	clock := clock.NewMock()
+	clock := quartz.NewMock(t)
 	events := make(chan messageEvent)
 	messageQueue := newMessageQueue(ctx, peerID, fakenet, maxMessageSize, sendErrorBackoff, maxValidLatency, dhtm, clock, events)
 	messageQueue.Startup()
@@ -658,19 +658,19 @@ func TestResponseReceived(t *testing.T) {
 
 	// Add some wants
 	messageQueue.AddWants(cids[:5], nil)
-	clock.Add(maxSendMessageDelay)
+	quartzAdd(clock, maxSendMessageDelay)
 	expectEvent(t, events, messageQueued)
 	<-messagesSent
 	expectEvent(t, events, messageFinishedSending)
 
 	// simulate 10 milliseconds passing
-	clock.Add(10 * time.Millisecond)
+	quartzAdd(clock, 10*time.Millisecond)
 
 	// Add some wants and wait another 10ms
 	messageQueue.AddWants(cids[5:8], nil)
-	clock.Add(maxSendMessageDelay)
+	quartzAdd(clock, maxSendMessageDelay)
 	expectEvent(t, events, messageQueued)
-	clock.Add(10 * time.Millisecond)
+	quartzAdd(clock, 10*time.Millisecond)
 	<-messagesSent
 	expectEvent(t, events, messageFinishedSending)
 
@@ -700,7 +700,7 @@ func TestResponseReceivedAppliesForFirstResponseOnly(t *testing.T) {
 	peerID := random.Peers(1)[0]
 
 	dhtm := &fakeDontHaveTimeoutMgr{}
-	messageQueue := newMessageQueue(ctx, peerID, fakenet, maxMessageSize, sendErrorBackoff, maxValidLatency, dhtm, clock.New(), nil)
+	messageQueue := newMessageQueue(ctx, peerID, fakenet, maxMessageSize, sendErrorBackoff, maxValidLatency, dhtm, quartz.NewReal(), nil)
 	messageQueue.Startup()
 	defer messageQueue.Shutdown()
 
@@ -747,7 +747,7 @@ func TestResponseReceivedDiscardsOutliers(t *testing.T) {
 
 	maxValLatency := 30 * time.Millisecond
 	dhtm := &fakeDontHaveTimeoutMgr{}
-	clock := clock.NewMock()
+	clock := quartz.NewMock(t)
 	events := make(chan messageEvent)
 	messageQueue := newMessageQueue(ctx, peerID, fakenet, maxMessageSize, sendErrorBackoff, maxValLatency, dhtm, clock, events)
 	messageQueue.Startup()
@@ -757,22 +757,22 @@ func TestResponseReceivedDiscardsOutliers(t *testing.T) {
 
 	// Add some wants and wait 20ms
 	messageQueue.AddWants(cids[:2], nil)
-	clock.Add(maxSendMessageDelay)
+	quartzAdd(clock, maxSendMessageDelay)
 	expectEvent(t, events, messageQueued)
 	<-messagesSent
 	expectEvent(t, events, messageFinishedSending)
 
-	clock.Add(20 * time.Millisecond)
+	quartzAdd(clock, 20*time.Millisecond)
 
 	// Add some more wants and wait long enough that the first wants will be
 	// outside the maximum valid latency, but the second wants will be inside
 	messageQueue.AddWants(cids[2:], nil)
-	clock.Add(maxSendMessageDelay)
+	quartzAdd(clock, maxSendMessageDelay)
 	expectEvent(t, events, messageQueued)
 	<-messagesSent
 	expectEvent(t, events, messageFinishedSending)
 
-	clock.Add(maxValLatency - 10*time.Millisecond)
+	quartzAdd(clock, maxValLatency-10*time.Millisecond)
 	// Receive a response for the wants
 	messageQueue.ResponseReceived(cids)
 
@@ -817,7 +817,7 @@ func BenchmarkMessageQueue(b *testing.B) {
 		dhtm := &fakeDontHaveTimeoutMgr{}
 		peerID := random.Peers(1)[0]
 
-		messageQueue := newMessageQueue(ctx, peerID, fakenet, maxMessageSize, sendErrorBackoff, maxValidLatency, dhtm, clock.New(), nil)
+		messageQueue := newMessageQueue(ctx, peerID, fakenet, maxMessageSize, sendErrorBackoff, maxValidLatency, dhtm, quartz.NewReal(), nil)
 		messageQueue.Startup()
 
 		go func() {
