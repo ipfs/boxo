@@ -1429,43 +1429,34 @@ func TestTaggingPeers(t *testing.T) {
 	}
 }
 
-func quartzAdd(c *quartz.Mock, d time.Duration) {
-	for d > 0 {
-		next, ok := c.Peek()
-		if !ok || next >= d {
-			c.Advance(d)
-			time.Sleep(time.Millisecond)
-			return
-		}
-		<-c.Advance(next).Done()
-		d -= next
-		// give some real time to process after timer has popped.
-		time.Sleep(time.Millisecond)
-	}
-}
-
 func TestTaggingUseful(t *testing.T) {
 	const peerSampleIntervalHalf = 10 * time.Millisecond
 
 	sampleCh := make(chan struct{})
 	mockClock := quartz.NewMock(t)
+	trap := mockClock.Trap().NewTicker("scoreWorker")
+	defer trap.Close()
 	me := newTestEngineWithSampling("engine", peerSampleIntervalHalf*2, sampleCh, mockClock)
 	defer me.Engine.Close()
-	quartzAdd(mockClock, 1*time.Millisecond)
+	mockClock.Advance(time.Millisecond)
 	friend := peer.ID("friend")
 
 	block := blocks.NewBlock([]byte("foobar"))
 	msg := message.New(false)
 	msg.AddBlock(block)
 
+	// Wait for ticker to be created to ensure clock.AdvenceNext works.
+	ctx := context.Background()
+	trap.MustWait(ctx).MustRelease(ctx)
+
 	for i := 0; i < 3; i++ {
 		if untagged := me.PeerTagger.count(me.Engine.tagUseful); untagged != 0 {
 			t.Fatalf("%d peers should be untagged but weren't", untagged)
 		}
-		quartzAdd(mockClock, peerSampleIntervalHalf)
+		mockClock.Advance(peerSampleIntervalHalf)
 		me.Engine.MessageSent(friend, msg)
 
-		quartzAdd(mockClock, peerSampleIntervalHalf)
+		mockClock.AdvanceNext()
 		<-sampleCh
 
 		if tagged := me.PeerTagger.count(me.Engine.tagUseful); tagged != 1 {
@@ -1473,7 +1464,7 @@ func TestTaggingUseful(t *testing.T) {
 		}
 
 		for j := 0; j < longTermRatio; j++ {
-			quartzAdd(mockClock, peerSampleIntervalHalf*2)
+			mockClock.AdvanceNext()
 			<-sampleCh
 		}
 	}
@@ -1483,7 +1474,7 @@ func TestTaggingUseful(t *testing.T) {
 	}
 
 	for j := 0; j < longTermRatio; j++ {
-		quartzAdd(mockClock, peerSampleIntervalHalf*2)
+		mockClock.AdvanceNext()
 		<-sampleCh
 	}
 
@@ -1492,7 +1483,7 @@ func TestTaggingUseful(t *testing.T) {
 	}
 
 	for j := 0; j < longTermRatio; j++ {
-		quartzAdd(mockClock, peerSampleIntervalHalf*2)
+		mockClock.AdvanceNext()
 		<-sampleCh
 	}
 

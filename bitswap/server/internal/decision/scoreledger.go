@@ -138,7 +138,7 @@ type DefaultScoreLedger struct {
 // adjust it ±25% based on our debt ratio. Peers that have historically been
 // more useful to us than we are to them get the highest score.
 func (dsl *DefaultScoreLedger) scoreWorker() {
-	ticker := dsl.clock.NewTicker(dsl.peerSampleInterval)
+	ticker := dsl.clock.NewTicker(dsl.peerSampleInterval, "scoreWorker")
 	defer ticker.Stop()
 
 	type update struct {
