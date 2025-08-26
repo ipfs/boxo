@@ -27,6 +27,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"slices"
 	"sync"
 
 	"github.com/gammazero/deque"
@@ -796,8 +797,7 @@ func (s *childer) makeChilder(data []byte, links []*ipld.Link) *childer {
 	s.children = make([]*Shard, len(links))
 	s.bitfield.SetBytes(data)
 	if len(links) > 0 {
-		s.links = make([]*ipld.Link, len(links))
-		copy(s.links, links)
+		s.links = slices.Clone(links)
 	}
 
 	return s
@@ -829,10 +829,12 @@ func (s *childer) insert(key string, lnk *ipld.Link, idx int) error {
 		return err
 	}
 
-	s.children = append(s.children[:i], append([]*Shard{sd}, s.children[i:]...)...)
-	s.links = append(s.links[:i], append([]*ipld.Link{nil}, s.links[i:]...)...)
+	s.children = slices.Insert(s.children, i, sd)
+
 	// Add a `nil` placeholder in `links` so the rest of the entries keep the same
 	// index as `children`.
+	s.links = slices.Insert(s.links, i, nil)
+
 	s.bitfield.SetBit(idx)
 
 	return nil
@@ -855,11 +857,8 @@ func (s *childer) rm(childIndex int) error {
 		return err
 	}
 
-	copy(s.children[i:], s.children[i+1:])
-	s.children = s.children[:len(s.children)-1]
-
-	copy(s.links[i:], s.links[i+1:])
-	s.links = s.links[:len(s.links)-1]
+	s.children = slices.Delete(s.children, i, i+1)
+	s.links = slices.Delete(s.links, i, i+1)
 
 	s.bitfield.UnsetBit(childIndex)
 
