@@ -20,6 +20,8 @@ The following emojis are used to highlight certain changes:
 
 ### Removed
 
+- remove sha1 from list of hashes allowed in IPFS [#1013](https://github.com/ipfs/boxo/pull/1013)
+ 
 ### Fixed
 
 ### Security
