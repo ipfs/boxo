@@ -206,10 +206,11 @@ func catNode(ds ipld.DAGService, nd *dag.ProtoNode) ([]byte, error) {
 
 type fakeProvider struct{}
 
-func (p *fakeProvider) StartProviding(force bool, keys ...multihash.Multihash) {
+func (p *fakeProvider) StartProviding(force bool, keys ...multihash.Multihash) error {
 	for _, k := range keys {
 		fmt.Println("PROVIDED: ", k)
 	}
+	return nil
 }
 
 func setupRoot(ctx context.Context, t testing.TB) (ipld.DAGService, *Root) {

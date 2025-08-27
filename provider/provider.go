@@ -23,7 +23,7 @@ type Provider interface {
 
 // MultihashProvider is the interface implementing StartProviding.
 type MultihashProvider interface {
-	StartProviding(force bool, keys ...mh.Multihash)
+	StartProviding(force bool, keys ...mh.Multihash) error
 }
 
 // Reprovider reannounces blocks to the network

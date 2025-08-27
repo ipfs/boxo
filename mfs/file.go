@@ -275,7 +275,10 @@ func (fi *File) setNodeData(data []byte) error {
 
 	if fi.prov != nil {
 		log.Debugf("mfs: provide: %s", nd.Cid())
-		fi.prov.StartProviding(false, nd.Cid().Hash())
+		err := fi.prov.StartProviding(false, nd.Cid().Hash())
+		if err != nil {
+			log.Warnf("mfs: error while providing %s: %s", nd.Cid(), err)
+		}
 	}
 
 	fi.nodeLock.Lock()

@@ -67,7 +67,10 @@ func NewDirectory(ctx context.Context, name string, node ipld.Node, parent paren
 
 	if prov != nil {
 		log.Debugf("mfs: provide: %s", nd.Cid())
-		prov.StartProviding(false, nd.Cid().Hash())
+		err := prov.StartProviding(false, nd.Cid().Hash())
+		if err != nil {
+			log.Warnf("mfs: error while providing %s: %s", nd.Cid(), err)
+		}
 	}
 
 	return &Directory{
@@ -181,7 +184,10 @@ func (d *Directory) localUpdate(c child) (*dag.ProtoNode, error) {
 
 	if d.prov != nil {
 		log.Debugf("mfs: provide: %s", nd.Cid())
-		d.prov.StartProviding(false, nd.Cid().Hash())
+		err := d.prov.StartProviding(false, nd.Cid().Hash())
+		if err != nil {
+			log.Warnf("mfs: error while providing %s: %s", nd.Cid(), err)
+		}
 	}
 
 	return pbnd.Copy().(*dag.ProtoNode), nil
@@ -419,7 +425,10 @@ func (d *Directory) AddChild(name string, nd ipld.Node) error {
 
 	if d.prov != nil {
 		log.Debugf("mfs: provide: %s", nd.Cid())
-		d.prov.StartProviding(false, nd.Cid().Hash())
+		err := d.prov.StartProviding(false, nd.Cid().Hash())
+		if err != nil {
+			log.Warnf("mfs: error while providing %s: %s", nd.Cid(), err)
+		}
 	}
 
 	return d.unixfsDir.AddChild(d.ctx, name, nd)
@@ -485,7 +494,10 @@ func (d *Directory) getNode(cacheClean bool) (ipld.Node, error) {
 
 	if d.prov != nil {
 		log.Debugf("mfs: provide: %s", nd.Cid())
-		d.prov.StartProviding(false, nd.Cid().Hash())
+		err := d.prov.StartProviding(false, nd.Cid().Hash())
+		if err != nil {
+			log.Warnf("mfs: error while providing %s: %s", nd.Cid(), err)
+		}
 	}
 
 	return nd.Copy(), err
@@ -553,7 +565,10 @@ func (d *Directory) setNodeData(data []byte, links []*ipld.Link) error {
 
 	if d.prov != nil {
 		log.Debugf("mfs: provide: %s", nd.Cid())
-		d.prov.StartProviding(false, nd.Cid().Hash())
+		err := d.prov.StartProviding(false, nd.Cid().Hash())
+		if err != nil {
+			log.Warnf("mfs: error while providing %s: %s", nd.Cid(), err)
+		}
 	}
 
 	err = d.parent.updateChildEntry(child{d.name, nd})
