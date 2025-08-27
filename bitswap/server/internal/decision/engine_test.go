@@ -1452,7 +1452,7 @@ func TestTaggingUseful(t *testing.T) {
 		if untagged := me.PeerTagger.count(me.Engine.tagUseful); untagged != 0 {
 			t.Fatalf("%d peers should be untagged but weren't", untagged)
 		}
-		mockClock.Advance(peerSampleIntervalHalf)
+		mockClock.Advance(peerSampleIntervalHalf).MustWait(ctx)
 		me.Engine.MessageSent(friend, msg)
 
 		mockClock.AdvanceNext()
