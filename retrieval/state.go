@@ -156,20 +156,25 @@ func (rs *RetrievalState) Summary() string {
 		return fmt.Sprintf("Found %d provider(s) but none could be contacted (phase: %s)", found, phase.String())
 	}
 
-	if connected == 0 {
-		return fmt.Sprintf("Found %d provider(s), attempted %d, but none were reachable (phase: %s)",
-			found, attempted, phase.String())
-	}
-
 	failedProviders := rs.GetFailedProviders()
+	failedPeersInfo := ""
 	if len(failedProviders) > 0 {
 		// Convert peer IDs to strings for display
 		peerStrings := make([]string, len(failedProviders))
 		for i, p := range failedProviders {
 			peerStrings[i] = p.String()
 		}
-		return fmt.Sprintf("Found %d provider(s), connected to %d, but they did not return the requested content (phase: %s, failed peers: %v)",
-			found, connected, phase.String(), peerStrings)
+		failedPeersInfo = fmt.Sprintf(", failed peers: %v", peerStrings)
+	}
+
+	if connected == 0 {
+		return fmt.Sprintf("Found %d provider(s), attempted %d, but none were reachable (phase: %s%s)",
+			found, attempted, phase.String(), failedPeersInfo)
+	}
+
+	if len(failedProviders) > 0 {
+		return fmt.Sprintf("Found %d provider(s), connected to %d, but they did not return the requested content (phase: %s%s)",
+			found, connected, phase.String(), failedPeersInfo)
 	}
 
 	return fmt.Sprintf("Timeout occurred after finding %d provider(s) and connecting to %d (phase: %s)",

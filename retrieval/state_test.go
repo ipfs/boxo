@@ -130,6 +130,26 @@ func TestRetrievalState(t *testing.T) {
 				expectedSubstring: "Found 5 provider(s), attempted 3, but none were reachable",
 			},
 			{
+				name: "Providers attempted but none reachable with failed peers",
+				setup: func(rs *RetrievalState) {
+					rs.ProvidersFound.Store(5)
+					rs.ProvidersAttempted.Store(3)
+					// Store peer IDs so we can verify they appear in the message
+					peerID1 := test.RandPeerIDFatal(t)
+					peerID2 := test.RandPeerIDFatal(t)
+					rs.AddFailedProvider(peerID1)
+					rs.AddFailedProvider(peerID2)
+					rs.SetPhase(PhaseConnecting)
+					
+					// Verify the summary includes the actual peer IDs
+					summary := rs.Summary()
+					assert.Contains(t, summary, "failed peers:")
+					assert.Contains(t, summary, peerID1.String())
+					assert.Contains(t, summary, peerID2.String())
+				},
+				expectedSubstring: "Found 5 provider(s), attempted 3, but none were reachable",
+			},
+			{
 				name: "Providers connected but didn't return content",
 				setup: func(rs *RetrievalState) {
 					rs.ProvidersFound.Store(5)
