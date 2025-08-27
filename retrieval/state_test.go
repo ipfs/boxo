@@ -5,10 +5,11 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/libp2p/go-libp2p/core/peer"
-	"github.com/libp2p/go-libp2p/core/test"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/libp2p/go-libp2p/core/test"
 )
 
 func TestRetrievalState(t *testing.T) {
@@ -140,7 +141,7 @@ func TestRetrievalState(t *testing.T) {
 					rs.AddFailedProvider(peerID1)
 					rs.AddFailedProvider(peerID2)
 					rs.SetPhase(PhaseConnecting)
-					
+
 					// Verify the summary includes the actual peer IDs
 					summary := rs.Summary()
 					assert.Contains(t, summary, "failed peers:")
