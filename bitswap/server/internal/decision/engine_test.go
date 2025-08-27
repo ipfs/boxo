@@ -1455,11 +1455,10 @@ func TestTaggingUseful(t *testing.T) {
 		mockClock.Advance(peerSampleIntervalHalf).MustWait(ctx)
 		me.Engine.MessageSent(friend, msg)
 
-		advanced, w := mockClock.AdvanceNext()
+		advanced, _ := mockClock.AdvanceNext()
 		if advanced != peerSampleIntervalHalf {
 			t.Fatalf("expected to advance %s, but advanced %s", peerSampleIntervalHalf, advanced)
 		}
-		w.MustWait(ctx)
 		<-sampleCh
 
 		if tagged := me.PeerTagger.count(me.Engine.tagUseful); tagged != 1 {
@@ -1467,11 +1466,10 @@ func TestTaggingUseful(t *testing.T) {
 		}
 
 		for j := 0; j < longTermRatio; j++ {
-			advanced, w := mockClock.AdvanceNext()
+			advanced, _ := mockClock.AdvanceNext()
 			if advanced != 2*peerSampleIntervalHalf {
 				t.Fatalf("expected to advanced %s, but advanced %s", peerSampleIntervalHalf, advanced)
 			}
-			w.MustWait(ctx)
 			<-sampleCh
 		}
 	}
