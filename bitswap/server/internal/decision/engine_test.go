@@ -1438,7 +1438,6 @@ func TestTaggingUseful(t *testing.T) {
 	defer trap.Close()
 	me := newTestEngineWithSampling("engine", peerSampleIntervalHalf*2, sampleCh, mockClock)
 	defer me.Engine.Close()
-	mockClock.Advance(time.Millisecond)
 	friend := peer.ID("friend")
 
 	block := blocks.NewBlock([]byte("foobar"))
