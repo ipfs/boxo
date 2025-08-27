@@ -24,6 +24,7 @@ import (
 	"github.com/ipfs/boxo/bitswap/tracer"
 	blockstore "github.com/ipfs/boxo/blockstore"
 	exchange "github.com/ipfs/boxo/exchange"
+	"github.com/ipfs/boxo/retrieval"
 	rpqm "github.com/ipfs/boxo/routing/providerquerymanager"
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
@@ -444,6 +445,11 @@ func (bs *Client) GetBlocks(ctx context.Context, keys []cid.Cid) (<-chan blocks.
 
 	// Temporary session closed indepentendly of cancellation ctx.
 	sessCtx, cancelSession := context.WithCancel(context.Background())
+
+	// Preserve RetrievalState from the original request context if present
+	if retrievalState := retrieval.StateFromContext(ctx); retrievalState != nil {
+		sessCtx = context.WithValue(sessCtx, retrieval.ContextKey, retrievalState)
+	}
 	session := bs.sm.NewSession(sessCtx, bs.provSearchDelay, bs.rebroadcastDelay)
 
 	blocksChan, err := session.GetBlocks(ctx, keys)

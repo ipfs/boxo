@@ -20,6 +20,7 @@ import (
 	uio "github.com/ipfs/boxo/ipld/unixfs/io"
 	"github.com/ipfs/boxo/path"
 	"github.com/ipfs/boxo/path/resolver"
+	"github.com/ipfs/boxo/retrieval"
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
 	format "github.com/ipfs/go-ipld-format"
@@ -664,6 +665,11 @@ func (bb *BlocksBackend) getNode(ctx context.Context, path path.ImmutablePath) (
 }
 
 func (bb *BlocksBackend) getPathRoots(ctx context.Context, contentPath path.ImmutablePath) ([]cid.Cid, path.ImmutablePath, []string, error) {
+	// Update retrieval progress, if tracked in the existing context
+	if retrievalState := retrieval.StateFromContext(ctx); retrievalState != nil {
+		retrievalState.SetPhase(retrieval.PhasePathResolution)
+	}
+
 	/*
 		These are logical roots where each CID represent one path segment
 		and resolves to either a directory or the root block of a file.
