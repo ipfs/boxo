@@ -1467,7 +1467,11 @@ func TestTaggingUseful(t *testing.T) {
 		}
 
 		for j := 0; j < longTermRatio; j++ {
-			mockClock.AdvanceNext()
+			advanced, w := mockClock.AdvanceNext()
+			if advanced != 2*peerSampleIntervalHalf {
+				t.Fatalf("expected to advanced %s, but advanced %s", peerSampleIntervalHalf, advanced)
+			}
+			w.MustWait(ctx)
 			<-sampleCh
 		}
 	}
