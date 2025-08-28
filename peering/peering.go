@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"math/rand"
+	"slices"
 	"strconv"
 	"sync"
 	"time"
@@ -68,8 +69,7 @@ type peerHandler struct {
 // setAddrs sets the addresses for this peer.
 func (ph *peerHandler) setAddrs(addrs []multiaddr.Multiaddr) {
 	// Not strictly necessary, but it helps to not trust the calling code.
-	addrCopy := make([]multiaddr.Multiaddr, len(addrs))
-	copy(addrCopy, addrs)
+	addrCopy := slices.Clone(addrs)
 
 	ph.mu.Lock()
 	defer ph.mu.Unlock()
@@ -265,9 +265,10 @@ func (ps *PeeringService) ListPeers() []peer.AddrInfo {
 
 	out := make([]peer.AddrInfo, 0, len(ps.peers))
 	for id, addrs := range ps.peers {
-		ai := peer.AddrInfo{ID: id}
-		ai.Addrs = append(ai.Addrs, addrs.addrs...)
-		out = append(out, ai)
+		out = append(out, peer.AddrInfo{
+			ID:    id,
+			Addrs: slices.Clone(addrs.addrs),
+		})
 	}
 	return out
 }
