@@ -34,7 +34,7 @@ func TestDefaultAllowList(t *testing.T) {
 	assertTrue(allowlist.IsAllowed(mh.DBL_SHA2_256))
 	assertTrue(allowlist.IsAllowed(mh.KECCAK_256))
 	assertTrue(allowlist.IsAllowed(mh.SHA3))
-	assertTrue(allowlist.IsAllowed(mh.SHA1))
+	assertFalse(allowlist.IsAllowed(mh.SHA1))
 	assertFalse(allowlist.IsAllowed(mh.BLAKE2B_MIN + 5))
 
 	cases := []struct {
