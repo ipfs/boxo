@@ -10,7 +10,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strings"
 	"time"
 
@@ -390,8 +390,8 @@ func (c *Client) listCacheFiles(cacheDir string) ([]string, error) {
 	}
 
 	// Sort by filename (which contains unix timestamp) in descending order
-	sort.Slice(files, func(i, j int) bool {
-		return filepath.Base(files[i]) > filepath.Base(files[j])
+	slices.SortFunc(files, func(a, b string) int {
+		return strings.Compare(filepath.Base(b), filepath.Base(a))
 	})
 
 	return files, nil

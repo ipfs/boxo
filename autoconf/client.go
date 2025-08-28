@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -256,9 +256,8 @@ func (c *Client) getCacheDir() (string, error) {
 	}
 
 	// Sort URLs for consistent hashing regardless of order
-	sortedURLs := make([]string, len(c.urls))
-	copy(sortedURLs, c.urls)
-	sort.Strings(sortedURLs)
+	sortedURLs := slices.Clone(c.urls)
+	slices.Sort(sortedURLs)
 
 	// Hash all URLs together for a single cache directory
 	h := fnv.New64a()

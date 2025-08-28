@@ -91,8 +91,7 @@ func (sender *httpMsgSender) sortURLS() []*senderURL {
 
 	// sender.urls must be read-only as multiple workers
 	// attempt to sort it.
-	urlCopy := make([]*senderURL, len(sender.urls))
-	copy(urlCopy, sender.urls)
+	urlCopy := slices.Clone(sender.urls)
 
 	slices.SortFunc(urlCopy, func(a, b *senderURL) int {
 		// urls without exhausted retries come first
