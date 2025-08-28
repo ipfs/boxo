@@ -24,6 +24,11 @@ The following emojis are used to highlight certain changes:
 
 ### Security
 
+## v0.35.0
+
+### Changed
+
+- `provider`: `Provide()` calls are replaced with `StartProviding()` to benefit from the Reprovide Sweep improvement. See [kubo#10834](https://github.com/ipfs/kubo/pull/10834) and [kad-dht#1095](https://github.com/libp2p/go-libp2p-kad-dht/pull/1095).
 
 ## [v0.34.0]
 
