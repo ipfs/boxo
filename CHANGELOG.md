@@ -18,11 +18,20 @@ The following emojis are used to highlight certain changes:
 
 ### Changed
 
+- `verifcid`: Made digest size constants public: `MinDigestSize` (20 bytes) and `MaxDigestSize` (128 bytes)
+  - Renamed errors for consistency (old names are deprecated but still available):
+    - `ErrBelowMinimumHashLength` → `ErrBelowMinDigestSize` (old name deprecated)
+    - `ErrAboveMaximumHashLength` → `ErrAboveMaxDigestSize` (old name deprecated)
+
 ### Removed
 
 ### Fixed
 
 ### Security
+
+- `verifcid`: Now enforces maximum size limit of 128 bytes for identity CIDs to prevent abuse.
+  - 🛠 Attempts to read CIDs with identity multihash digests longer than `MaxDigestSize` will now produce `ErrAboveMaxDigestSize` error.
+  - Identity CIDs can inline data directly, and without a size limit, they could embed arbitrary amounts of data. Limiting the size also protects gateways from poorly written clients that might send absurdly big data to the gateway encoded as identity CIDs only to retrieve it back. Note that identity CIDs do not provide integrity verification, making them vulnerable to bit flips. They should only be used in controlled contexts like raw leaves of a larger DAG. The limit matches the already existing `MaxDigestSize` that was enforced for regular cryptographic functions.
 
 
 ## [v0.34.0]

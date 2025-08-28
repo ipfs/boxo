@@ -1,6 +1,7 @@
 package gateway
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -13,8 +14,10 @@ import (
 	"github.com/ipfs/boxo/namesys"
 	"github.com/ipfs/boxo/path"
 	"github.com/ipfs/boxo/path/resolver"
+	"github.com/ipfs/boxo/verifcid"
 	"github.com/ipfs/go-cid"
 	ipld "github.com/ipfs/go-ipld-format"
+	mh "github.com/multiformats/go-multihash"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -51,6 +54,25 @@ func TestGatewayGet(t *testing.T) {
 	// detection is platform dependent.
 	backend.namesys["/ipns/example.man"] = newMockNamesysItem(k, 0)
 
+	// Create identity CIDs for testing
+	// MaxDigestSize bytes (at the limit, should be valid)
+	validIdentityData := bytes.Repeat([]byte("a"), verifcid.MaxDigestSize)
+	validIdentityHash, err := mh.Sum(validIdentityData, mh.IDENTITY, -1)
+	require.NoError(t, err)
+	validIdentityCID := cid.NewCidV1(cid.Raw, validIdentityHash)
+
+	// MaxDigestSize+1 bytes (over the limit, should be rejected)
+	invalidIdentityData := bytes.Repeat([]byte("b"), verifcid.MaxDigestSize+1)
+	invalidIdentityHash, err := mh.Sum(invalidIdentityData, mh.IDENTITY, -1)
+	require.NoError(t, err)
+	invalidIdentityCID := cid.NewCidV1(cid.Raw, invalidIdentityHash)
+
+	// Short identity CID (below MinDigestSize, should still be valid)
+	shortIdentityData := []byte("hello")
+	shortIdentityHash, err := mh.Sum(shortIdentityData, mh.IDENTITY, -1)
+	require.NoError(t, err)
+	shortIdentityCID := cid.NewCidV1(cid.Raw, shortIdentityHash)
+
 	for _, test := range []struct {
 		host   string
 		path   string
@@ -62,6 +84,9 @@ func TestGatewayGet(t *testing.T) {
 		{"127.0.0.1:8080", "/ipns", http.StatusBadRequest, "invalid path \"/ipns/\": path does not have enough components\n"},
 		{"127.0.0.1:8080", "/" + k.RootCid().String(), http.StatusNotFound, "404 page not found\n"},
 		{"127.0.0.1:8080", "/ipfs/this-is-not-a-cid", http.StatusBadRequest, "invalid path \"/ipfs/this-is-not-a-cid\": invalid cid: illegal base32 data at input byte 3\n"},
+		{"127.0.0.1:8080", "/ipfs/" + validIdentityCID.String(), http.StatusOK, string(validIdentityData)},                                     // Valid identity CID returns the inlined data
+		{"127.0.0.1:8080", "/ipfs/" + invalidIdentityCID.String(), http.StatusBadRequest, "multihash digest must be at most 128 bytes long\n"}, // Invalid identity CID, over size limit
+		{"127.0.0.1:8080", "/ipfs/" + shortIdentityCID.String(), http.StatusOK, "hello"},                                                       // Short identity CID (below MinDigestSize) should work
 		{"127.0.0.1:8080", k.String(), http.StatusOK, "fnord"},
 		{"127.0.0.1:8080", "/ipns/nxdomain.example.com", http.StatusInternalServerError, "failed to resolve /ipns/nxdomain.example.com: " + namesys.ErrResolveFailed.Error() + "\n"},
 		{"127.0.0.1:8080", "/ipns/%0D%0A%0D%0Ahello", http.StatusInternalServerError, "failed to resolve /ipns/\\r\\n\\r\\nhello: " + namesys.ErrResolveFailed.Error() + "\n"},
@@ -87,8 +112,12 @@ func TestGatewayGet(t *testing.T) {
 			require.Equal(t, "text/plain; charset=utf-8", resp.Header.Get("Content-Type"))
 			body, err := io.ReadAll(resp.Body)
 			require.NoError(t, err)
-			require.Equal(t, test.status, resp.StatusCode, "body", body)
-			require.Equal(t, test.text, string(body))
+			require.Equal(t, test.status, resp.StatusCode, "body", string(body))
+
+			// Check body content if expected text is provided
+			if test.text != "" {
+				require.Equal(t, test.text, string(body))
+			}
 		})
 	}
 }

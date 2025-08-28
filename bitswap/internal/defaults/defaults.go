@@ -3,6 +3,8 @@ package defaults
 import (
 	"encoding/binary"
 	"time"
+
+	"github.com/ipfs/boxo/verifcid"
 )
 
 const (
@@ -27,9 +29,8 @@ const (
 	// Maximum size of the wantlist we are willing to keep in memory.
 	MaxQueuedWantlistEntiresPerPeer = 1024
 
-	// Copied from github.com/ipfs/go-verifcid#maximumHashLength
-	// FIXME: expose this in go-verifcid.
-	MaximumHashLength = 128
+	// MaximumHashLength is now exposed from verifcid.MaxDigestSize
+	MaximumHashLength = verifcid.MaxDigestSize
 	MaximumAllowedCid = binary.MaxVarintLen64*4 + MaximumHashLength
 
 	// RebroadcastDelay is the default delay to trigger broadcast of

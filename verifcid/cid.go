@@ -8,15 +8,22 @@ import (
 	mh "github.com/multiformats/go-multihash"
 )
 
-var (
-	ErrPossiblyInsecureHashFunction = errors.New("potentially insecure hash functions not allowed")
-	ErrBelowMinimumHashLength       = fmt.Errorf("hashes must be at least %d bytes long", minimumHashLength)
-	ErrAboveMaximumHashLength       = fmt.Errorf("hashes must be at most %d bytes long", maximumHashLength)
+const (
+	// MinDigestSize is the minimum size for hash digests (except for identity hashes)
+	MinDigestSize = 20
+	// MaxDigestSize is the maximum size for all digest types (including identity)
+	MaxDigestSize = 128
 )
 
-const (
-	minimumHashLength = 20
-	maximumHashLength = 128
+var (
+	ErrPossiblyInsecureHashFunction = errors.New("potentially insecure hash functions not allowed")
+	ErrBelowMinDigestSize           = fmt.Errorf("multihash digest must be at least %d bytes long", MinDigestSize)
+	ErrAboveMaxDigestSize           = fmt.Errorf("multihash digest must be at most %d bytes long", MaxDigestSize)
+
+	// Deprecated: Use ErrBelowMinDigestSize instead
+	ErrBelowMinimumHashLength = ErrBelowMinDigestSize
+	// Deprecated: Use ErrAboveMaxDigestSize instead
+	ErrAboveMaximumHashLength = ErrAboveMaxDigestSize
 )
 
 // ValidateCid validates multihash allowance behind given CID.
@@ -26,12 +33,12 @@ func ValidateCid(allowlist Allowlist, c cid.Cid) error {
 		return ErrPossiblyInsecureHashFunction
 	}
 
-	if pref.MhType != mh.IDENTITY && pref.MhLength < minimumHashLength {
-		return ErrBelowMinimumHashLength
+	if pref.MhType != mh.IDENTITY && pref.MhLength < MinDigestSize {
+		return ErrBelowMinDigestSize
 	}
 
-	if pref.MhType != mh.IDENTITY && pref.MhLength > maximumHashLength {
-		return ErrAboveMaximumHashLength
+	if pref.MhLength > MaxDigestSize {
+		return ErrAboveMaxDigestSize
 	}
 
 	return nil
