@@ -166,6 +166,7 @@ func ExpandDelegatedEndpoints(configEndpoints []string, autoConf *Config, native
 	for baseURL, config := range endpoints {
 		// Combine both Read and Write paths (already filtered by WithSupportedPathsOnly)
 		uniquePaths := slices.Concat(config.Read, config.Write)
+		// Deduplicate paths (in case same path appears in both Read and Write)
 		slices.Sort(uniquePaths)
 		uniquePaths = slices.Compact(uniquePaths)
 
