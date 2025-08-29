@@ -50,7 +50,7 @@ const (
 	providePath       = "/routing/v1/providers/"
 	findProvidersPath = "/routing/v1/providers/{cid}"
 	findPeersPath     = "/routing/v1/peers/{peer-id}"
-	GetIPNSPath       = "/routing/v1/ipns/{cid}"
+	getIPNSPath       = "/routing/v1/ipns/{cid}"
 )
 
 type FindProvidersAsyncResponse struct {
@@ -181,8 +181,8 @@ func Handler(svc ContentRouter, opts ...Option) http.Handler {
 	r.Handle(findProvidersPath, middlewarestd.Handler(findProvidersPath, mdlw, http.HandlerFunc(server.findProviders))).Methods(http.MethodGet)
 	r.Handle(providePath, middlewarestd.Handler(providePath, mdlw, http.HandlerFunc(server.provide))).Methods(http.MethodPut)
 	r.Handle(findPeersPath, middlewarestd.Handler(findPeersPath, mdlw, http.HandlerFunc(server.findPeers))).Methods(http.MethodGet)
-	r.Handle(GetIPNSPath, middlewarestd.Handler(GetIPNSPath, mdlw, http.HandlerFunc(server.GetIPNS))).Methods(http.MethodGet)
-	r.Handle(GetIPNSPath, middlewarestd.Handler(GetIPNSPath, mdlw, http.HandlerFunc(server.PutIPNS))).Methods(http.MethodPut)
+	r.Handle(getIPNSPath, middlewarestd.Handler(getIPNSPath, mdlw, http.HandlerFunc(server.GetIPNS))).Methods(http.MethodGet)
+	r.Handle(getIPNSPath, middlewarestd.Handler(getIPNSPath, mdlw, http.HandlerFunc(server.PutIPNS))).Methods(http.MethodPut)
 
 	return r
 }
