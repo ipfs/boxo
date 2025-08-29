@@ -27,7 +27,7 @@ func TestValidateCid(t *testing.T) {
 			name:    "identity over max size",
 			data:    bytes.Repeat([]byte("b"), MaxDigestSize+1),
 			mhType:  mh.IDENTITY,
-			wantErr: ErrAboveMaxDigestSize,
+			wantErr: ErrIdentityDigestTooLarge,
 		},
 		{
 			name:    "identity at 64 bytes",
@@ -39,7 +39,7 @@ func TestValidateCid(t *testing.T) {
 			name:    "identity with 1KB data",
 			data:    bytes.Repeat([]byte("d"), 1024),
 			mhType:  mh.IDENTITY,
-			wantErr: ErrAboveMaxDigestSize,
+			wantErr: ErrIdentityDigestTooLarge,
 		},
 		{
 			name:    "small identity",
@@ -120,8 +120,8 @@ func TestValidateCid(t *testing.T) {
 		c := cid.NewCidV1(cid.Raw, truncatedHash)
 
 		err = ValidateCid(allowlist, c)
-		if err != ErrBelowMinDigestSize {
-			t.Errorf("expected ErrBelowMinDigestSize for truncated SHA256, got: %v", err)
+		if err != ErrDigestTooSmall {
+			t.Errorf("expected ErrDigestTooSmall for truncated SHA256, got: %v", err)
 		}
 	})
 

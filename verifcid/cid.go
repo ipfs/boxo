@@ -17,13 +17,14 @@ const (
 
 var (
 	ErrPossiblyInsecureHashFunction = errors.New("potentially insecure hash functions not allowed")
-	ErrBelowMinDigestSize           = fmt.Errorf("multihash digest must be at least %d bytes long", MinDigestSize)
-	ErrAboveMaxDigestSize           = fmt.Errorf("multihash digest must be at most %d bytes long", MaxDigestSize)
+	ErrDigestTooSmall               = fmt.Errorf("digest too small: must be at least %d bytes", MinDigestSize)
+	ErrDigestTooLarge               = fmt.Errorf("digest too large: must be at most %d bytes", MaxDigestSize)
+	ErrIdentityDigestTooLarge       = fmt.Errorf("identity digest too large: must be at most %d bytes", MaxDigestSize)
 
-	// Deprecated: Use ErrBelowMinDigestSize instead
-	ErrBelowMinimumHashLength = ErrBelowMinDigestSize
-	// Deprecated: Use ErrAboveMaxDigestSize instead
-	ErrAboveMaximumHashLength = ErrAboveMaxDigestSize
+	// Deprecated: Use ErrDigestTooSmall instead
+	ErrBelowMinimumHashLength = ErrDigestTooSmall
+	// Deprecated: Use ErrDigestTooLarge instead
+	ErrAboveMaximumHashLength = ErrDigestTooLarge
 )
 
 // ValidateCid validates multihash allowance behind given CID.
@@ -34,11 +35,14 @@ func ValidateCid(allowlist Allowlist, c cid.Cid) error {
 	}
 
 	if pref.MhType != mh.IDENTITY && pref.MhLength < MinDigestSize {
-		return ErrBelowMinDigestSize
+		return ErrDigestTooSmall
 	}
 
 	if pref.MhLength > MaxDigestSize {
-		return ErrAboveMaxDigestSize
+		if pref.MhType == mh.IDENTITY {
+			return ErrIdentityDigestTooLarge
+		}
+		return ErrDigestTooLarge
 	}
 
 	return nil

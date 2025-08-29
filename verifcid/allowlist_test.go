@@ -42,7 +42,7 @@ func TestDefaultAllowList(t *testing.T) {
 		err error
 	}{
 		{mhcid(mh.SHA2_256, 32), nil},
-		{mhcid(mh.SHA2_256, 16), ErrBelowMinDigestSize},
+		{mhcid(mh.SHA2_256, 16), ErrDigestTooSmall},
 		{mhcid(mh.MURMUR3X64_64, 4), ErrPossiblyInsecureHashFunction},
 		{mhcid(mh.BLAKE3, 32), nil},
 		{mhcid(mh.BLAKE3, 69), nil},
@@ -61,7 +61,7 @@ func TestDefaultAllowList(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to produce a multihash from the long blake3 hash: %v", err)
 	}
-	if ValidateCid(allowlist, cid.NewCidV1(cid.DagCBOR, longBlake3Mh)) != ErrAboveMaxDigestSize {
-		t.Errorf("a CID that was longer than the maximum hash length did not error with ErrAboveMaxDigestSize")
+	if ValidateCid(allowlist, cid.NewCidV1(cid.DagCBOR, longBlake3Mh)) != ErrDigestTooLarge {
+		t.Errorf("a CID that was longer than the maximum hash length did not error with ErrDigestTooLarge")
 	}
 }
