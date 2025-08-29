@@ -28,6 +28,12 @@ The following emojis are used to highlight certain changes:
 
 ### Fixed
 
+- `ipld/unixfs/mod`:
+  - `DagModifier` now correctly preserves raw node codec when modifying data under the chunker threshold, instead of incorrectly forcing everything to dag-pb
+  - `DagModifier` prevents creation of identity CIDs exceeding `verifcid.MaxDigestSize` limit when modifying data, automatically switching to proper cryptographic hash while preserving small identity CIDs
+  - `DagModifier` now supports appending data to a `RawNode` by automatically converting it into a UnixFS file structure where the original `RawNode` becomes the first leaf block, fixing previously impossible append operations that would fail with "expected protobuf dag node" errors
+- `mfs`: Files with identity CIDs now properly inherit full CID prefix from parent directories (version, codec, hash type, length), not just hash type
+
 ### Security
 
 - `verifcid`: Now enforces maximum size limit of 128 bytes for identity CIDs to prevent abuse.

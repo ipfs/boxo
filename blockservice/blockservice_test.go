@@ -315,7 +315,7 @@ func TestIdentityHashSizeLimit(t *testing.T) {
 	// Invalid identity CID should fail validation
 	_, err = blockservice.GetBlock(ctx, invalidCID)
 	a.Error(err)
-	a.ErrorIs(err, verifcid.ErrAboveMaxDigestSize)
+	a.ErrorIs(err, verifcid.ErrIdentityDigestTooLarge)
 }
 
 type fakeIsNewSessionCreateExchange struct {

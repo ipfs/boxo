@@ -11,8 +11,10 @@ import (
 	dag "github.com/ipfs/boxo/ipld/merkledag"
 	ft "github.com/ipfs/boxo/ipld/unixfs"
 	mod "github.com/ipfs/boxo/ipld/unixfs/mod"
+	"github.com/ipfs/boxo/util"
 	ipld "github.com/ipfs/go-ipld-format"
 	"github.com/libp2p/go-libp2p/core/routing"
+	mh "github.com/multiformats/go-multihash"
 )
 
 // File represents a file in the MFS, its logic its mainly targeted
@@ -109,6 +111,29 @@ func (fi *File) Open(flags Flags) (_ FileDescriptor, _retErr error) {
 		return nil, err
 	}
 	dmod.RawLeaves = fi.RawLeaves
+
+	// If the node uses identity hash, configure DagModifier with a fallback
+	// to avoid issues when the data grows beyond the identity hash size limit
+	if dmod.Prefix.MhType == mh.IDENTITY {
+		// Try to inherit full prefix from parent directory
+		if fi.parent != nil {
+			if dir, ok := fi.parent.(*Directory); ok {
+				if parentNode, err := dir.GetNode(); err == nil {
+					parentPrefix := parentNode.Cid().Prefix()
+					if parentPrefix.MhType != mh.IDENTITY {
+						// Use parent's full prefix (all fields)
+						dmod.Prefix = parentPrefix
+					}
+				}
+			}
+		}
+
+		// If still identity (no suitable parent), set up fallback
+		if dmod.Prefix.MhType == mh.IDENTITY {
+			dmod.Prefix.MhType = util.DefaultIpfsHash
+			dmod.Prefix.MhLength = -1 // Use default length for the hash function
+		}
+	}
 
 	return &fileDescriptor{
 		inode: fi,
