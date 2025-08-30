@@ -391,10 +391,14 @@ func (bb *BlocksBackend) GetCAR(ctx context.Context, p path.ImmutablePath, param
 			return ContentPathMetadata{}, nil, err
 		}
 
-		blockGetter := merkledag.NewDAGService(bb.blockService).Session(ctx)
+		// Create a DAGService that uses the blocking-aware BlockService.
+		// When a CID is blocked, the underlying BlockService returns an error.
+		dagService := merkledag.NewDAGService(bb.blockService).Session(ctx)
 
-		blockGetter = &nodeGetterToCarExporer{
-			ng: blockGetter,
+		// Wrap the DAGService to write blocks to CAR as they're fetched.
+		// This wrapper is used by the path resolver to fetch intermediate blocks.
+		blockGetter := &nodeGetterToCarExporer{
+			ng: dagService,
 			cw: cw,
 		}
 
@@ -434,10 +438,14 @@ func (bb *BlocksBackend) GetCAR(ctx context.Context, p path.ImmutablePath, param
 			return
 		}
 
-		blockGetter := merkledag.NewDAGService(bb.blockService).Session(ctx)
+		// Create a DAGService that uses the blocking-aware BlockService.
+		// When a CID is blocked, the underlying BlockService returns an error.
+		dagService := merkledag.NewDAGService(bb.blockService).Session(ctx)
 
-		blockGetter = &nodeGetterToCarExporer{
-			ng: blockGetter,
+		// Wrap the DAGService to write blocks to CAR as they're fetched.
+		// This wrapper is used by the path resolver to fetch intermediate blocks.
+		blockGetter := &nodeGetterToCarExporer{
+			ng: dagService,
 			cw: cw,
 		}
 
@@ -447,7 +455,15 @@ func (bb *BlocksBackend) GetCAR(ctx context.Context, p path.ImmutablePath, param
 
 		lsys := cidlink.DefaultLinkSystem()
 		unixfsnode.AddUnixFSReificationToLinkSystem(&lsys)
-		lsys.StorageReadOpener = blockOpener(ctx, blockGetter)
+		// CRITICAL: Use the original dagService for blockOpener, not the wrapped nodeGetterToCarExporer.
+		// This separation ensures that:
+		// 1. blockOpener checks if blocks are accessible (through blocking-aware BlockService)
+		// 2. Only non-blocked content triggers CAR writing in nodeGetterToCarExporer
+		// 3. Blocked content returns traversal.SkipMe{} and never gets written to CAR
+		//
+		// If we passed blockGetter (the wrapped nodeGetterToCarExporer) here instead,
+		// it would write blocks to CAR immediately upon access, even if they're blocked.
+		lsys.StorageReadOpener = blockOpener(ctx, dagService)
 
 		// First resolve the path since we always need to.
 		lastCid, remainder, err := pathResolver.ResolveToLastNode(ctx, p)
@@ -784,6 +800,12 @@ func (bb *BlocksBackend) resolvePath(ctx context.Context, p path.Path) (path.Imm
 	return imPath, remainder, nil
 }
 
+// nodeGetterToCarExporer wraps a NodeGetter to write blocks to a CAR file as they are fetched.
+// This enables streaming CAR generation during DAG traversal.
+//
+// IMPORTANT: This wrapper is used for path resolution but NOT for the traversal's blockOpener.
+// The blockOpener uses the underlying dagService directly to ensure proper blocking checks
+// before any blocks are written to the CAR.
 type nodeGetterToCarExporer struct {
 	ng format.NodeGetter
 	cw storage.WritableCar
@@ -792,6 +814,7 @@ type nodeGetterToCarExporer struct {
 func (n *nodeGetterToCarExporer) Get(ctx context.Context, c cid.Cid) (format.Node, error) {
 	nd, err := n.ng.Get(ctx, c)
 	if err != nil {
+		// Pass through all errors - blockOpener will handle them appropriately
 		return nil, err
 	}
 
@@ -820,6 +843,19 @@ func (n *nodeGetterToCarExporer) GetMany(ctx context.Context, cids []cid.Cid) <-
 				case outCh <- nd:
 				case <-ctx.Done():
 				}
+			} else {
+				// Handle errors from the underlying NodeGetter:
+				// - NotFound errors: content doesn't exist, skip silently
+				// - Blocked errors: content is blocked, skip silently
+				// - Other errors: propagate to caller
+				if !format.IsNotFound(nd.Err) && !isErrContentBlocked(nd.Err) {
+					// Only pass through non-blocked errors
+					select {
+					case outCh <- nd:
+					case <-ctx.Done():
+					}
+				}
+				// For blocked/not found errors, we simply skip - don't send anything
 			}
 		}
 	}()
@@ -909,6 +945,12 @@ func (n *nodeGetterFetcherSingleUseFactory) blankProgress(ctx context.Context) t
 	}
 }
 
+// blockOpener returns a function that loads blocks during CAR traversal.
+// It is used by the IPLD LinkSystem during the walkGatewaySimpleSelector traversal.
+//
+// When a blocked CID is encountered, it returns traversal.SkipMe{} which tells
+// the traversal to skip that branch of the DAG without failing the entire operation.
+// This allows generating CARs with partial content when some blocks are filtered.
 func blockOpener(ctx context.Context, ng format.NodeGetter) ipld.BlockReadOpener {
 	return func(_ ipld.LinkContext, lnk ipld.Link) (io.Reader, error) {
 		cidLink, ok := lnk.(cidlink.Link)
@@ -916,8 +958,17 @@ func blockOpener(ctx context.Context, ng format.NodeGetter) ipld.BlockReadOpener
 			return nil, fmt.Errorf("invalid link type for loading: %v", lnk)
 		}
 
+		// Attempt to fetch the block through the NodeGetter.
+		// If using a blocking-aware BlockService, this returns an error for blocked CIDs.
 		blk, err := ng.Get(ctx, cidLink.Cid)
 		if err != nil {
+			// Check if this block is blocked (not just missing)
+			if isErrContentBlocked(err) {
+				// Return traversal.SkipMe{} to gracefully skip blocked content.
+				// The traversal continues with other accessible parts of the DAG.
+				return nil, traversal.SkipMe{}
+			}
+			// Propagate all other errors including NotFound (broken DAG)
 			return nil, err
 		}
 
