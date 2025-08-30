@@ -448,7 +448,8 @@ func (bb *BlocksBackend) streamCAR(ctx context.Context, p path.ImmutablePath, pa
 		}
 
 		// Create DAG service with blocking detection
-		// Note: We don't use Session here as it might cache blocks and bypass blocking checks
+		// TODO: Restore .Session(ctx) once https://github.com/ipfs-shipyard/nopfs/issues/34
+		// is resolved. Sessions improve performance but currently bypass denylist checks.
 		dagService := merkledag.NewDAGService(bb.blockService)
 
 		// Wrap DAG service to write blocks to CAR as they're fetched
@@ -533,7 +534,9 @@ func (bb *BlocksBackend) handleCarErrorPath(ctx context.Context, p path.Immutabl
 	}
 
 	// Try to fetch just the root block to determine error type
-	dagService := merkledag.NewDAGService(bb.blockService).Session(ctx)
+	// TODO: Restore .Session(ctx) once https://github.com/ipfs-shipyard/nopfs/issues/34
+	// is resolved. Sessions improve performance but currently bypass denylist checks.
+	dagService := merkledag.NewDAGService(bb.blockService)
 	_, err := dagService.Get(ctx, rootCid)
 
 	if err != nil {
