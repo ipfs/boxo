@@ -282,8 +282,11 @@ func WithMaxQueuedWantlistEntriesPerPeer(count uint) Option {
 	}
 }
 
-// WithMaxQueuedWantlistEntriesPerPeer limits how much individual entries each peer is allowed to send.
-// If a peer send us more than this we will truncate newest entries.
+// WithMaxCidSize limits the size of incoming CIDs that we are willing to accept.
+// We will ignore requests for CIDs whose total encoded size exceeds this limit.
+// This protects against malicious peers sending CIDs with pathologically large
+// varint encodings that could exhaust memory.
+// It defaults to [defaults.MaximumAllowedCid]
 func WithMaxCidSize(n uint) Option {
 	return func(e *Engine) {
 		e.maxCidSize = n
