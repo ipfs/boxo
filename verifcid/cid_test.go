@@ -2,6 +2,7 @@ package verifcid
 
 import (
 	"bytes"
+	"errors"
 	"testing"
 
 	"github.com/ipfs/go-cid"
@@ -64,7 +65,11 @@ func TestValidateCid(t *testing.T) {
 			c := cid.NewCidV1(cid.Raw, hash)
 
 			err = ValidateCid(allowlist, c)
-			if err != tt.wantErr {
+			if tt.wantErr == nil {
+				if err != nil {
+					t.Errorf("ValidateCid() error = %v, wantErr nil", err)
+				}
+			} else if !errors.Is(err, tt.wantErr) {
 				t.Errorf("ValidateCid() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
@@ -120,7 +125,7 @@ func TestValidateCid(t *testing.T) {
 		c := cid.NewCidV1(cid.Raw, truncatedHash)
 
 		err = ValidateCid(allowlist, c)
-		if err != ErrDigestTooSmall {
+		if !errors.Is(err, ErrDigestTooSmall) {
 			t.Errorf("expected ErrDigestTooSmall for truncated SHA256, got: %v", err)
 		}
 	})

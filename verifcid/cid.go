@@ -20,9 +20,9 @@ const (
 
 var (
 	ErrPossiblyInsecureHashFunction = errors.New("potentially insecure hash functions not allowed")
-	ErrDigestTooSmall               = fmt.Errorf("digest too small: must be at least %d bytes", MinDigestSize)
-	ErrDigestTooLarge               = fmt.Errorf("digest too large: must be at most %d bytes", MaxDigestSize)
-	ErrIdentityDigestTooLarge       = fmt.Errorf("identity digest too large: must be at most %d bytes", MaxIdentityDigestSize)
+	ErrDigestTooSmall               = errors.New("digest too small")
+	ErrDigestTooLarge               = errors.New("digest too large")
+	ErrIdentityDigestTooLarge       = errors.New("identity digest too large")
 
 	// Deprecated: Use ErrDigestTooSmall instead
 	ErrBelowMinimumHashLength = ErrDigestTooSmall
@@ -40,16 +40,28 @@ func ValidateCid(allowlist Allowlist, c cid.Cid) error {
 	switch pref.MhType {
 	case mh.IDENTITY:
 		if pref.MhLength > MaxIdentityDigestSize {
-			return ErrIdentityDigestTooLarge
+			return newErrIdentityDigestTooLarge(pref.MhLength)
 		}
 	default:
 		if pref.MhLength < MinDigestSize {
-			return ErrDigestTooSmall
+			return newErrDigestTooSmall(pref.MhLength)
 		}
 		if pref.MhLength > MaxDigestSize {
-			return ErrDigestTooLarge
+			return newErrDigestTooLarge(pref.MhLength)
 		}
 	}
 
 	return nil
+}
+
+func newErrDigestTooSmall(got int) error {
+	return fmt.Errorf("%w: got %d bytes, minimum %d", ErrDigestTooSmall, got, MinDigestSize)
+}
+
+func newErrDigestTooLarge(got int) error {
+	return fmt.Errorf("%w: got %d bytes, maximum %d", ErrDigestTooLarge, got, MaxDigestSize)
+}
+
+func newErrIdentityDigestTooLarge(got int) error {
+	return fmt.Errorf("%w: got %d bytes, maximum %d", ErrIdentityDigestTooLarge, got, MaxIdentityDigestSize)
 }

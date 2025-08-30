@@ -895,16 +895,6 @@ func makeIdentityNode(data []byte) *dag.ProtoNode {
 	return node
 }
 
-// makeRawNodeWithIdentity creates a RawNode with identity CID for testing
-func makeRawNodeWithIdentity(data []byte) (*dag.RawNode, error) {
-	return dag.NewRawNodeWPrefix(data, cid.Prefix{
-		Version:  1,
-		Codec:    cid.Raw,
-		MhType:   mh.IDENTITY,
-		MhLength: -1,
-	})
-}
-
 func TestIdentityCIDHandling(t *testing.T) {
 	ctx := context.Background()
 	dserv := testu.GetDAGServ()

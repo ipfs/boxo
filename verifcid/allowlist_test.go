@@ -1,6 +1,7 @@
 package verifcid
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/ipfs/go-cid"
@@ -20,13 +21,6 @@ func TestDefaultAllowList(t *testing.T) {
 			t.Fatal("expected failure")
 		}
 	}
-	mhcid := func(code uint64, length int) cid.Cid {
-		mhash, err := mh.Sum([]byte{}, code, length)
-		if err != nil {
-			t.Fatalf("%v: code: %x length: %d", err, code, length)
-		}
-		return cid.NewCidV1(cid.DagCBOR, mhash)
-	}
 
 	allowlist := DefaultAllowlist
 	assertTrue(allowlist.IsAllowed(mh.SHA2_256))
@@ -35,24 +29,35 @@ func TestDefaultAllowList(t *testing.T) {
 	assertTrue(allowlist.IsAllowed(mh.KECCAK_256))
 	assertTrue(allowlist.IsAllowed(mh.SHA3))
 	assertTrue(allowlist.IsAllowed(mh.SHA1))
+	assertTrue(allowlist.IsAllowed(mh.IDENTITY))
 	assertFalse(allowlist.IsAllowed(mh.BLAKE2B_MIN + 5))
 
 	cases := []struct {
 		cid cid.Cid
 		err error
 	}{
-		{mhcid(mh.SHA2_256, 32), nil},
-		{mhcid(mh.SHA2_256, 16), ErrDigestTooSmall},
-		{mhcid(mh.MURMUR3X64_64, 4), ErrPossiblyInsecureHashFunction},
-		{mhcid(mh.BLAKE3, 32), nil},
-		{mhcid(mh.BLAKE3, 69), nil},
-		{mhcid(mh.BLAKE3, 128), nil},
+		{mhcid(t, mh.SHA2_256, 32), nil},
+		{mhcid(t, mh.SHA2_256, 16), ErrDigestTooSmall},
+		{mhcid(t, mh.MURMUR3X64_64, 4), ErrPossiblyInsecureHashFunction},
+		{mhcid(t, mh.BLAKE3, 32), nil},
+		{mhcid(t, mh.BLAKE3, 69), nil},
+		{mhcid(t, mh.BLAKE3, 128), nil},
+		{identityCid(t, 19), nil},                        // identity below MinDigestSize (exempt from minimum)
+		{identityCid(t, 64), nil},                        // identity under MaxIdentityDigestSize
+		{identityCid(t, 128), nil},                       // identity at MaxIdentityDigestSize
+		{identityCid(t, 129), ErrIdentityDigestTooLarge}, // identity above MaxIdentityDigestSize
 	}
 
 	for i, cas := range cases {
-		if ValidateCid(allowlist, cas.cid) != cas.err {
+		err := ValidateCid(allowlist, cas.cid)
+		if cas.err == nil {
+			if err != nil {
+				t.Errorf("wrong result in case of %s (index %d). Expected: nil, got %s",
+					cas.cid, i, err)
+			}
+		} else if !errors.Is(err, cas.err) {
 			t.Errorf("wrong result in case of %s (index %d). Expected: %s, got %s",
-				cas.cid, i, cas.err, ValidateCid(DefaultAllowlist, cas.cid))
+				cas.cid, i, cas.err, err)
 		}
 	}
 
@@ -61,7 +66,31 @@ func TestDefaultAllowList(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to produce a multihash from the long blake3 hash: %v", err)
 	}
-	if ValidateCid(allowlist, cid.NewCidV1(cid.DagCBOR, longBlake3Mh)) != ErrDigestTooLarge {
-		t.Errorf("a CID that was longer than the maximum hash length did not error with ErrDigestTooLarge")
+	if err := ValidateCid(allowlist, cid.NewCidV1(cid.DagCBOR, longBlake3Mh)); !errors.Is(err, ErrDigestTooLarge) {
+		t.Errorf("a CID that was longer than the maximum hash length did not error with ErrDigestTooLarge, got: %v", err)
 	}
+}
+
+// mhcid creates a CID with the specified multihash type and length
+func mhcid(t *testing.T, code uint64, length int) cid.Cid {
+	t.Helper()
+	mhash, err := mh.Sum([]byte{}, code, length)
+	if err != nil {
+		t.Fatalf("%v: code: %x length: %d", err, code, length)
+	}
+	return cid.NewCidV1(cid.DagCBOR, mhash)
+}
+
+// identityCid creates an identity CID with specific data size
+func identityCid(t *testing.T, size int) cid.Cid {
+	t.Helper()
+	data := make([]byte, size)
+	for i := range data {
+		data[i] = byte(i % 256)
+	}
+	hash, err := mh.Sum(data, mh.IDENTITY, -1)
+	if err != nil {
+		t.Fatalf("failed to create identity hash: %v", err)
+	}
+	return cid.NewCidV1(cid.Raw, hash)
 }
