@@ -33,7 +33,7 @@ func MaxQueuedWantlistEntriesPerPeer(count uint) Option {
 	return Option{server.MaxQueuedWantlistEntriesPerPeer(count)}
 }
 
-// MaxCidSize only affects the server.
+// MaxCidSize limits the size of incoming CIDs in requests (server only).
 // If it is 0 no limit is applied.
 func MaxCidSize(n uint) Option {
 	return Option{server.MaxCidSize(n)}

@@ -20,15 +20,15 @@ func TestValidateCid(t *testing.T) {
 	}{
 		{
 			name:    "identity at max size",
-			data:    bytes.Repeat([]byte("a"), MaxIdentityDigestSize),
+			data:    bytes.Repeat([]byte("a"), DefaultMaxIdentityDigestSize), // max identity size
 			mhType:  mh.IDENTITY,
 			wantErr: nil,
 		},
 		{
 			name:    "identity over max size",
-			data:    bytes.Repeat([]byte("b"), MaxIdentityDigestSize+1),
+			data:    bytes.Repeat([]byte("b"), DefaultMaxIdentityDigestSize+1), // over max identity size
 			mhType:  mh.IDENTITY,
-			wantErr: ErrIdentityDigestTooLarge,
+			wantErr: ErrDigestTooLarge,
 		},
 		{
 			name:    "identity at 64 bytes",
@@ -40,7 +40,7 @@ func TestValidateCid(t *testing.T) {
 			name:    "identity with 1KB data",
 			data:    bytes.Repeat([]byte("d"), 1024),
 			mhType:  mh.IDENTITY,
-			wantErr: ErrIdentityDigestTooLarge,
+			wantErr: ErrDigestTooLarge,
 		},
 		{
 			name:    "small identity",
@@ -111,12 +111,12 @@ func TestValidateCid(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		// Manually create a truncated hash (19 bytes)
+		// Manually create a truncated hash (DefaultMinDigestSize-1 bytes)
 		decoded, err := mh.Decode(fullHash)
 		if err != nil {
 			t.Fatal(err)
 		}
-		truncatedDigest := decoded.Digest[:MinDigestSize-1]
+		truncatedDigest := decoded.Digest[:DefaultMinDigestSize-1] // less than minimum
 		truncatedHash, err := mh.Encode(truncatedDigest, mh.SHA2_256)
 		if err != nil {
 			t.Fatal(err)
@@ -133,7 +133,7 @@ func TestValidateCid(t *testing.T) {
 	t.Run("identity hash exempt from minimum size", func(t *testing.T) {
 		// Test that identity hashes below MinDigestSize are still valid
 		// This confirms identity hashes are exempt from the minimum size requirement
-		smallData := []byte("tiny") // Only 4 bytes, well below MinDigestSize of 20
+		smallData := []byte("tiny") // Only 4 bytes, well below DefaultMinDigestSize
 		hash, err := mh.Sum(smallData, mh.IDENTITY, -1)
 		if err != nil {
 			t.Fatal(err)
@@ -146,8 +146,8 @@ func TestValidateCid(t *testing.T) {
 			t.Errorf("identity CID with %d bytes should be valid (exempt from minimum), got error: %v", len(smallData), err)
 		}
 
-		// Also test with exactly MinDigestSize-1 bytes for clarity
-		dataAt19Bytes := bytes.Repeat([]byte("x"), MinDigestSize-1)
+		// Also test with exactly DefaultMinDigestSize-1 bytes (less than normal minimum)
+		dataAt19Bytes := bytes.Repeat([]byte("x"), DefaultMinDigestSize-1)
 		hash19, err := mh.Sum(dataAt19Bytes, mh.IDENTITY, -1)
 		if err != nil {
 			t.Fatal(err)
@@ -156,7 +156,7 @@ func TestValidateCid(t *testing.T) {
 
 		err = ValidateCid(allowlist, c19)
 		if err != nil {
-			t.Errorf("identity CID with %d bytes should be valid (exempt from minimum), got error: %v", MinDigestSize-1, err)
+			t.Errorf("identity CID with %d bytes should be valid (exempt from minimum), got error: %v", DefaultMinDigestSize-1, err)
 		}
 	})
 }

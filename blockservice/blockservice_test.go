@@ -295,14 +295,14 @@ func TestIdentityHashSizeLimit(t *testing.T) {
 	bs := blockstore.NewBlockstore(dssync.MutexWrap(ds.NewMapDatastore()))
 	blockservice := New(bs, nil)
 
-	// Create identity CID at the MaxIdentityDigestSize limit (should be valid)
-	validData := bytes.Repeat([]byte("a"), verifcid.MaxIdentityDigestSize)
+	// Create identity CID at the DefaultMaxIdentityDigestSize limit (should be valid)
+	validData := bytes.Repeat([]byte("a"), verifcid.DefaultMaxIdentityDigestSize)
 	validHash, err := multihash.Sum(validData, multihash.IDENTITY, -1)
 	a.NoError(err)
 	validCID := cid.NewCidV1(cid.Raw, validHash)
 
-	// Create identity CID over the MaxIdentityDigestSize limit (should be rejected)
-	invalidData := bytes.Repeat([]byte("b"), verifcid.MaxIdentityDigestSize+1)
+	// Create identity CID over the DefaultMaxIdentityDigestSize limit (should be rejected)
+	invalidData := bytes.Repeat([]byte("b"), verifcid.DefaultMaxIdentityDigestSize+1)
 	invalidHash, err := multihash.Sum(invalidData, multihash.IDENTITY, -1)
 	a.NoError(err)
 	invalidCID := cid.NewCidV1(cid.Raw, invalidHash)
@@ -315,7 +315,7 @@ func TestIdentityHashSizeLimit(t *testing.T) {
 	// Invalid identity CID should fail validation
 	_, err = blockservice.GetBlock(ctx, invalidCID)
 	a.Error(err)
-	a.ErrorIs(err, verifcid.ErrIdentityDigestTooLarge)
+	a.ErrorIs(err, verifcid.ErrDigestTooLarge)
 }
 
 type fakeIsNewSessionCreateExchange struct {

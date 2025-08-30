@@ -281,7 +281,7 @@ func (dm *DagModifier) safePrefixForSize(originalPrefix cid.Prefix, dataSize int
 	}
 
 	// For identity hash, check if data fits within the limit
-	if dataSize <= verifcid.MaxIdentityDigestSize {
+	if dataSize <= verifcid.DefaultMaxIdentityDigestSize {
 		return originalPrefix, false
 	}
 

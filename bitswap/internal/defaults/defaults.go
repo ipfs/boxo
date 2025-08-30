@@ -29,8 +29,33 @@ const (
 	// Maximum size of the wantlist we are willing to keep in memory.
 	MaxQueuedWantlistEntiresPerPeer = 1024
 
-	// MaximumHashLength is now exposed from verifcid.MaxDigestSize
-	MaximumHashLength = verifcid.MaxDigestSize
+	// MaximumHashLength is the maximum size for hash digests we accept.
+	// This references the default from verifcid for consistency.
+	MaximumHashLength = verifcid.DefaultMaxDigestSize
+
+	// MaximumAllowedCid is the maximum total CID size we accept in bitswap messages.
+	// Bitswap sends full CIDs (not just multihashes) on the wire, so we must
+	// limit the total size to prevent DoS attacks from maliciously large CIDs.
+	//
+	// The calculation is based on the CID binary format:
+	// - CIDv0: Just a multihash (hash type + hash length + hash digest)
+	// - CIDv1: <version><multicodec><multihash>
+	//   - version: varint (usually 1 byte for version 1)
+	//   - multicodec: varint (usually 1-2 bytes for common codecs)
+	//   - multihash: <hash-type><hash-length><hash-digest>
+	//     - hash-type: varint (usually 1-2 bytes)
+	//     - hash-length: varint (usually 1-2 bytes)
+	//     - hash-digest: up to MaximumHashLength bytes
+	//
+	// We use binary.MaxVarintLen64*4 (40 bytes) to accommodate worst-case varint encoding:
+	// - 1 varint for CID version (max 10 bytes)
+	// - 1 varint for multicodec (max 10 bytes)
+	// - 1 varint for multihash type (max 10 bytes)
+	// - 1 varint for multihash length (max 10 bytes)
+	// Total: 40 bytes overhead + MaximumHashLength (128) = 168 bytes max
+	//
+	// This prevents peers from sending CIDs with pathologically large varint encodings
+	// that could exhaust memory or cause other issues.
 	MaximumAllowedCid = binary.MaxVarintLen64*4 + MaximumHashLength
 
 	// RebroadcastDelay is the default delay to trigger broadcast of

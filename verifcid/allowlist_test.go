@@ -42,10 +42,10 @@ func TestDefaultAllowList(t *testing.T) {
 		{mhcid(t, mh.BLAKE3, 32), nil},
 		{mhcid(t, mh.BLAKE3, 69), nil},
 		{mhcid(t, mh.BLAKE3, 128), nil},
-		{identityCid(t, 19), nil},                        // identity below MinDigestSize (exempt from minimum)
-		{identityCid(t, 64), nil},                        // identity under MaxIdentityDigestSize
-		{identityCid(t, 128), nil},                       // identity at MaxIdentityDigestSize
-		{identityCid(t, 129), ErrIdentityDigestTooLarge}, // identity above MaxIdentityDigestSize
+		{identityCid(t, DefaultMinDigestSize-1), nil},                       // identity below minimum (exempt from minimum)
+		{identityCid(t, 64), nil},                                           // identity under DefaultMaxIdentityDigestSize limit
+		{identityCid(t, DefaultMaxIdentityDigestSize), nil},                 // identity at DefaultMaxIdentityDigestSize limit
+		{identityCid(t, DefaultMaxIdentityDigestSize+1), ErrDigestTooLarge}, // identity above DefaultMaxIdentityDigestSize limit
 	}
 
 	for i, cas := range cases {
