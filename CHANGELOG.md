@@ -22,6 +22,8 @@ The following emojis are used to highlight certain changes:
 
 ### Fixed
 
+- `gateway`: Fixed CAR responses including blocked content. The gateway now properly filters out blocked CIDs from CAR format responses, ensuring content filtering policies are enforced across all response formats. ([ipfs/kubo#10361](https://github.com/ipfs/kubo/issues/10361))
+
 ### Security
 
 
