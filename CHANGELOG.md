@@ -18,11 +18,14 @@ The following emojis are used to highlight certain changes:
 
 ### Changed
 
-- `verifcid`: 🛠 Improved digest size limit handling ([#1018](https://github.com/ipfs/boxo/pull/1018))
-  - Made digest size constants public: `MinDigestSize` (20 bytes) and `MaxDigestSize` (128 bytes)
-  - Added `MaxIdentityDigestSize` (128 bytes) constant specifically for identity CID size limits
-  - Renamed errors for clarity: Added `ErrDigestTooSmall`, `ErrDigestTooLarge`, and `ErrIdentityDigestTooLarge` as the new primary errors
+- `verifcid`: 🛠 Enhanced Allowlist interface with per-hash size limits ([#1018](https://github.com/ipfs/boxo/pull/1018))
+  - Expanded `Allowlist` interface with `MinDigestSize(code uint64)` and `MaxDigestSize(code uint64)` methods for per-hash function size validation
+  - Added public constants: `DefaultMinDigestSize` (20 bytes), `DefaultMaxDigestSize` (128 bytes for cryptographic hashes), and `DefaultMaxIdentityDigestSize` (128 bytes for identity CIDs)
+  - `DefaultAllowlist` implementation now uses these constants and supports different size limits per hash type
+  - Renamed errors for clarity: Added `ErrDigestTooSmall` and `ErrDigestTooLarge` as the new primary errors
   - `ErrBelowMinimumHashLength` and `ErrAboveMaximumHashLength` remain as deprecated aliases pointing to the new errors
+- `bitswap`: Updated to use `verifcid.DefaultMaxDigestSize` for `MaximumHashLength` constant
+  - The default `MaximumAllowedCid` limit for incoming CIDs can be adjusted using `bitswap.MaxCidSize` or `server.MaxCidSize` options
 
 ### Removed
 
@@ -30,15 +33,15 @@ The following emojis are used to highlight certain changes:
 
 - `ipld/unixfs/mod`:
   - `DagModifier` now correctly preserves raw node codec when modifying data under the chunker threshold, instead of incorrectly forcing everything to dag-pb
-  - `DagModifier` prevents creation of identity CIDs exceeding `verifcid.MaxIdentityDigestSize` limit when modifying data, automatically switching to proper cryptographic hash while preserving small identity CIDs
+  - `DagModifier` prevents creation of identity CIDs exceeding `verifcid.DefaultMaxIdentityDigestSize` limit when modifying data, automatically switching to proper cryptographic hash while preserving small identity CIDs
   - `DagModifier` now supports appending data to a `RawNode` by automatically converting it into a UnixFS file structure where the original `RawNode` becomes the first leaf block, fixing previously impossible append operations that would fail with "expected protobuf dag node" errors
 - `mfs`: Files with identity CIDs now properly inherit full CID prefix from parent directories (version, codec, hash type, length), not just hash type
 
 ### Security
 
 - `verifcid`: Now enforces maximum size limit of 128 bytes for identity CIDs to prevent abuse.
-  - 🛠 Attempts to read CIDs with identity multihash digests longer than `MaxIdentityDigestSize` will now produce `ErrIdentityDigestTooLarge` error.
-  - Identity CIDs can inline data directly, and without a size limit, they could embed arbitrary amounts of data. Limiting the size also protects gateways from poorly written clients that might send absurdly big data to the gateway encoded as identity CIDs only to retrieve it back. Note that identity CIDs do not provide integrity verification, making them vulnerable to bit flips. They should only be used in controlled contexts like raw leaves of a larger DAG. The limit is explicitly defined as `MaxIdentityDigestSize` (128 bytes).
+  - 🛠 Attempts to read CIDs with identity multihash digests longer than `DefaultMaxIdentityDigestSize` will now produce `ErrDigestTooLarge` error.
+  - Identity CIDs can inline data directly, and without a size limit, they could embed arbitrary amounts of data. Limiting the size also protects gateways from poorly written clients that might send absurdly big data to the gateway encoded as identity CIDs only to retrieve it back. Note that identity CIDs do not provide integrity verification, making them vulnerable to bit flips. They should only be used in controlled contexts like raw leaves of a larger DAG. The limit is explicitly defined as `DefaultMaxIdentityDigestSize` (128 bytes).
 
 
 ## [v0.34.0]
