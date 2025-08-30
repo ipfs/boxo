@@ -19,13 +19,13 @@ func TestValidateCid(t *testing.T) {
 	}{
 		{
 			name:    "identity at max size",
-			data:    bytes.Repeat([]byte("a"), MaxDigestSize),
+			data:    bytes.Repeat([]byte("a"), MaxIdentityDigestSize),
 			mhType:  mh.IDENTITY,
 			wantErr: nil,
 		},
 		{
 			name:    "identity over max size",
-			data:    bytes.Repeat([]byte("b"), MaxDigestSize+1),
+			data:    bytes.Repeat([]byte("b"), MaxIdentityDigestSize+1),
 			mhType:  mh.IDENTITY,
 			wantErr: ErrIdentityDigestTooLarge,
 		},

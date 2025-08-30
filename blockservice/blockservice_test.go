@@ -295,14 +295,14 @@ func TestIdentityHashSizeLimit(t *testing.T) {
 	bs := blockstore.NewBlockstore(dssync.MutexWrap(ds.NewMapDatastore()))
 	blockservice := New(bs, nil)
 
-	// Create identity CID at the MaxDigestSize limit (should be valid)
-	validData := bytes.Repeat([]byte("a"), verifcid.MaxDigestSize)
+	// Create identity CID at the MaxIdentityDigestSize limit (should be valid)
+	validData := bytes.Repeat([]byte("a"), verifcid.MaxIdentityDigestSize)
 	validHash, err := multihash.Sum(validData, multihash.IDENTITY, -1)
 	a.NoError(err)
 	validCID := cid.NewCidV1(cid.Raw, validHash)
 
-	// Create identity CID over the MaxDigestSize limit (should be rejected)
-	invalidData := bytes.Repeat([]byte("b"), verifcid.MaxDigestSize+1)
+	// Create identity CID over the MaxIdentityDigestSize limit (should be rejected)
+	invalidData := bytes.Repeat([]byte("b"), verifcid.MaxIdentityDigestSize+1)
 	invalidHash, err := multihash.Sum(invalidData, multihash.IDENTITY, -1)
 	a.NoError(err)
 	invalidCID := cid.NewCidV1(cid.Raw, invalidHash)

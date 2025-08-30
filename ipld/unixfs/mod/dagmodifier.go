@@ -5,7 +5,7 @@
 //
 // This package automatically handles identity CIDs (multihash code 0x00) which
 // inline data directly in the CID. When modifying nodes with identity CIDs,
-// the package ensures the [verifcid.MaxDigestSize] limit is respected by
+// the package ensures the [verifcid.MaxIdentityDigestSize] limit is respected by
 // automatically switching to a cryptographic hash function when the encoded
 // data would exceed this limit. The replacement hash function is chosen from
 // (in order): the configured Prefix if non-identity, or [util.DefaultIpfsHash]
@@ -275,11 +275,18 @@ func (dm *DagModifier) Sync() error {
 // limits, returns the original prefix and false. Otherwise returns a prefix with
 // a proper cryptographic hash function and true to indicate the prefix changed.
 func (dm *DagModifier) safePrefixForSize(originalPrefix cid.Prefix, dataSize int) (cid.Prefix, bool) {
-	if originalPrefix.MhType != mh.IDENTITY || dataSize <= verifcid.MaxDigestSize {
+	// If not identity hash, no size check needed - return as is
+	if originalPrefix.MhType != mh.IDENTITY {
 		return originalPrefix, false
 	}
 
-	// Identity would overflow, use configured prefix
+	// For identity hash, check if data fits within the limit
+	if dataSize <= verifcid.MaxIdentityDigestSize {
+		return originalPrefix, false
+	}
+
+	// Identity would overflow, need to switch to a different hash
+	// Use configured prefix if it's not identity
 	if dm.Prefix.MhType != mh.IDENTITY {
 		return dm.Prefix, true
 	}

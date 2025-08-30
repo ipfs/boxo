@@ -914,15 +914,15 @@ func TestIdentityCIDHandling(t *testing.T) {
 	t.Run("prevents identity CID overflow on modification", func(t *testing.T) {
 		// Create a UnixFS file node with identity hash near the size limit
 		// UnixFS overhead is approximately 8-10 bytes, so we use data that will
-		// encode to just under verifcid.MaxDigestSize when combined with metadata
-		initialData := makeTestDataPattern(verifcid.MaxDigestSize-10, "abcdefghijklmnopqrstuvwxyz")
+		// encode to just under verifcid.MaxIdentityDigestSize when combined with metadata
+		initialData := makeTestDataPattern(verifcid.MaxIdentityDigestSize-10, "abcdefghijklmnopqrstuvwxyz")
 
 		// Create a UnixFS file node with identity CID
 		node := makeIdentityNode(initialData)
 
 		// Verify the encoded size is under limit
 		encoded, _ := node.EncodeProtobuf(false)
-		if len(encoded) > verifcid.MaxDigestSize {
+		if len(encoded) > verifcid.MaxIdentityDigestSize {
 			t.Skipf("Initial node too large for identity: %d bytes", len(encoded))
 		}
 
@@ -965,12 +965,12 @@ func TestIdentityCIDHandling(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		// The key verification: if it's a leaf node and would exceed verifcid.MaxDigestSize,
+		// The key verification: if it's a leaf node and would exceed verifcid.MaxIdentityDigestSize,
 		// it must not use identity hash
 		if len(resultNode.Links()) == 0 {
 			if protoNode, ok := resultNode.(*dag.ProtoNode); ok {
 				encodedData, _ := protoNode.EncodeProtobuf(false)
-				if len(encodedData) > verifcid.MaxDigestSize && resultNode.Cid().Prefix().MhType == mh.IDENTITY {
+				if len(encodedData) > verifcid.MaxIdentityDigestSize && resultNode.Cid().Prefix().MhType == mh.IDENTITY {
 					t.Errorf("Leaf node with %d bytes must not use identity hash", len(encodedData))
 				}
 			}
@@ -979,7 +979,7 @@ func TestIdentityCIDHandling(t *testing.T) {
 
 	t.Run("small identity CID remains identity", func(t *testing.T) {
 		// Create a small UnixFS file node with identity hash
-		// Keep it well under verifcid.MaxDigestSize (the identity hash limit)
+		// Keep it well under verifcid.MaxIdentityDigestSize (the identity hash limit)
 		smallData := []byte("hello world")
 
 		// Create a UnixFS file node with identity CID
@@ -997,7 +997,7 @@ func TestIdentityCIDHandling(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		// Write small amount of data (total still under verifcid.MaxDigestSize)
+		// Write small amount of data (total still under verifcid.MaxIdentityDigestSize)
 		additionalData := []byte(" and more")
 		n, err := dmod.WriteAt(additionalData, int64(len(smallData)))
 		if err != nil {
@@ -1040,7 +1040,7 @@ func TestIdentityCIDHandling(t *testing.T) {
 
 		// Verify initial data fits in identity
 		encodedInitial, _ := initialNode.EncodeProtobuf(false)
-		if len(encodedInitial) > verifcid.MaxDigestSize {
+		if len(encodedInitial) > verifcid.MaxIdentityDigestSize {
 			t.Skipf("Initial data too large for identity: %d bytes", len(encodedInitial))
 		}
 
@@ -1095,7 +1095,7 @@ func TestIdentityCIDHandling(t *testing.T) {
 
 		// For this test, let's verify that our safePrefixForSize function
 		// correctly preserves fields when it would switch
-		testPrefix, changed := dmod.safePrefixForSize(initialNode.Cid().Prefix(), verifcid.MaxDigestSize+10)
+		testPrefix, changed := dmod.safePrefixForSize(initialNode.Cid().Prefix(), verifcid.MaxIdentityDigestSize+10)
 
 		if !changed {
 			t.Errorf("safePrefixForSize: expected prefix to change for oversized identity")
@@ -1122,7 +1122,7 @@ func TestIdentityCIDHandling(t *testing.T) {
 	t.Run("raw node preserves codec", func(t *testing.T) {
 		// Create a RawNode with identity CID that's near the limit
 		// This allows us to test overflow with small modifications
-		initialData := make([]byte, verifcid.MaxDigestSize-10)
+		initialData := make([]byte, verifcid.MaxIdentityDigestSize-10)
 		for i := range initialData {
 			initialData[i] = byte('a' + i%26)
 		}
@@ -1200,7 +1200,7 @@ func TestIdentityCIDHandling(t *testing.T) {
 	t.Run("raw node identity overflow via truncate", func(t *testing.T) {
 		// Test that Truncate also handles identity overflow correctly for RawNodes
 		// Start with a RawNode using identity that's at max size
-		maxData := make([]byte, verifcid.MaxDigestSize)
+		maxData := make([]byte, verifcid.MaxIdentityDigestSize)
 		for i := range maxData {
 			maxData[i] = byte('A' + i%26)
 		}
@@ -1246,7 +1246,7 @@ func TestIdentityCIDHandling(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		// Should still use identity (100 bytes < verifcid.MaxDigestSize)
+		// Should still use identity (100 bytes < verifcid.MaxIdentityDigestSize)
 		if truncatedNode.Cid().Prefix().MhType != mh.IDENTITY {
 			t.Errorf("Expected identity hash for 100 bytes, got %d",
 				truncatedNode.Cid().Prefix().MhType)
@@ -1274,7 +1274,7 @@ func TestIdentityCIDHandling(t *testing.T) {
 	t.Run("raw node switches from identity when modified to exceed limit", func(t *testing.T) {
 		// Create a RawNode with identity CID near the limit
 		// Use size that allows modification without triggering append
-		initialData := make([]byte, verifcid.MaxDigestSize-1) // 127 bytes
+		initialData := make([]byte, verifcid.MaxIdentityDigestSize-1) // 127 bytes
 		for i := range initialData {
 			initialData[i] = byte('a')
 		}
@@ -1289,7 +1289,7 @@ func TestIdentityCIDHandling(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		// Verify it starts with identity (127 bytes < verifcid.MaxDigestSize)
+		// Verify it starts with identity (127 bytes < verifcid.MaxIdentityDigestSize)
 		if rawNode.Cid().Prefix().MhType != mh.IDENTITY {
 			t.Fatalf("Expected identity hash for 127 bytes, got %d", rawNode.Cid().Prefix().MhType)
 		}
@@ -1309,7 +1309,7 @@ func TestIdentityCIDHandling(t *testing.T) {
 		dmod.Prefix.MhType = util.DefaultIpfsHash
 		dmod.Prefix.MhLength = -1
 
-		// Replace last byte with 2 bytes, pushing size to verifcid.MaxDigestSize
+		// Replace last byte with 2 bytes, pushing size to verifcid.MaxIdentityDigestSize
 		// This modifies within bounds but increases total size just enough
 		twoBytes := []byte("XX")
 		_, err = dmod.WriteAt(twoBytes, int64(len(initialData)-1))
@@ -1336,7 +1336,7 @@ func TestIdentityCIDHandling(t *testing.T) {
 				t.Fatalf("Failed to parse UnixFS metadata: %v", err)
 			}
 
-			expectedSize := uint64(verifcid.MaxDigestSize) // 127 original + 1 byte extension
+			expectedSize := uint64(verifcid.MaxIdentityDigestSize) // 127 original + 1 byte extension
 			if fsn.FileSize() != expectedSize {
 				t.Errorf("Expected file size %d, got %d", expectedSize, fsn.FileSize())
 			}
@@ -1350,11 +1350,11 @@ func TestIdentityCIDHandling(t *testing.T) {
 			actualSize := len(rawMod.RawData())
 			t.Logf("Modified node size: %d bytes", actualSize)
 
-			// If size > verifcid.MaxDigestSize, must not use identity
-			if actualSize > verifcid.MaxDigestSize {
+			// If size > verifcid.MaxIdentityDigestSize, must not use identity
+			if actualSize > verifcid.MaxIdentityDigestSize {
 				if modifiedNode.Cid().Prefix().MhType == mh.IDENTITY {
 					t.Errorf("Node with %d bytes still uses identity (max %d)",
-						actualSize, verifcid.MaxDigestSize)
+						actualSize, verifcid.MaxIdentityDigestSize)
 				}
 			}
 

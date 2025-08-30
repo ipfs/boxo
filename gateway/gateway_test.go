@@ -55,14 +55,14 @@ func TestGatewayGet(t *testing.T) {
 	backend.namesys["/ipns/example.man"] = newMockNamesysItem(k, 0)
 
 	// Create identity CIDs for testing
-	// MaxDigestSize bytes (at the limit, should be valid)
-	validIdentityData := bytes.Repeat([]byte("a"), verifcid.MaxDigestSize)
+	// MaxIdentityDigestSize bytes (at the limit, should be valid)
+	validIdentityData := bytes.Repeat([]byte("a"), verifcid.MaxIdentityDigestSize)
 	validIdentityHash, err := mh.Sum(validIdentityData, mh.IDENTITY, -1)
 	require.NoError(t, err)
 	validIdentityCID := cid.NewCidV1(cid.Raw, validIdentityHash)
 
-	// MaxDigestSize+1 bytes (over the limit, should be rejected)
-	invalidIdentityData := bytes.Repeat([]byte("b"), verifcid.MaxDigestSize+1)
+	// MaxIdentityDigestSize+1 bytes (over the limit, should be rejected)
+	invalidIdentityData := bytes.Repeat([]byte("b"), verifcid.MaxIdentityDigestSize+1)
 	invalidIdentityHash, err := mh.Sum(invalidIdentityData, mh.IDENTITY, -1)
 	require.NoError(t, err)
 	invalidIdentityCID := cid.NewCidV1(cid.Raw, invalidIdentityHash)
