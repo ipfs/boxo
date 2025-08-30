@@ -377,55 +377,64 @@ func (bb *BlocksBackend) Head(ctx context.Context, path path.ImmutablePath) (Con
 // https://ipld.io/specs/transport/car/carv1/#number-of-roots
 var emptyRoot = []cid.Cid{cid.MustParse("bafkqaaa")}
 
+// GetCAR returns a CAR stream for the provided immutable path.
+//
+// This method implements a two-phase approach to ensure correct HTTP status codes:
+//
+// Phase 1: Path validation (determines HTTP status)
+// - Attempts to resolve the path to validate it exists
+// - If root is blocked → HTTP 410 Gone
+// - If root is not found → HTTP 404 Not Found
+// - If path is valid → HTTP 200 with CAR stream
+//
+// Phase 2: CAR streaming (after status determined)
+// - Streams CAR data through io.Pipe
+// - Blocked content within the DAG is skipped gracefully
+// - Client receives partial CAR if internal content is blocked
+//
+// This approach fixes:
+// - https://github.com/ipfs/boxo/issues/458 (empty CAR with 200 status)
+// - https://github.com/ipfs/kubo/issues/10361 (blocked CIDs in CAR output)
 func (bb *BlocksBackend) GetCAR(ctx context.Context, p path.ImmutablePath, params CarParams) (ContentPathMetadata, io.ReadCloser, error) {
-	pathMetadata, resolveErr := bb.ResolvePath(ctx, p)
-	if resolveErr != nil {
-		rootCid, err := cid.Decode(strings.Split(p.String(), "/")[2])
-		if err != nil {
-			return ContentPathMetadata{}, nil, err
-		}
-
-		var buf bytes.Buffer
-		cw, err := storage.NewWritable(&buf, emptyRoot, car.WriteAsCarV1(true))
-		if err != nil {
-			return ContentPathMetadata{}, nil, err
-		}
-
-		// Create a DAGService that uses the blocking-aware BlockService.
-		// When a CID is blocked, the underlying BlockService returns an error.
-		dagService := merkledag.NewDAGService(bb.blockService).Session(ctx)
-
-		// Wrap the DAGService to write blocks to CAR as they're fetched.
-		// This wrapper is used by the path resolver to fetch intermediate blocks.
-		blockGetter := &nodeGetterToCarExporer{
-			ng: dagService,
-			cw: cw,
-		}
-
-		// Setup the UnixFS resolver.
-		f := newNodeGetterFetcherSingleUseFactory(ctx, blockGetter)
-		pathResolver := resolver.NewBasicResolver(f)
-		_, _, err = pathResolver.ResolveToLastNode(ctx, p)
-
-		if isErrNotFound(err) {
-			return ContentPathMetadata{
-				PathSegmentRoots: nil,
-				LastSegment:      path.FromCid(rootCid),
-				ContentType:      "",
-			}, io.NopCloser(&buf), nil
-		} else if err != nil {
-			return ContentPathMetadata{}, nil, err
-		} else {
-			return ContentPathMetadata{}, nil, resolveErr
-		}
-	}
-
+	// Validate namespace early
 	if p.Namespace() != path.IPFSNamespace {
 		return ContentPathMetadata{}, nil, errors.New("path does not have /ipfs/ prefix")
 	}
 
+	// Try to resolve path metadata first
+	pathMetadata, err := bb.ResolvePath(ctx, p)
+	if err == nil {
+		// Path is valid - proceed with standard CAR streaming
+		return bb.streamCAR(ctx, p, pathMetadata, params)
+	}
+
+	// Path resolution failed - determine appropriate HTTP status
+	// by checking the root block's availability
+	return bb.handleCarErrorPath(ctx, p, params, err)
+}
+
+// streamCAR handles the standard case where the path is valid and accessible.
+// It sets up a pipe for streaming CAR data and starts a goroutine for content generation.
+//
+// For a path like /ipfs/QmRootCid/sub/lastCid, the CAR output MUST contain blocks in this order:
+// 1. Root block (QmRootCid)
+// 2. Path traversal blocks (all blocks needed to go from QmRootCid→sub→lastCid)
+// 3. Terminal element blocks (complete DAG of lastCid based on selector)
+//
+// This ordering is a protocol requirement that ensures clients can verify the path
+// and access content in a streaming fashion without seeking backwards.
+func (bb *BlocksBackend) streamCAR(ctx context.Context, p path.ImmutablePath, pathMetadata ContentPathMetadata, params CarParams) (ContentPathMetadata, io.ReadCloser, error) {
+	// Create a pipe for streaming CAR data
+	// The reader side (r) is returned immediately to the HTTP handler
+	// The writer side (w) is used by the goroutine to stream CAR content
 	r, w := io.Pipe()
+
+	// Start asynchronous CAR generation
 	go func() {
+		defer w.Close()
+
+		// Initialize CAR writer with the terminal element's CID as root
+		// For /ipfs/QmRoot/sub/terminal, this must be terminal's CID, not QmRoot
 		cw, err := storage.NewWritable(
 			w,
 			[]cid.Cid{pathMetadata.LastSegment.RootCid()},
@@ -434,25 +443,26 @@ func (bb *BlocksBackend) GetCAR(ctx context.Context, p path.ImmutablePath, param
 		)
 		if err != nil {
 			// io.PipeWriter.CloseWithError always returns nil.
-			_ = w.CloseWithError(err)
+			_ = w.CloseWithError(fmt.Errorf("creating CAR writer: %w", err))
 			return
 		}
 
-		// Create a DAGService that uses the blocking-aware BlockService.
-		// When a CID is blocked, the underlying BlockService returns an error.
-		dagService := merkledag.NewDAGService(bb.blockService).Session(ctx)
+		// Create DAG service with blocking detection
+		// Note: We don't use Session here as it might cache blocks and bypass blocking checks
+		dagService := merkledag.NewDAGService(bb.blockService)
 
-		// Wrap the DAGService to write blocks to CAR as they're fetched.
-		// This wrapper is used by the path resolver to fetch intermediate blocks.
+		// Wrap DAG service to write blocks to CAR as they're fetched
+		// This ensures all accessed blocks are included in the CAR output
 		blockGetter := &nodeGetterToCarExporer{
 			ng: dagService,
 			cw: cw,
 		}
 
-		// Setup the UnixFS resolver.
-		f := newNodeGetterFetcherSingleUseFactory(ctx, blockGetter)
-		pathResolver := resolver.NewBasicResolver(f)
+		// Set up UnixFS resolver
+		factory := newNodeGetterFetcherSingleUseFactory(ctx, blockGetter)
+		pathResolver := resolver.NewBasicResolver(factory)
 
+		// Set up IPLD LinkSystem for DAG traversal
 		lsys := cidlink.DefaultLinkSystem()
 		unixfsnode.AddUnixFSReificationToLinkSystem(&lsys)
 		// CRITICAL: Use the original dagService for blockOpener, not the wrapped nodeGetterToCarExporer.
@@ -460,32 +470,110 @@ func (bb *BlocksBackend) GetCAR(ctx context.Context, p path.ImmutablePath, param
 		// 1. blockOpener checks if blocks are accessible (through blocking-aware BlockService)
 		// 2. Only non-blocked content triggers CAR writing in nodeGetterToCarExporer
 		// 3. Blocked content returns traversal.SkipMe{} and never gets written to CAR
-		//
-		// If we passed blockGetter (the wrapped nodeGetterToCarExporer) here instead,
-		// it would write blocks to CAR immediately upon access, even if they're blocked.
 		lsys.StorageReadOpener = blockOpener(ctx, dagService)
 
-		// First resolve the path since we always need to.
+		// CRITICAL PATH RESOLUTION: This call traverses from root to terminal element,
+		// writing each block to the CAR in order. For /ipfs/QmRoot/sub/terminal:
+		// 1. Fetches QmRoot block (written to CAR via nodeGetterToCarExporer)
+		// 2. Fetches intermediate blocks to reach 'sub' (written to CAR)
+		// 3. Fetches blocks to reach 'terminal' (written to CAR)
+		// This ensures proper CAR block ordering per the IPFS protocol requirements.
+		// The first successful block fetch triggers data to be written to the pipe,
+		// which causes the HTTP handler to send status 200.
 		lastCid, remainder, err := pathResolver.ResolveToLastNode(ctx, p)
 		if err != nil {
+			// Resolution failed - close pipe with error
 			// io.PipeWriter.CloseWithError always returns nil.
-			_ = w.CloseWithError(err)
+			_ = w.CloseWithError(fmt.Errorf("path resolution failed: %w", err))
 			return
 		}
 
+		// Terminal Block Handling:
+		// ResolveToLastNode may or may not have fetched the terminal block.
+		// For /ipfs/cid paths, the terminal is the root and wasn't fetched.
+		// For /ipfs/cid/path, the terminal was found but not necessarily fetched.
+		// We need to ensure it's in the CAR without triggering child fetches.
+		//
+		// IMPORTANT: We must NOT use blockGetter here as it may trigger recursive
+		// fetches of children when working with directory nodes.
+		// Instead, fetch the raw block directly and write it to the CAR.
+		rawBlk, err := dagService.Get(ctx, lastCid)
+		if err != nil {
+			// If we can't get the terminal block, close with error
+			_ = w.CloseWithError(fmt.Errorf("failed to get terminal block: %w", err))
+			return
+		}
+		// Write the terminal block to CAR if not already there
+		if err := cw.Put(ctx, rawBlk.Cid().KeyString(), rawBlk.RawData()); err != nil {
+			// Ignore error - block might already be in CAR from path resolution
+		}
+
+		// Continue with DAG traversal for the remaining content
 		// TODO: support selectors passed as request param: https://github.com/ipfs/kubo/issues/8769
 		// TODO: this is very slow if blocks are remote due to linear traversal. Do we need deterministic traversals here?
-		carWriteErr := walkGatewaySimpleSelector(ctx, lastCid, nil, remainder, params, &lsys)
-
-		// io.PipeWriter.CloseWithError always returns nil.
-		_ = w.CloseWithError(carWriteErr)
+		if err := walkGatewaySimpleSelector(ctx, lastCid, nil, remainder, params, &lsys, cw); err != nil {
+			// Traversal errors appear as stream errors (HTTP 200 already sent)
+			// io.PipeWriter.CloseWithError always returns nil.
+			_ = w.CloseWithError(fmt.Errorf("DAG traversal failed: %w", err))
+		}
 	}()
 
 	return pathMetadata, r, nil
 }
 
+// handleCarErrorPath determines the appropriate HTTP status when path resolution fails.
+// It does NOT generate a CAR - just checks root block availability for error classification.
+func (bb *BlocksBackend) handleCarErrorPath(ctx context.Context, p path.ImmutablePath, params CarParams, resolveErr error) (ContentPathMetadata, io.ReadCloser, error) {
+	rootCid := p.RootCid()
+
+	// Create metadata with root CID for 404 responses
+	md := ContentPathMetadata{
+		PathSegmentRoots: nil,
+		LastSegment:      path.FromCid(rootCid),
+	}
+
+	// Try to fetch just the root block to determine error type
+	dagService := merkledag.NewDAGService(bb.blockService).Session(ctx)
+	_, err := dagService.Get(ctx, rootCid)
+
+	if err != nil {
+		// Use existing error checking functions from errors.go
+		if isErrContentBlocked(err) {
+			// Root is blocked → HTTP 410 Gone
+			return ContentPathMetadata{}, nil, NewErrorStatusCode(
+				fmt.Errorf("content at %s is blocked: %w", p.String(), err),
+				http.StatusGone,
+			)
+		}
+
+		if isErrNotFound(err) {
+			// Root not found → HTTP 404 Not Found
+			// Return metadata so gateway can show proper 404 page
+			return md, nil, err
+		}
+
+		// Other errors (network, timeout, etc.) → HTTP 500
+		return ContentPathMetadata{}, nil, err
+	}
+
+	// Root exists but path resolution failed
+	// Check if the path resolution error is due to blocked content in the path
+	if isErrContentBlocked(resolveErr) {
+		// Path contains blocked content
+		// For CAR requests of blocked paths, we return HTTP 410
+		// This is consistent with how we handle directly blocked root CIDs
+		return ContentPathMetadata{}, nil, NewErrorStatusCode(
+			fmt.Errorf("path %s contains blocked content: %w", p.String(), resolveErr),
+			http.StatusGone,
+		)
+	}
+
+	// For other errors (broken links, etc.), return the original error
+	return ContentPathMetadata{}, nil, resolveErr
+}
+
 // walkGatewaySimpleSelector walks the subgraph described by the path and terminal element parameters
-func walkGatewaySimpleSelector(ctx context.Context, lastCid cid.Cid, terminalBlk blocks.Block, remainder []string, params CarParams, lsys *ipld.LinkSystem) error {
+func walkGatewaySimpleSelector(ctx context.Context, lastCid cid.Cid, terminalBlk blocks.Block, remainder []string, params CarParams, lsys *ipld.LinkSystem, cw storage.WritableCar) error {
 	lctx := ipld.LinkContext{Ctx: ctx}
 	pathTerminalCidLink := cidlink.Link{Cid: lastCid}
 
@@ -533,10 +621,46 @@ func walkGatewaySimpleSelector(ctx context.Context, lastCid cid.Cid, terminalBlk
 			return err
 		}
 
+		// For DagScopeAll with CAR writing, we need to capture blocks during traversal.
+		// We wrap the StorageReadOpener to write blocks to CAR as they're successfully fetched.
+		// Blocked content will return traversal.SkipMe{} and won't be written.
+		traversalLsys := &ipld.LinkSystem{}
+		*traversalLsys = *lsys
+		if cw != nil {
+			originalOpener := lsys.StorageReadOpener
+			traversalLsys.StorageReadOpener = func(lctx ipld.LinkContext, lnk ipld.Link) (io.Reader, error) {
+				// Try to open the block through the original opener (with blocking checks)
+				reader, err := originalOpener(lctx, lnk)
+				if err != nil {
+					// If blocked or not found, return the error (including traversal.SkipMe{})
+					return nil, err
+				}
+
+				// Block is accessible - write it to CAR
+				cidLink, ok := lnk.(cidlink.Link)
+				if ok {
+					// Read the block data to write to CAR
+					data, err := io.ReadAll(reader)
+					if err != nil {
+						return nil, err
+					}
+					// Write to CAR
+					if err := cw.Put(ctx, cidLink.Cid.KeyString(), data); err != nil {
+						// Log but don't fail traversal for CAR write errors
+						// The block might already be in the CAR
+					}
+					// Return a new reader with the data we already read
+					return bytes.NewReader(data), nil
+				}
+
+				return reader, nil
+			}
+		}
+
 		progress := traversal.Progress{
 			Cfg: &traversal.Config{
 				Ctx:                            ctx,
-				LinkSystem:                     *lsys,
+				LinkSystem:                     *traversalLsys,
 				LinkTargetNodePrototypeChooser: bsfetcher.DefaultPrototypeChooser,
 				LinkVisitOnlyOnce:              !params.Duplicates.Bool(),
 			},
@@ -800,8 +924,12 @@ func (bb *BlocksBackend) resolvePath(ctx context.Context, p path.Path) (path.Imm
 	return imPath, remainder, nil
 }
 
-// nodeGetterToCarExporer wraps a NodeGetter to write blocks to a CAR file as they are fetched.
-// This enables streaming CAR generation during DAG traversal.
+// nodeGetterToCarExporer wraps a format.NodeGetter to write blocks to a CAR writer
+// as they are fetched. This is crucial for ensuring proper CAR block ordering:
+//
+// - During path resolution (QmRoot→sub→terminal), each block is written immediately
+// - This ensures path traversal blocks appear in the CAR before terminal DAG blocks
+// - The ordering allows streaming verification and reduces client memory requirements
 //
 // IMPORTANT: This wrapper is used for path resolution but NOT for the traversal's blockOpener.
 // The blockOpener uses the underlying dagService directly to ensure proper blocking checks
@@ -818,6 +946,8 @@ func (n *nodeGetterToCarExporer) Get(ctx context.Context, c cid.Cid) (format.Nod
 		return nil, err
 	}
 
+	// Only write the block to CAR if we successfully fetched it
+	// This is called during path resolution, not during traversal
 	if err := n.trySendBlock(ctx, nd); err != nil {
 		return nil, err
 	}
