@@ -447,10 +447,13 @@ func (bb *BlocksBackend) streamCAR(ctx context.Context, p path.ImmutablePath, pa
 			return
 		}
 
-		// Create DAG service with blocking detection
-		// TODO: Restore .Session(ctx) once https://github.com/ipfs-shipyard/nopfs/issues/34
-		// is resolved. Sessions improve performance but currently bypass denylist checks.
-		dagService := merkledag.NewDAGService(bb.blockService)
+		// Create DAG service using the existing session from context if available
+		// (embedded by WrapContextForRequest), or create a new one if needed.
+		// blockservice.NewSession automatically handles session reuse, ensuring
+		// all operations within a request share the same session for better performance.
+		// Sessions properly enforce denylist checks via wrapped blockstore/exchange.
+		session := blockservice.NewSession(ctx, bb.blockService)
+		dagService := merkledag.WrapSession(session)
 
 		// Wrap DAG service to write blocks to CAR as they're fetched
 		// This ensures all accessed blocks are included in the CAR output
@@ -534,9 +537,10 @@ func (bb *BlocksBackend) handleCarErrorPath(ctx context.Context, p path.Immutabl
 	}
 
 	// Try to fetch just the root block to determine error type
-	// TODO: Restore .Session(ctx) once https://github.com/ipfs-shipyard/nopfs/issues/34
-	// is resolved. Sessions improve performance but currently bypass denylist checks.
-	dagService := merkledag.NewDAGService(bb.blockService)
+	// Reuse existing session from context for consistency with other operations
+	// in the same request. This improves performance through better peer management.
+	session := blockservice.NewSession(ctx, bb.blockService)
+	dagService := merkledag.WrapSession(session)
 	_, err := dagService.Get(ctx, rootCid)
 
 	if err != nil {
