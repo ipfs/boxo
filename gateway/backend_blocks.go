@@ -324,7 +324,8 @@ func (bb *BlocksBackend) GetBlock(ctx context.Context, path path.ImmutablePath) 
 
 	b, err := bb.blockService.GetBlock(ctx, lastRoot)
 	if err != nil {
-		return md, nil, err
+		// Wrap error with retrieval diagnostics if available
+		return md, nil, retrieval.WrapWithState(ctx, err)
 	}
 
 	return md, files.NewBytesFile(b.RawData()), nil
