@@ -469,12 +469,12 @@ func (bb *BlocksBackend) streamCAR(ctx context.Context, p path.ImmutablePath, pa
 		// Set up IPLD LinkSystem for DAG traversal
 		lsys := cidlink.DefaultLinkSystem()
 		unixfsnode.AddUnixFSReificationToLinkSystem(&lsys)
-		// CRITICAL: Use the original dagService for blockOpener, not the wrapped nodeGetterToCarExporer.
-		// This separation ensures that:
-		// 1. blockOpener checks if blocks are accessible (through blocking-aware BlockService)
-		// 2. Only non-blocked content triggers CAR writing in nodeGetterToCarExporer
-		// 3. Blocked content returns traversal.SkipMe{} and never gets written to CAR
-		lsys.StorageReadOpener = blockOpener(ctx, dagService)
+		// Use blockGetter which writes blocks to CAR as they're fetched.
+		// With comprehensive nopfs wrappers (BlockService, Blockstore, Exchange),
+		// blocking is already handled at the service level. The blockGetter
+		// (nodeGetterToCarExporer) simply passes through accessible blocks and
+		// writes them to the CAR output.
+		lsys.StorageReadOpener = blockOpener(ctx, blockGetter)
 
 		// CRITICAL PATH RESOLUTION: This call traverses from root to terminal element,
 		// writing each block to the CAR in order. For /ipfs/QmRoot/sub/terminal:
@@ -492,30 +492,13 @@ func (bb *BlocksBackend) streamCAR(ctx context.Context, p path.ImmutablePath, pa
 			return
 		}
 
-		// Terminal Block Handling:
-		// ResolveToLastNode may or may not have fetched the terminal block.
-		// For /ipfs/cid paths, the terminal is the root and wasn't fetched.
-		// For /ipfs/cid/path, the terminal was found but not necessarily fetched.
-		// We need to ensure it's in the CAR without triggering child fetches.
-		//
-		// IMPORTANT: We must NOT use blockGetter here as it may trigger recursive
-		// fetches of children when working with directory nodes.
-		// Instead, fetch the raw block directly and write it to the CAR.
-		rawBlk, err := dagService.Get(ctx, lastCid)
-		if err != nil {
-			// If we can't get the terminal block, close with error
-			_ = w.CloseWithError(fmt.Errorf("failed to get terminal block: %w", err))
-			return
-		}
-		// Write the terminal block to CAR if not already there
-		if err := cw.Put(ctx, rawBlk.Cid().KeyString(), rawBlk.RawData()); err != nil {
-			// Ignore error - block might already be in CAR from path resolution
-		}
+		// The terminal block will be written to CAR automatically when accessed
+		// during walkGatewaySimpleSelector traversal via blockGetter
 
 		// Continue with DAG traversal for the remaining content
 		// TODO: support selectors passed as request param: https://github.com/ipfs/kubo/issues/8769
 		// TODO: this is very slow if blocks are remote due to linear traversal. Do we need deterministic traversals here?
-		if err := walkGatewaySimpleSelector(ctx, lastCid, nil, remainder, params, &lsys, cw); err != nil {
+		if err := walkGatewaySimpleSelector(ctx, lastCid, nil, remainder, params, &lsys); err != nil {
 			// Traversal errors appear as stream errors (HTTP 200 already sent)
 			// io.PipeWriter.CloseWithError always returns nil.
 			_ = w.CloseWithError(fmt.Errorf("DAG traversal failed: %w", err))
@@ -580,7 +563,7 @@ func (bb *BlocksBackend) handleCarErrorPath(ctx context.Context, p path.Immutabl
 }
 
 // walkGatewaySimpleSelector walks the subgraph described by the path and terminal element parameters
-func walkGatewaySimpleSelector(ctx context.Context, lastCid cid.Cid, terminalBlk blocks.Block, remainder []string, params CarParams, lsys *ipld.LinkSystem, cw storage.WritableCar) error {
+func walkGatewaySimpleSelector(ctx context.Context, lastCid cid.Cid, terminalBlk blocks.Block, remainder []string, params CarParams, lsys *ipld.LinkSystem) error {
 	lctx := ipld.LinkContext{Ctx: ctx}
 	pathTerminalCidLink := cidlink.Link{Cid: lastCid}
 
@@ -628,46 +611,13 @@ func walkGatewaySimpleSelector(ctx context.Context, lastCid cid.Cid, terminalBlk
 			return err
 		}
 
-		// For DagScopeAll with CAR writing, we need to capture blocks during traversal.
-		// We wrap the StorageReadOpener to write blocks to CAR as they're successfully fetched.
-		// Blocked content will return traversal.SkipMe{} and won't be written.
-		traversalLsys := &ipld.LinkSystem{}
-		*traversalLsys = *lsys
-		if cw != nil {
-			originalOpener := lsys.StorageReadOpener
-			traversalLsys.StorageReadOpener = func(lctx ipld.LinkContext, lnk ipld.Link) (io.Reader, error) {
-				// Try to open the block through the original opener (with blocking checks)
-				reader, err := originalOpener(lctx, lnk)
-				if err != nil {
-					// If blocked or not found, return the error (including traversal.SkipMe{})
-					return nil, err
-				}
-
-				// Block is accessible - write it to CAR
-				cidLink, ok := lnk.(cidlink.Link)
-				if ok {
-					// Read the block data to write to CAR
-					data, err := io.ReadAll(reader)
-					if err != nil {
-						return nil, err
-					}
-					// Write to CAR
-					if err := cw.Put(ctx, cidLink.Cid.KeyString(), data); err != nil {
-						// Log but don't fail traversal for CAR write errors
-						// The block might already be in the CAR
-					}
-					// Return a new reader with the data we already read
-					return bytes.NewReader(data), nil
-				}
-
-				return reader, nil
-			}
-		}
-
+		// Use the regular LinkSystem for traversal.
+		// The blockGetter (via nodeGetterToCarExporer) already handles writing blocks to CAR
+		// as they're fetched during traversal, so no special handling is needed.
 		progress := traversal.Progress{
 			Cfg: &traversal.Config{
 				Ctx:                            ctx,
-				LinkSystem:                     *traversalLsys,
+				LinkSystem:                     *lsys,
 				LinkTargetNodePrototypeChooser: bsfetcher.DefaultPrototypeChooser,
 				LinkVisitOnlyOnce:              !params.Duplicates.Bool(),
 			},

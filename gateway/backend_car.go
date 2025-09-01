@@ -1048,7 +1048,7 @@ func (api *CarBackend) GetCAR(ctx context.Context, p path.ImmutablePath, params 
 
 			if !isNotFound {
 				params.Duplicates = DuplicateBlocksIncluded
-				err = walkGatewaySimpleSelector(ctx, terminalBlk.Cid(), terminalBlk, []string{}, params, l, nil)
+				err = walkGatewaySimpleSelector(ctx, terminalBlk.Cid(), terminalBlk, []string{}, params, l)
 				if err != nil {
 					return err
 				}
