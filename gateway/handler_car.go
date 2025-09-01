@@ -46,7 +46,7 @@ func (i *handler) serveCAR(ctx context.Context, w http.ResponseWriter, r *http.R
 		return false
 	}
 
-	// Set Content-Disposition
+	// Prepare the Content-Disposition header value
 	var name string
 	if urlFilename := r.URL.Query().Get("filename"); urlFilename != "" {
 		name = urlFilename
@@ -57,27 +57,31 @@ func (i *handler) serveCAR(ctx context.Context, w http.ResponseWriter, r *http.R
 		}
 		name += ".car"
 	}
-	setContentDispositionHeader(w, name, "attachment")
 
-	// Set Cache-Control (same logic as for a regular files)
-	addCacheControlHeaders(w, r, rq.contentPath, rq.ttl, rq.lastMod, rootCid, carResponseFormat)
-
-	// Generate the CAR Etag.
+	// Generate the CAR Etag (needed for early termination check)
 	etag := getCarEtag(rq.immutablePath, params, rootCid)
-	w.Header().Set("Etag", etag)
 
-	// Terminate early if Etag matches. We cannot rely on handleIfNoneMatch since
-	// since it does not contain the parameters information we retrieve here.
+	// Check If-None-Match before calling GetCAR to save resources
 	if etagMatch(r.Header.Get("If-None-Match"), etag) {
+		// We can set cache headers even for 304 Not Modified
+		addCacheControlHeaders(w, r, rq.contentPath, rq.ttl, rq.lastMod, rootCid, carResponseFormat)
+		w.Header().Set("Etag", etag)
 		w.WriteHeader(http.StatusNotModified)
 		return false
 	}
 
+	// Call GetCAR BEFORE setting response headers
+	// This allows proper error handling with correct HTTP status codes
 	md, carFile, err := i.backend.GetCAR(ctx, rq.immutablePath, params)
 	if !i.handleRequestErrors(w, r, rq.contentPath, err) {
 		return false
 	}
 	defer carFile.Close()
+
+	// Now that we have successful GetCAR, set all the headers
+	setContentDispositionHeader(w, name, "attachment")
+	addCacheControlHeaders(w, r, rq.contentPath, rq.ttl, rq.lastMod, rootCid, carResponseFormat)
+	w.Header().Set("Etag", etag)
 	setIpfsRootsHeader(w, rq, &md)
 
 	// Make it clear we don't support range-requests over a car stream
