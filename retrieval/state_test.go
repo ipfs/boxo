@@ -404,7 +404,7 @@ func TestErrorWithState(t *testing.T) {
 		assert.True(t, errors.Is(err, baseErr))
 	})
 
-	t.Run("ErrorWithState Is() method works", func(t *testing.T) {
+	t.Run("ErrorWithState type extraction with errors.As", func(t *testing.T) {
 		baseErr := errors.New("base error")
 		rs := NewRetrievalState()
 
@@ -412,12 +412,17 @@ func TestErrorWithState(t *testing.T) {
 		ctx = context.WithValue(ctx, ContextKey, rs)
 		err1 := WrapWithState(ctx, baseErr)
 
-		// Test errors.Is with ErrorWithState type
-		assert.True(t, errors.Is(err1, &ErrorWithState{}), "errors.Is should work with ErrorWithState")
+		// Test errors.As for type extraction
+		var errWithState *ErrorWithState
+		assert.True(t, errors.As(err1, &errWithState), "errors.As should extract ErrorWithState")
+		assert.NotNil(t, errWithState)
 
-		// Test that it doesn't match other error types
+		// Test that errors.Is checks the wrapped error
+		assert.True(t, errors.Is(err1, baseErr), "errors.Is should find the wrapped base error")
+
+		// Test that it doesn't match other errors
 		otherErr := errors.New("other")
-		assert.False(t, errors.Is(err1, otherErr), "Should not match non-ErrorWithState errors")
+		assert.False(t, errors.Is(err1, otherErr), "Should not match unrelated errors")
 	})
 
 	t.Run("ErrorWithState RetrievalState getter works", func(t *testing.T) {

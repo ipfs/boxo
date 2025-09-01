@@ -259,13 +259,6 @@ func (e *ErrorWithState) Unwrap() error {
 	return e.err
 }
 
-// Is reports whether target matches this error or its underlying error.
-// This allows errors.Is(err, &ErrorWithState{}) to match any ErrorWithState.
-func (e *ErrorWithState) Is(target error) bool {
-	_, ok := target.(*ErrorWithState)
-	return ok
-}
-
 // RetrievalState returns the retrieval state associated with this error.
 // This allows callers to access detailed diagnostics for custom handling.
 func (e *ErrorWithState) RetrievalState() *RetrievalState {
