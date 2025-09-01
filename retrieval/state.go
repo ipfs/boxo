@@ -7,6 +7,7 @@ package retrieval
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"sync"
@@ -146,11 +147,11 @@ func (rs *RetrievalState) Summary() string {
 	phase := rs.GetPhase()
 
 	if found == 0 {
-		return fmt.Sprintf("No providers found for the CID (phase: %s)", phase.String())
+		return fmt.Sprintf("no providers found for the CID (phase: %s)", phase.String())
 	}
 
 	if attempted == 0 {
-		return fmt.Sprintf("Found %d provider(s) but none could be contacted (phase: %s)", found, phase.String())
+		return fmt.Sprintf("found %d provider(s) but none could be contacted (phase: %s)", found, phase.String())
 	}
 
 	failedProviders := rs.GetFailedProviders()
@@ -165,16 +166,16 @@ func (rs *RetrievalState) Summary() string {
 	}
 
 	if connected == 0 {
-		return fmt.Sprintf("Found %d provider(s), attempted %d, but none were reachable (phase: %s%s)",
+		return fmt.Sprintf("found %d provider(s), attempted %d, but none were reachable (phase: %s%s)",
 			found, attempted, phase.String(), failedPeersInfo)
 	}
 
 	if len(failedProviders) > 0 {
-		return fmt.Sprintf("Found %d provider(s), connected to %d, but they did not return the requested content (phase: %s%s)",
+		return fmt.Sprintf("found %d provider(s), connected to %d, but they did not return the requested content (phase: %s%s)",
 			found, connected, phase.String(), failedPeersInfo)
 	}
 
-	return fmt.Sprintf("Timeout occurred after finding %d provider(s) and connecting to %d (phase: %s)",
+	return fmt.Sprintf("timeout occurred after finding %d provider(s) and connecting to %d (phase: %s)",
 		found, connected, phase.String())
 }
 
@@ -214,4 +215,108 @@ func StateFromContext(ctx context.Context) *RetrievalState {
 		return v.(*RetrievalState)
 	}
 	return nil
+}
+
+// Compile-time assertions to ensure ErrorWithState implements the expected interfaces.
+var (
+	_ error                       = (*ErrorWithState)(nil)
+	_ interface{ Unwrap() error } = (*ErrorWithState)(nil)
+)
+
+// ErrorWithState wraps an error with retrieval state information.
+// It preserves the retrieval diagnostics for programmatic access while
+// providing human-readable error messages.
+//
+// The zero value is not useful; use WrapWithState to create instances.
+type ErrorWithState struct {
+	// err is the underlying error being wrapped.
+	err error
+	// state contains the retrieval diagnostic information.
+	state *RetrievalState
+}
+
+// Error returns the error message with retrieval diagnostics appended.
+// Format: "original error: retrieval: diagnostic summary"
+//
+// If err is nil, returns a generic message. If state is nil, returns
+// just the underlying error message.
+func (e *ErrorWithState) Error() string {
+	if e.err == nil {
+		if e.state != nil {
+			return fmt.Sprintf("retrieval error: %s", e.state.Summary())
+		}
+		return "retrieval error with no underlying cause"
+	}
+	if e.state != nil {
+		return fmt.Sprintf("%s: retrieval: %s", e.err.Error(), e.state.Summary())
+	}
+	return e.err.Error()
+}
+
+// Unwrap returns the wrapped error, allowing errors.Is and errors.As to work
+// with the underlying error.
+func (e *ErrorWithState) Unwrap() error {
+	return e.err
+}
+
+// Is reports whether target matches this error or its underlying error.
+// This allows errors.Is(err, &ErrorWithState{}) to match any ErrorWithState.
+func (e *ErrorWithState) Is(target error) bool {
+	_, ok := target.(*ErrorWithState)
+	return ok
+}
+
+// RetrievalState returns the retrieval state associated with this error.
+// This allows callers to access detailed diagnostics for custom handling.
+func (e *ErrorWithState) RetrievalState() *RetrievalState {
+	return e.state
+}
+
+// WrapWithState wraps an error with retrieval state from the context.
+// It returns an *ErrorWithState that preserves the state for custom handling.
+//
+// The error is ALWAYS wrapped if retrieval state exists in the context,
+// because even "no providers found" is meaningful diagnostic information.
+// If the error is already an *ErrorWithState, it returns it unchanged to
+// avoid double-wrapping.
+//
+// Example usage in a gateway or IPFS implementation:
+//
+//	func fetchBlock(ctx context.Context, cid cid.Cid) (blocks.Block, error) {
+//	    block, err := blockService.GetBlock(ctx, cid)
+//	    if err != nil {
+//	        // Wrap error with retrieval diagnostics if available
+//	        return nil, retrieval.WrapWithState(ctx, err)
+//	    }
+//	    return block, nil
+//	}
+//
+// Callers can then extract the state for custom handling:
+//
+//	var errWithState *retrieval.ErrorWithState
+//	if errors.As(err, &errWithState) {
+//	    state := errWithState.RetrievalState()
+//	    if state.ProvidersFound.Load() == 0 {
+//	        // Handle "content not in network" case specially
+//	    }
+//	}
+func WrapWithState(ctx context.Context, err error) error {
+	if err == nil {
+		return nil
+	}
+
+	// Check if already wrapped
+	var existingErr *ErrorWithState
+	if errors.As(err, &existingErr) {
+		return err
+	}
+
+	if state := StateFromContext(ctx); state != nil {
+		// Always wrap if we have retrieval state - even "no providers" is meaningful
+		return &ErrorWithState{
+			err:   err,
+			state: state,
+		}
+	}
+	return err
 }

@@ -142,7 +142,8 @@ func (bb *BlocksBackend) Get(ctx context.Context, path path.ImmutablePath, range
 		// Fetch only the root block to check if it's a UnixFS file
 		rootBlock, err := bb.blockService.GetBlock(ctx, lastRoot)
 		if err != nil {
-			return md, nil, err
+			// Wrap error with retrieval diagnostics if available
+			return md, nil, retrieval.WrapWithState(ctx, err)
 		}
 
 		// Try to optimize for dag-pb blocks that might be UnixFS files
@@ -658,7 +659,8 @@ func (bb *BlocksBackend) getNode(ctx context.Context, path path.ImmutablePath) (
 
 	nd, err := bb.dagService.Get(ctx, lastRoot)
 	if err != nil {
-		return ContentPathMetadata{}, nil, err
+		// Wrap error with retrieval diagnostics if available
+		return ContentPathMetadata{}, nil, retrieval.WrapWithState(ctx, err)
 	}
 
 	return md, nd, err
@@ -714,7 +716,8 @@ func (bb *BlocksBackend) getPathRoots(ctx context.Context, contentPath path.Immu
 			if isErrNotFound(err) {
 				return nil, path.ImmutablePath{}, nil, &resolver.ErrNoLink{Name: root, Node: lastPath.RootCid()}
 			}
-			return nil, path.ImmutablePath{}, nil, err
+			// Wrap error with retrieval diagnostics if available
+			return nil, path.ImmutablePath{}, nil, retrieval.WrapWithState(ctx, err)
 		}
 		lastPath = resolvedSubPath
 		remainder = remainderSubPath
@@ -774,7 +777,8 @@ func (bb *BlocksBackend) resolvePath(ctx context.Context, p path.Path) (path.Imm
 
 	node, remainder, err := bb.resolver.ResolveToLastNode(ctx, imPath)
 	if err != nil {
-		return path.ImmutablePath{}, nil, err
+		// Wrap error with retrieval diagnostics if available
+		return path.ImmutablePath{}, nil, retrieval.WrapWithState(ctx, err)
 	}
 
 	p, err = path.Join(path.FromCid(node), remainder...)
