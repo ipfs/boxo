@@ -525,7 +525,6 @@ func (bb *BlocksBackend) handleCarErrorPath(ctx context.Context, p path.Immutabl
 	session := blockservice.NewSession(ctx, bb.blockService)
 	dagService := merkledag.WrapSession(session)
 	_, err := dagService.Get(ctx, rootCid)
-
 	if err != nil {
 		// Use existing error checking functions from errors.go
 		if isErrContentBlocked(err) {
