@@ -253,6 +253,12 @@ func webError(w http.ResponseWriter, r *http.Request, c *Config, err error, defa
 // isErrNotFound returns true for IPLD errors that should return 4xx errors (e.g. the path doesn't exist, the data is
 // the wrong type, etc.), rather than issues with just finding and retrieving the data.
 func isErrNotFound(err error) bool {
+	// Check for ErrorStatusCode with 404
+	var statusErr *ErrorStatusCode
+	if errors.As(err, &statusErr) && statusErr.StatusCode == http.StatusNotFound {
+		return true
+	}
+
 	if errors.Is(err, &resolver.ErrNoLink{}) || errors.Is(err, schema.ErrNoSuchField{}) {
 		return true
 	}
@@ -295,6 +301,12 @@ func isErrNotFound(err error) bool {
 // TODO: When nopfs becomes a direct dependency, replace this string matching with proper
 // type assertion or errors.Is() for more robust error detection.
 func isErrContentBlocked(err error) bool {
+	// Check for ErrorStatusCode with 410
+	var statusErr *ErrorStatusCode
+	if errors.As(err, &statusErr) && statusErr.StatusCode == http.StatusGone {
+		return true
+	}
+
 	// The nopfs StatusError.Error() returns messages in the format:
 	// - "{cid} is blocked and cannot be provided" for blocked CIDs
 	// - "{path} is blocked and cannot be provided" for blocked paths
