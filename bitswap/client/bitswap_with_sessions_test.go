@@ -203,6 +203,11 @@ func TestSessionBetweenPeers(t *testing.T) {
 	if _, err := ses.GetBlock(ctx, cids[0]); err != nil {
 		t.Fatal(err)
 	}
+
+	// Wait briefly to ensure the CANCEL for cids[0] is fully processed
+	// before continuing with more requests that might trigger rebroadcasts
+	time.Sleep(10 * time.Millisecond)
+
 	blks = blks[1:]
 	cids = cids[1:]
 
