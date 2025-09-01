@@ -668,6 +668,343 @@ func TestPeers(t *testing.T) {
 	}
 }
 
+func TestGetClosestPeers(t *testing.T) {
+	makeRequest := func(t *testing.T, router *mockContentRouter, contentType, arg, closerThan, count string) *http.Response {
+		server := httptest.NewServer(Handler(router))
+		t.Cleanup(server.Close)
+
+		urlStr := fmt.Sprintf("http://%s/routing/v1/dht/closest/peers/%s?closerThan=%s&count=%s", server.Listener.Addr().String(), arg, closerThan, count)
+		t.Log(urlStr)
+
+		req, err := http.NewRequest(http.MethodGet, urlStr, nil)
+		require.NoError(t, err)
+		if contentType != "" {
+			req.Header.Set("Accept", contentType)
+		}
+		resp, err := http.DefaultClient.Do(req)
+		require.NoError(t, err)
+		return resp
+	}
+
+	t.Run("GET /routing/v1/dht/closest/peers/{non-peerid} returns 400", func(t *testing.T) {
+		t.Parallel()
+
+		router := &mockContentRouter{}
+		resp := makeRequest(t, router, mediaTypeJSON, "nonpeerid", "", "")
+		require.Equal(t, 400, resp.StatusCode)
+	})
+
+	t.Run("GET /routing/v1/dht/closest/peers/{cid-libp2p-key-peer-id} returns 404 with correct body and headers (No Results, explicit JSON)", func(t *testing.T) {
+		t.Parallel()
+
+		_, pid := makeEd25519PeerID(t)
+		results := iter.FromSlice([]iter.Result[*types.PeerRecord]{})
+
+		router := &mockContentRouter{}
+		router.On("GetClosestPeers", mock.Anything, pid, peer.ID(""), 20).Return(results, nil)
+
+		resp := makeRequest(t, router, mediaTypeJSON, peer.ToCid(pid).String(), "", "")
+		require.Equal(t, 404, resp.StatusCode)
+
+		require.Equal(t, mediaTypeJSON, resp.Header.Get("Content-Type"))
+		require.Equal(t, "Accept", resp.Header.Get("Vary"))
+		require.Equal(t, "public, max-age=15, stale-while-revalidate=172800, stale-if-error=172800", resp.Header.Get("Cache-Control"))
+
+		requireCloseToNow(t, resp.Header.Get("Last-Modified"))
+	})
+
+	t.Run("GET /routing/v1/dht/closest/peers/{cid-libp2p-key-peer-id}?count=? is bewteen[0-100] per spec", func(t *testing.T) {
+		t.Parallel()
+
+		_, pid := makeEd25519PeerID(t)
+
+		testCases := []struct {
+			value    string
+			expected int
+		}{
+			{"", 20},
+			{"0", 20},
+			{"55", 55},
+			{"110", 100},
+			{"-5", 20},
+			{"abc", 20},
+		}
+
+		for _, tc := range testCases {
+			results := iter.FromSlice([]iter.Result[*types.PeerRecord]{
+				{Val: &types.PeerRecord{
+					Schema:    types.SchemaPeer,
+					ID:        &pid,
+					Protocols: []string{"transport-bitswap", "transport-foo"},
+					Addrs:     []types.Multiaddr{},
+				}},
+			})
+			router := &mockContentRouter{}
+			router.On("GetClosestPeers", mock.Anything, pid, peer.ID(""), tc.expected).Return(results, nil)
+			resp := makeRequest(t, router, mediaTypeJSON, peer.ToCid(pid).String(), "", tc.value)
+			require.Equal(t, 200, resp.StatusCode)
+		}
+	})
+
+	t.Run("GET /routing/v1/dht/closest/peers/{cid-libp2p-key-peer-id}?closerThan=? gets parsed or set to empty peer.ID", func(t *testing.T) {
+		t.Parallel()
+
+		_, pid := makeEd25519PeerID(t)
+		_, closerThanPid := makeEd25519PeerID(t)
+
+		testCases := []struct {
+			value    string
+			expected peer.ID
+		}{
+			{"", peer.ID("")},
+			{peer.ToCid(closerThanPid).String(), closerThanPid},
+		}
+
+		for _, tc := range testCases {
+			results := iter.FromSlice([]iter.Result[*types.PeerRecord]{
+				{Val: &types.PeerRecord{
+					Schema:    types.SchemaPeer,
+					ID:        &pid,
+					Protocols: []string{"transport-bitswap", "transport-foo"},
+					Addrs:     []types.Multiaddr{},
+				}},
+			})
+			router := &mockContentRouter{}
+			router.On("GetClosestPeers", mock.Anything, pid, tc.expected, 20).Return(results, nil)
+			resp := makeRequest(t, router, mediaTypeJSON, peer.ToCid(pid).String(), tc.value, "")
+			require.Equal(t, 200, resp.StatusCode)
+		}
+	})
+
+	t.Run("GET /routing/v1/dht/closest/peers/{cid-libp2p-key-peer-id} returns 404 with correct body and headers (No Results, implicit JSON, wildcard Accept header)", func(t *testing.T) {
+		t.Parallel()
+
+		_, pid := makeEd25519PeerID(t)
+		results := iter.FromSlice([]iter.Result[*types.PeerRecord]{})
+
+		router := &mockContentRouter{}
+		router.On("GetClosestPeers", mock.Anything, pid, peer.ID(""), 20).Return(results, nil)
+
+		// Simulate request with Accept header that includes wildcard match
+		resp := makeRequest(t, router, "text/html,*/*", peer.ToCid(pid).String(), "", "")
+
+		// Expect response to default to application/json
+		require.Equal(t, 404, resp.StatusCode)
+		require.Equal(t, mediaTypeJSON, resp.Header.Get("Content-Type"))
+	})
+
+	t.Run("GET /routing/v1/dht/closest/peers/{cid-libp2p-key-peer-id} returns 404 with correct body and headers (No Results, implicit JSON, no Accept header)", func(t *testing.T) {
+		t.Parallel()
+
+		_, pid := makeEd25519PeerID(t)
+		results := iter.FromSlice([]iter.Result[*types.PeerRecord]{})
+
+		router := &mockContentRouter{}
+		router.On("GetClosestPeers", mock.Anything, pid, peer.ID(""), 20).Return(results, nil)
+
+		// Simulate request without Accept header
+		resp := makeRequest(t, router, "", peer.ToCid(pid).String(), "", "")
+
+		// Expect response to default to application/json
+		require.Equal(t, 404, resp.StatusCode)
+		require.Equal(t, mediaTypeJSON, resp.Header.Get("Content-Type"))
+	})
+
+	t.Run("GET /routing/v1/dht/closest/peers/{cid-libp2p-key-peer-id} returns 404 when router returns routing.ErrNotFound", func(t *testing.T) {
+		t.Parallel()
+
+		_, pid := makeEd25519PeerID(t)
+
+		router := &mockContentRouter{}
+		router.On("GetClosestPeers", mock.Anything, pid, peer.ID(""), 20).Return(nil, routing.ErrNotFound)
+
+		// Simulate request without Accept header
+		resp := makeRequest(t, router, "", peer.ToCid(pid).String(), "", "")
+
+		// Expect response to default to application/json
+		require.Equal(t, 404, resp.StatusCode)
+		require.Equal(t, mediaTypeJSON, resp.Header.Get("Content-Type"))
+	})
+
+	t.Run("GET /routing/v1/dht/closest/peers/{cid-libp2p-key-peer-id} returns 200 with correct body and headers (JSON)", func(t *testing.T) {
+		t.Parallel()
+
+		_, pid := makeEd25519PeerID(t)
+		results := iter.FromSlice([]iter.Result[*types.PeerRecord]{
+			{Val: &types.PeerRecord{
+				Schema:    types.SchemaPeer,
+				ID:        &pid,
+				Protocols: []string{"transport-bitswap", "transport-foo"},
+				Addrs:     []types.Multiaddr{},
+			}},
+			{Val: &types.PeerRecord{
+				Schema:    types.SchemaPeer,
+				ID:        &pid,
+				Protocols: []string{"transport-foo"},
+				Addrs:     []types.Multiaddr{},
+			}},
+		})
+
+		router := &mockContentRouter{}
+		router.On("GetClosestPeers", mock.Anything, pid, peer.ID(""), 20).Return(results, nil)
+
+		libp2pKeyCID := peer.ToCid(pid).String()
+		resp := makeRequest(t, router, mediaTypeJSON, libp2pKeyCID, "", "")
+		require.Equal(t, 200, resp.StatusCode)
+
+		require.Equal(t, mediaTypeJSON, resp.Header.Get("Content-Type"))
+		require.Equal(t, "Accept", resp.Header.Get("Vary"))
+		require.Equal(t, "public, max-age=300, stale-while-revalidate=172800, stale-if-error=172800", resp.Header.Get("Cache-Control"))
+
+		requireCloseToNow(t, resp.Header.Get("Last-Modified"))
+
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+
+		expectedBody := `{"Peers":[{"Addrs":[],"ID":"` + pid.String() + `","Protocols":["transport-bitswap","transport-foo"],"Schema":"peer"},{"Addrs":[],"ID":"` + pid.String() + `","Protocols":["transport-foo"],"Schema":"peer"}]}`
+		require.Equal(t, expectedBody, string(body))
+	})
+
+	t.Run("GET /routing/v1/dht/closest/peers/{cid-libp2p-key-peer-id} returns 404 with correct body and headers (No Results, NDJSON)", func(t *testing.T) {
+		t.Parallel()
+
+		_, pid := makeEd25519PeerID(t)
+		results := iter.FromSlice([]iter.Result[*types.PeerRecord]{})
+
+		router := &mockContentRouter{}
+		router.On("GetClosestPeers", mock.Anything, pid, peer.ID(""), 20).Return(results, nil)
+
+		resp := makeRequest(t, router, mediaTypeNDJSON, peer.ToCid(pid).String(), "", "")
+		require.Equal(t, 404, resp.StatusCode)
+
+		require.Equal(t, mediaTypeNDJSON, resp.Header.Get("Content-Type"))
+		require.Equal(t, "Accept", resp.Header.Get("Vary"))
+		require.Equal(t, "public, max-age=15, stale-while-revalidate=172800, stale-if-error=172800", resp.Header.Get("Cache-Control"))
+
+		requireCloseToNow(t, resp.Header.Get("Last-Modified"))
+	})
+
+	t.Run("GET /routing/v1/dht/closest/peers/{cid-libp2p-key-peer-id} returns 200 with correct body and headers (NDJSON)", func(t *testing.T) {
+		t.Parallel()
+
+		_, pid := makeEd25519PeerID(t)
+		results := iter.FromSlice([]iter.Result[*types.PeerRecord]{
+			{Val: &types.PeerRecord{
+				Schema:    types.SchemaPeer,
+				ID:        &pid,
+				Protocols: []string{"transport-bitswap", "transport-foo"},
+				Addrs:     []types.Multiaddr{},
+			}},
+			{Val: &types.PeerRecord{
+				Schema:    types.SchemaPeer,
+				ID:        &pid,
+				Protocols: []string{"transport-foo"},
+				Addrs:     []types.Multiaddr{},
+			}},
+		})
+
+		router := &mockContentRouter{}
+		router.On("GetClosestPeers", mock.Anything, pid, peer.ID(""), 20).Return(results, nil)
+
+		libp2pKeyCID := peer.ToCid(pid).String()
+		resp := makeRequest(t, router, mediaTypeNDJSON, libp2pKeyCID, "", "")
+		require.Equal(t, 200, resp.StatusCode)
+
+		require.Equal(t, mediaTypeNDJSON, resp.Header.Get("Content-Type"))
+		require.Equal(t, "Accept", resp.Header.Get("Vary"))
+		require.Equal(t, "public, max-age=300, stale-while-revalidate=172800, stale-if-error=172800", resp.Header.Get("Cache-Control"))
+
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+
+		expectedBody := `{"Addrs":[],"ID":"` + pid.String() + `","Protocols":["transport-bitswap","transport-foo"],"Schema":"peer"}` + "\n" + `{"Addrs":[],"ID":"` + pid.String() + `","Protocols":["transport-foo"],"Schema":"peer"}` + "\n"
+		require.Equal(t, expectedBody, string(body))
+	})
+
+	// Test matrix that runs the HTTP 200 scenario against different flavours of PeerID
+	// to ensure consistent behavior
+	peerIdtestCases := []struct {
+		peerIdType    string
+		makePeerId    func(t *testing.T) (crypto.PrivKey, peer.ID)
+		peerIdAsCidV1 bool
+	}{
+		// Test against current and past PeerID key types and string representations.
+		// https://github.com/libp2p/specs/blob/master/peer-ids/peer-ids.md#string-representation
+		{"cidv1-libp2p-key-ed25519-peerid", makeEd25519PeerID, true},
+		{"base58-ed25519-peerid", makeEd25519PeerID, false},
+		{"cidv1-libp2p-key-rsa-peerid", makeLegacyRSAPeerID, true},
+		{"base58-rsa-peerid", makeLegacyRSAPeerID, false},
+	}
+
+	for _, tc := range peerIdtestCases {
+		_, pid := tc.makePeerId(t)
+		var peerIDStr string
+		if tc.peerIdAsCidV1 {
+			// PeerID represented by CIDv1 with libp2p-key codec
+			// https://github.com/libp2p/specs/blob/master/peer-ids/peer-ids.md#string-representation
+			peerIDStr = peer.ToCid(pid).String()
+		} else {
+			// Legacy PeerID starting with "123..." or "Qm.."
+			// https://github.com/libp2p/specs/blob/master/peer-ids/peer-ids.md#string-representation
+			peerIDStr = b58.Encode([]byte(pid))
+		}
+		results := []iter.Result[*types.PeerRecord]{
+			{Val: &types.PeerRecord{
+				Schema:    types.SchemaPeer,
+				ID:        &pid,
+				Protocols: []string{"transport-bitswap", "transport-foo"},
+				Addrs:     []types.Multiaddr{},
+			}},
+			{Val: &types.PeerRecord{
+				Schema:    types.SchemaPeer,
+				ID:        &pid,
+				Protocols: []string{"transport-foo"},
+				Addrs:     []types.Multiaddr{},
+			}},
+		}
+
+		t.Run("GET /routing/v1/dht/closest/peers/{"+tc.peerIdType+"} returns 200 with correct body and headers (NDJSON streaming response)", func(t *testing.T) {
+			t.Parallel()
+
+			router := &mockContentRouter{}
+			router.On("GetClosestPeers", mock.Anything, pid, peer.ID(""), 20).Return(iter.FromSlice(results), nil)
+
+			resp := makeRequest(t, router, mediaTypeNDJSON, peerIDStr, "", "")
+			require.Equal(t, 200, resp.StatusCode)
+
+			require.Equal(t, mediaTypeNDJSON, resp.Header.Get("Content-Type"))
+			require.Equal(t, "Accept", resp.Header.Get("Vary"))
+			require.Equal(t, "public, max-age=300, stale-while-revalidate=172800, stale-if-error=172800", resp.Header.Get("Cache-Control"))
+
+			body, err := io.ReadAll(resp.Body)
+			require.NoError(t, err)
+
+			expectedBody := `{"Addrs":[],"ID":"` + pid.String() + `","Protocols":["transport-bitswap","transport-foo"],"Schema":"peer"}` + "\n" + `{"Addrs":[],"ID":"` + pid.String() + `","Protocols":["transport-foo"],"Schema":"peer"}` + "\n"
+			require.Equal(t, expectedBody, string(body))
+		})
+
+		t.Run("GET /routing/v1/dht/closest/peers/{"+tc.peerIdType+"} returns 200 with correct body and headers (JSON response)", func(t *testing.T) {
+			t.Parallel()
+
+			router := &mockContentRouter{}
+			router.On("GetClosestPeers", mock.Anything, pid, peer.ID(""), 20).Return(iter.FromSlice(results), nil)
+
+			resp := makeRequest(t, router, mediaTypeJSON, peerIDStr, "", "")
+			require.Equal(t, 200, resp.StatusCode)
+
+			require.Equal(t, mediaTypeJSON, resp.Header.Get("Content-Type"))
+			require.Equal(t, "Accept", resp.Header.Get("Vary"))
+			require.Equal(t, "public, max-age=300, stale-while-revalidate=172800, stale-if-error=172800", resp.Header.Get("Cache-Control"))
+
+			body, err := io.ReadAll(resp.Body)
+			require.NoError(t, err)
+
+			expectedBody := `{"Peers":[{"Addrs":[],"ID":"` + pid.String() + `","Protocols":["transport-bitswap","transport-foo"],"Schema":"peer"},{"Addrs":[],"ID":"` + pid.String() + `","Protocols":["transport-foo"],"Schema":"peer"}]}`
+			require.Equal(t, expectedBody, string(body))
+		})
+	}
+}
+
 func makeName(t *testing.T) (crypto.PrivKey, ipns.Name) {
 	sk, pid := makeEd25519PeerID(t)
 	return sk, ipns.NameFromPeer(pid)
@@ -928,4 +1265,13 @@ func (m *mockContentRouter) GetIPNS(ctx context.Context, name ipns.Name) (*ipns.
 func (m *mockContentRouter) PutIPNS(ctx context.Context, name ipns.Name, record *ipns.Record) error {
 	args := m.Called(ctx, name, record)
 	return args.Error(0)
+}
+
+func (m *mockContentRouter) GetClosestPeers(ctx context.Context, peerID, closerThan peer.ID, count int) (iter.ResultIter[*types.PeerRecord], error) {
+	args := m.Called(ctx, peerID, closerThan, count)
+	a := args.Get(0)
+	if a == nil {
+		return nil, args.Error(1)
+	}
+	return a.(iter.ResultIter[*types.PeerRecord]), args.Error(1)
 }
