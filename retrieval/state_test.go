@@ -356,7 +356,7 @@ func TestErrorWithState(t *testing.T) {
 
 		// Check that error includes failed peers
 		errMsg := err.Error()
-		assert.Contains(t, errMsg, "connection failed: retrieval: found 3 provider(s), connected to 1, but they did not return the requested content (phase: data retrieval, failed peers: [")
+		assert.Contains(t, errMsg, "connection failed: retrieval: found 3 provider(s), connected to 1, but they did not return the requested content (phase: data retrieval, failed peers: ")
 		assert.Contains(t, errMsg, peerID1.String())
 		assert.Contains(t, errMsg, peerID2.String())
 	})

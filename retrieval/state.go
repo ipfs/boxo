@@ -10,9 +10,11 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 	"sync"
 	"sync/atomic"
 
+	"github.com/ipfs/go-cid"
 	"github.com/libp2p/go-libp2p/core/peer"
 )
 
@@ -80,10 +82,16 @@ type RetrievalState struct {
 	// phase tracks the current retrieval phase (stored as int32)
 	phase atomic.Int32
 
-	// mu protects failedProviders slice during concurrent access
+	// mu protects failedProviders slice and CID fields during concurrent access
 	mu sync.RWMutex
 	// Track specific provider failures (limited to first few for brevity)
 	failedProviders []peer.ID
+
+	// CIDs for diagnostic purposes
+	// For /ipfs/cid, both will be the same
+	// For /ipfs/cid/path/to/file, rootCID is 'cid' and terminalCID is the CID of 'file'
+	rootCID     cid.Cid // First CID in the path
+	terminalCID cid.Cid // CID of terminating DAG entity on the path
 }
 
 // NewRetrievalState creates a new RetrievalState initialized to PhaseInitializing.
@@ -138,6 +146,38 @@ func (rs *RetrievalState) GetFailedProviders() []peer.ID {
 	return slices.Clone(rs.failedProviders)
 }
 
+// SetRootCID sets the root CID (first CID in the path).
+// This method is safe for concurrent use.
+func (rs *RetrievalState) SetRootCID(c cid.Cid) {
+	rs.mu.Lock()
+	defer rs.mu.Unlock()
+	rs.rootCID = c
+}
+
+// SetTerminalCID sets the terminal CID (CID of terminating DAG entity).
+// This method is safe for concurrent use.
+func (rs *RetrievalState) SetTerminalCID(c cid.Cid) {
+	rs.mu.Lock()
+	defer rs.mu.Unlock()
+	rs.terminalCID = c
+}
+
+// GetRootCID returns the root CID (first CID in the path).
+// This method is safe for concurrent use.
+func (rs *RetrievalState) GetRootCID() cid.Cid {
+	rs.mu.RLock()
+	defer rs.mu.RUnlock()
+	return rs.rootCID
+}
+
+// GetTerminalCID returns the terminal CID (CID of terminating DAG entity).
+// This method is safe for concurrent use.
+func (rs *RetrievalState) GetTerminalCID() cid.Cid {
+	rs.mu.RLock()
+	defer rs.mu.RUnlock()
+	return rs.terminalCID
+}
+
 // Summary generates a human-readable summary of the retrieval state,
 // useful for timeout error messages and diagnostics.
 func (rs *RetrievalState) Summary() string {
@@ -162,7 +202,7 @@ func (rs *RetrievalState) Summary() string {
 		for i, p := range failedProviders {
 			peerStrings[i] = p.String()
 		}
-		failedPeersInfo = fmt.Sprintf(", failed peers: %v", peerStrings)
+		failedPeersInfo = fmt.Sprintf(", failed peers: %s", strings.Join(peerStrings, ", "))
 	}
 
 	if connected == 0 {

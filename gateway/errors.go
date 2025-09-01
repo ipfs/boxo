@@ -12,6 +12,7 @@ import (
 	"github.com/ipfs/boxo/gateway/assets"
 	"github.com/ipfs/boxo/path"
 	"github.com/ipfs/boxo/path/resolver"
+	"github.com/ipfs/boxo/retrieval"
 	"github.com/ipfs/go-cid"
 	ipld "github.com/ipfs/go-ipld-format"
 	"github.com/ipld/go-ipld-prime/datamodel"
@@ -186,15 +187,36 @@ func writeErrorResponse(w http.ResponseWriter, r *http.Request, c *Config, statu
 	}
 
 	if acceptsHTML {
+		// Extract CIDs from RetrievalState for diagnostic purposes (504 errors)
+		var rootCID, failedCID string
+		if statusCode == http.StatusGatewayTimeout && c != nil && c.DiagnosticServiceURL != "" {
+			if retrievalState := retrieval.StateFromContext(r.Context()); retrievalState != nil {
+				// Get root CID (first CID in the path)
+				if root := retrievalState.GetRootCID(); root.Defined() {
+					rootCID = root.String()
+				}
+				// Get terminal CID (CID that failed to retrieve)
+				if terminal := retrievalState.GetTerminalCID(); terminal.Defined() {
+					failedCID = terminal.String()
+				} else {
+					// If no terminal CID, use root CID as the failed CID
+					failedCID = rootCID
+				}
+			}
+		}
+
 		w.Header().Set("Content-Type", "text/html")
 		w.WriteHeader(statusCode)
 		err := assets.ErrorTemplate.Execute(w, assets.ErrorTemplateData{
 			GlobalData: assets.GlobalData{
 				Menu: c.Menu,
 			},
-			StatusCode: statusCode,
-			StatusText: http.StatusText(statusCode),
-			Error:      message,
+			StatusCode:           statusCode,
+			StatusText:           http.StatusText(statusCode),
+			Error:                message,
+			DiagnosticServiceURL: c.DiagnosticServiceURL,
+			RootCID:              rootCID,
+			FailedCID:            failedCID,
 		})
 		if err != nil {
 			fmt.Fprintf(w, "error during body generation: %v", err)
