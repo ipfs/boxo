@@ -8,6 +8,7 @@ package retrieval
 import (
 	"context"
 	"fmt"
+	"slices"
 	"sync"
 	"sync/atomic"
 
@@ -87,9 +88,7 @@ type RetrievalState struct {
 // NewRetrievalState creates a new RetrievalState initialized to PhaseInitializing.
 // The returned state is safe for concurrent use.
 func NewRetrievalState() *RetrievalState {
-	rs := &RetrievalState{
-		failedProviders: make([]peer.ID, 0, MaxFailedProvidersToTrack),
-	}
+	rs := &RetrievalState{}
 	rs.phase.Store(int32(PhaseInitializing))
 	return rs
 }
@@ -135,9 +134,7 @@ func (rs *RetrievalState) AddFailedProvider(peerID peer.ID) {
 func (rs *RetrievalState) GetFailedProviders() []peer.ID {
 	rs.mu.RLock()
 	defer rs.mu.RUnlock()
-	result := make([]peer.ID, len(rs.failedProviders))
-	copy(result, rs.failedProviders)
-	return result
+	return slices.Clone(rs.failedProviders)
 }
 
 // Summary generates a human-readable summary of the retrieval state,
