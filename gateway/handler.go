@@ -18,7 +18,6 @@ import (
 	"github.com/ipfs/boxo/gateway/assets"
 	"github.com/ipfs/boxo/ipns"
 	"github.com/ipfs/boxo/path"
-	"github.com/ipfs/boxo/verifcid"
 	cid "github.com/ipfs/go-cid"
 	logging "github.com/ipfs/go-log/v2"
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -312,13 +311,6 @@ func (i *handler) getOrHeadHandler(w http.ResponseWriter, r *http.Request) {
 			i.webError(w, r, err, http.StatusInternalServerError)
 			return
 		}
-	}
-
-	// Validate the root CID before any backend calls
-	rootCid := rq.immutablePath.RootCid()
-	if err := verifcid.ValidateCid(verifcid.DefaultAllowlist, rootCid); err != nil {
-		i.webError(w, r, err, http.StatusBadRequest)
-		return
 	}
 
 	// CAR response format can be handled now, since (1) it explicitly needs the

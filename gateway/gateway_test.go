@@ -84,9 +84,9 @@ func TestGatewayGet(t *testing.T) {
 		{"127.0.0.1:8080", "/ipns", http.StatusBadRequest, "invalid path \"/ipns/\": path does not have enough components\n"},
 		{"127.0.0.1:8080", "/" + k.RootCid().String(), http.StatusNotFound, "404 page not found\n"},
 		{"127.0.0.1:8080", "/ipfs/this-is-not-a-cid", http.StatusBadRequest, "invalid path \"/ipfs/this-is-not-a-cid\": invalid cid: illegal base32 data at input byte 3\n"},
-		{"127.0.0.1:8080", "/ipfs/" + validIdentityCID.String(), http.StatusOK, string(validIdentityData)},                                                  // Valid identity CID returns the inlined data
-		{"127.0.0.1:8080", "/ipfs/" + invalidIdentityCID.String(), http.StatusBadRequest, "digest too large: identity digest got 129 bytes, maximum 128\n"}, // Invalid identity CID, over size limit
-		{"127.0.0.1:8080", "/ipfs/" + shortIdentityCID.String(), http.StatusOK, "hello"},                                                                    // Short identity CID (below MinDigestSize) should work
+		{"127.0.0.1:8080", "/ipfs/" + validIdentityCID.String(), http.StatusOK, string(validIdentityData)},                                                                                                                        // Valid identity CID returns the inlined data
+		{"127.0.0.1:8080", "/ipfs/" + invalidIdentityCID.String(), http.StatusInternalServerError, "failed to resolve /ipfs/" + invalidIdentityCID.String() + ": digest too large: identity digest got 129 bytes, maximum 128\n"}, // Invalid identity CID, over size limit
+		{"127.0.0.1:8080", "/ipfs/" + shortIdentityCID.String(), http.StatusOK, "hello"},                                                                                                                                          // Short identity CID (below MinDigestSize) should work
 		{"127.0.0.1:8080", k.String(), http.StatusOK, "fnord"},
 		{"127.0.0.1:8080", "/ipns/nxdomain.example.com", http.StatusInternalServerError, "failed to resolve /ipns/nxdomain.example.com: " + namesys.ErrResolveFailed.Error() + "\n"},
 		{"127.0.0.1:8080", "/ipns/%0D%0A%0D%0Ahello", http.StatusInternalServerError, "failed to resolve /ipns/\\r\\n\\r\\nhello: " + namesys.ErrResolveFailed.Error() + "\n"},
