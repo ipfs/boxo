@@ -25,10 +25,10 @@ type contextKey string
 // ContextWithState and StateFromContext functions are preferred.
 const ContextKey contextKey = "boxo-retrieval-state"
 
-// MaxFailedProvidersToTrack limits the number of failed provider peer IDs
-// that are kept for diagnostic purposes. This prevents unbounded memory growth
+// MaxProvidersSampleSize limits the number of provider peer IDs (both found and failed)
+// that are kept as a sample for diagnostic purposes. This prevents unbounded memory growth
 // while still providing useful debugging information.
-const MaxFailedProvidersToTrack = 3
+const MaxProvidersSampleSize = 3
 
 // RetrievalPhase represents the current phase of content retrieval.
 // Phases progress monotonically - they can only move forward, never backward.
@@ -82,9 +82,13 @@ type RetrievalState struct {
 	// phase tracks the current retrieval phase (stored as int32)
 	phase atomic.Int32
 
-	// mu protects failedProviders slice and CID fields during concurrent access
+	// mu protects foundProviders, failedProviders slices and CID fields during concurrent access
 	mu sync.RWMutex
-	// Track specific provider failures (limited to first few for brevity)
+	// Sample of providers found during discovery (limited to first few for brevity)
+	// NOTE: This is only a sample of the first MaxProvidersSampleSize providers, not all of them
+	foundProviders []peer.ID
+	// Sample of providers that failed (limited to first few for brevity)
+	// NOTE: This is only a sample of the first MaxProvidersSampleSize providers, not all of them
 	failedProviders []peer.ID
 
 	// CIDs for diagnostic purposes
@@ -128,22 +132,45 @@ func (rs *RetrievalState) GetPhase() RetrievalPhase {
 	return RetrievalPhase(rs.phase.Load())
 }
 
-// AddFailedProvider records a provider peer ID that failed to deliver the requested content.
-// Only the first MaxFailedProvidersToTrack providers are kept to prevent unbounded memory growth.
-// This method is safe for concurrent use.
-func (rs *RetrievalState) AddFailedProvider(peerID peer.ID) {
+// addProvider is a helper to add a provider to a sample list with size limit.
+// Only the first MaxProvidersSampleSize providers are kept to prevent unbounded memory growth.
+func (rs *RetrievalState) addProvider(list *[]peer.ID, peerID peer.ID) {
 	rs.mu.Lock()
 	defer rs.mu.Unlock()
-	if len(rs.failedProviders) < MaxFailedProvidersToTrack {
-		rs.failedProviders = append(rs.failedProviders, peerID)
+	if len(*list) < MaxProvidersSampleSize {
+		*list = append(*list, peerID)
 	}
 }
 
-// GetFailedProviders returns the list of failed providers
-func (rs *RetrievalState) GetFailedProviders() []peer.ID {
+// AddFoundProvider records a provider peer ID that was discovered during provider search.
+// This method is safe for concurrent use.
+func (rs *RetrievalState) AddFoundProvider(peerID peer.ID) {
+	rs.addProvider(&rs.foundProviders, peerID)
+}
+
+// AddFailedProvider records a provider peer ID that failed to deliver the requested content.
+// This method is safe for concurrent use.
+func (rs *RetrievalState) AddFailedProvider(peerID peer.ID) {
+	rs.addProvider(&rs.failedProviders, peerID)
+}
+
+// getProviders is a helper to get a cloned list of providers.
+func (rs *RetrievalState) getProviders(list []peer.ID) []peer.ID {
 	rs.mu.RLock()
 	defer rs.mu.RUnlock()
-	return slices.Clone(rs.failedProviders)
+	return slices.Clone(list)
+}
+
+// GetFoundProviders returns a sample of found providers (up to MaxProvidersSampleSize).
+// This is not all providers, just the first few for diagnostic purposes.
+func (rs *RetrievalState) GetFoundProviders() []peer.ID {
+	return rs.getProviders(rs.foundProviders)
+}
+
+// GetFailedProviders returns a sample of failed providers (up to MaxProvidersSampleSize).
+// This is not all providers, just the first few for diagnostic purposes.
+func (rs *RetrievalState) GetFailedProviders() []peer.ID {
+	return rs.getProviders(rs.failedProviders)
 }
 
 // SetRootCID sets the root CID (first CID in the path).
@@ -178,6 +205,19 @@ func (rs *RetrievalState) GetTerminalCID() cid.Cid {
 	return rs.terminalCID
 }
 
+// formatPeerIDs converts a slice of peer IDs to a formatted string with a prefix.
+// Returns empty string if the slice is empty.
+func formatPeerIDs(peers []peer.ID, prefix string) string {
+	if len(peers) == 0 {
+		return ""
+	}
+	peerStrings := make([]string, len(peers))
+	for i, p := range peers {
+		peerStrings[i] = p.String()
+	}
+	return fmt.Sprintf(", %s: %s", prefix, strings.Join(peerStrings, ", "))
+}
+
 // Summary generates a human-readable summary of the retrieval state,
 // useful for timeout error messages and diagnostics.
 func (rs *RetrievalState) Summary() string {
@@ -194,21 +234,17 @@ func (rs *RetrievalState) Summary() string {
 		return fmt.Sprintf("found %d provider(s) but none could be contacted (phase: %s)", found, phase.String())
 	}
 
-	failedProviders := rs.GetFailedProviders()
-	failedPeersInfo := ""
-	if len(failedProviders) > 0 {
-		// Convert peer IDs to strings for display
-		peerStrings := make([]string, len(failedProviders))
-		for i, p := range failedProviders {
-			peerStrings[i] = p.String()
-		}
-		failedPeersInfo = fmt.Sprintf(", failed peers: %s", strings.Join(peerStrings, ", "))
+	if connected == 0 {
+		// When we can't connect, show the found providers instead of failed ones
+		// since all attempts effectively failed
+		foundProviders := rs.GetFoundProviders()
+		peersInfo := formatPeerIDs(foundProviders, "peers")
+		return fmt.Sprintf("found %d provider(s), attempted %d, but none were reachable (phase: %s%s)",
+			found, attempted, phase.String(), peersInfo)
 	}
 
-	if connected == 0 {
-		return fmt.Sprintf("found %d provider(s), attempted %d, but none were reachable (phase: %s%s)",
-			found, attempted, phase.String(), failedPeersInfo)
-	}
+	failedProviders := rs.GetFailedProviders()
+	failedPeersInfo := formatPeerIDs(failedProviders, "failed peers")
 
 	if len(failedProviders) > 0 {
 		return fmt.Sprintf("found %d provider(s), connected to %d, but they did not return the requested content (phase: %s%s)",
