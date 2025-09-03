@@ -11,6 +11,7 @@ import (
 	"net/http"
 	gourl "net/url"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -637,4 +638,92 @@ func (c *Client) PutIPNS(ctx context.Context, name ipns.Name, record *ipns.Recor
 	}
 
 	return nil
+}
+
+// GetClosestPeers obtains the closest peers to the given peer ID.
+func (c *Client) GetClosestPeers(ctx context.Context, peerID, closerThan peer.ID, count int) (peers iter.ResultIter[*types.PeerRecord], err error) {
+	m := newMeasurement("GetClosestPeers")
+
+	// Build the base URL path
+	u, err := gourl.JoinPath(c.baseURL, "routing/v1/dht/closest/peers", peer.ToCid(peerID).String())
+	if err != nil {
+		return nil, err
+	}
+
+	// Add query parameters
+	queryParams := make(gourl.Values)
+	if closerThan != "" {
+		queryParams.Set("closerThan", closerThan.String())
+	}
+	if count > 0 {
+		queryParams.Set("count", strconv.Itoa(count))
+	}
+	u += "?" + queryParams.Encode()
+
+	// Create the HTTP request
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Accept", c.accepts)
+
+	m.host = req.Host
+	start := c.clock.Now()
+	resp, err := c.httpClient.Do(req)
+	m.latency = c.clock.Since(start)
+	m.err = err
+
+	if err != nil {
+		m.record(ctx)
+		return nil, err
+	}
+
+	m.statusCode = resp.StatusCode
+	if resp.StatusCode == http.StatusNotFound {
+		resp.Body.Close()
+		m.record(ctx)
+		return iter.FromSlice[iter.Result[*types.PeerRecord]](nil), nil
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		err := httpError(resp.StatusCode, resp.Body)
+		resp.Body.Close()
+		m.record(ctx)
+		return nil, err
+	}
+
+	respContentType := resp.Header.Get("Content-Type")
+	mediaType, _, err := mime.ParseMediaType(respContentType)
+	if err != nil {
+		resp.Body.Close()
+		m.err = err
+		m.record(ctx)
+		return nil, fmt.Errorf("parsing Content-Type: %w", err)
+	}
+
+	m.mediaType = mediaType
+
+	var skipBodyClose bool
+	defer func() {
+		if !skipBodyClose {
+			resp.Body.Close()
+		}
+	}()
+
+	var it iter.ResultIter[*types.PeerRecord]
+	switch mediaType {
+	case mediaTypeJSON:
+		parsedResp := &jsontypes.PeersResponse{}
+		err = json.NewDecoder(resp.Body).Decode(parsedResp)
+		var sliceIt iter.Iter[*types.PeerRecord] = iter.FromSlice(parsedResp.Peers)
+		it = iter.ToResultIter(sliceIt)
+	case mediaTypeNDJSON:
+		skipBodyClose = true
+		it = ndjson.NewPeerRecordsIter(resp.Body)
+	default:
+		logger.Errorw("unknown media type", "MediaType", mediaType, "ContentType", respContentType)
+		return nil, errors.New("unknown content type")
+	}
+
+	return &measuringIter[iter.Result[*types.PeerRecord]]{Iter: it, ctx: ctx, m: m}, nil
 }
