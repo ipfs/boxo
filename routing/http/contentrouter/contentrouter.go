@@ -23,6 +23,7 @@ var logger = logging.Logger("routing/http/contentrouter")
 
 const ttl = 24 * time.Hour
 
+// A Client provides HTTP Content Routing methods. See also [server.ContentRouter].
 type Client interface {
 	FindProviders(ctx context.Context, key cid.Cid) (iter.ResultIter[types.Record], error)
 	ProvideBitswap(ctx context.Context, keys []cid.Cid, ttl time.Duration) (time.Duration, error)
@@ -59,6 +60,8 @@ func WithMaxProvideBatchSize(max int) option {
 	}
 }
 
+// NewContentRoutingClient returns a client that conforms to the
+// ContentRouting interfaces.
 func NewContentRoutingClient(c Client, opts ...option) *contentRouter {
 	cr := &contentRouter{
 		client:                c,
