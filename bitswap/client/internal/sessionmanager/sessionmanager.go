@@ -89,9 +89,6 @@ func (sm *SessionManager) NewSession(provSearchDelay time.Duration, rebroadcastD
 
 	pm := sm.peerManagerFactory(id)
 	session := sm.sessionFactory(sm, id, pm, sm.sessionInterestManager, sm.peerManager, sm.blockPresenceManager, sm.notif, provSearchDelay, rebroadcastDelay, sm.self)
-	context.AfterFunc(ctx, func() {
-		session.Close()
-	})
 
 	sm.sessLk.Lock()
 	if sm.sessions != nil { // check if SessionManager was shutdown

@@ -96,7 +96,7 @@ type op struct {
 type Session struct {
 	// dependencies
 	ctx            context.Context
-	cancel         func()
+	cancel         context.CancelFunc
 	sm             SessionManager
 	pm             PeerManager
 	sprm           SessionPeerManager
