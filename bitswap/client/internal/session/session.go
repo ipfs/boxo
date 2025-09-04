@@ -10,6 +10,7 @@ import (
 	notifications "github.com/ipfs/boxo/bitswap/client/internal/notifications"
 	bspm "github.com/ipfs/boxo/bitswap/client/internal/peermanager"
 	bssim "github.com/ipfs/boxo/bitswap/client/internal/sessioninterestmanager"
+	"github.com/ipfs/boxo/retrieval"
 	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
 	delay "github.com/ipfs/go-ipfs-delay"
@@ -126,8 +127,7 @@ type Session struct {
 	self peer.ID
 }
 
-// New creates a new bitswap session whose lifetime is bounded by the
-// given context.
+// New creates a new bitswap session.
 func New(
 	sm SessionManager,
 	id uint64,
@@ -141,8 +141,15 @@ func New(
 	periodicSearchDelay delay.D,
 	self peer.ID,
 	havesReceivedGauge bspm.Gauge,
+	retrievalState *retrieval.RetrievalState,
 ) *Session {
 	ctx, cancel := context.WithCancel(context.Background())
+
+	// If a retrieval state is passed in, then keep it in the context.
+	if retrievalState != nil {
+		ctx = context.WithValue(ctx, retrieval.ContextKey, retrievalState)
+	}
+
 	s := &Session{
 		sw:                  newSessionWants(broadcastLiveWantsLimit),
 		tickDelayReqs:       make(chan time.Duration),

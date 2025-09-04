@@ -12,6 +12,7 @@ import (
 	bspm "github.com/ipfs/boxo/bitswap/client/internal/peermanager"
 	bssession "github.com/ipfs/boxo/bitswap/client/internal/session"
 	bssim "github.com/ipfs/boxo/bitswap/client/internal/sessioninterestmanager"
+	"github.com/ipfs/boxo/retrieval"
 	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
 	delay "github.com/ipfs/go-ipfs-delay"
@@ -94,6 +95,7 @@ func sessionFactory(
 	provSearchDelay time.Duration,
 	rebroadcastDelay delay.D,
 	self peer.ID,
+	retrievalState *retrieval.RetrievalState,
 ) Session {
 	fs := &fakeSession{
 		id:    id,
@@ -121,11 +123,11 @@ func TestReceiveFrom(t *testing.T) {
 	p := peer.ID(strconv.Itoa(123))
 	block := blocks.NewBlock([]byte("block"))
 
-	firstSession := sm.NewSession(time.Second, delay.Fixed(time.Minute)).(*fakeSession)
+	firstSession := sm.NewSession(time.Second, delay.Fixed(time.Minute), nil).(*fakeSession)
 	defer firstSession.Close()
-	secondSession := sm.NewSession(time.Second, delay.Fixed(time.Minute)).(*fakeSession)
+	secondSession := sm.NewSession(time.Second, delay.Fixed(time.Minute), nil).(*fakeSession)
 	defer secondSession.Close()
-	thirdSession := sm.NewSession(time.Second, delay.Fixed(time.Minute)).(*fakeSession)
+	thirdSession := sm.NewSession(time.Second, delay.Fixed(time.Minute), nil).(*fakeSession)
 	defer thirdSession.Close()
 
 	sim.RecordSessionInterest(firstSession.ID(), []cid.Cid{block.Cid()})
@@ -168,11 +170,11 @@ func TestReceiveBlocksWhenManagerShutdown(t *testing.T) {
 	p := peer.ID(strconv.Itoa(123))
 	block := blocks.NewBlock([]byte("block"))
 
-	firstSession := sm.NewSession(time.Second, delay.Fixed(time.Minute)).(*fakeSession)
+	firstSession := sm.NewSession(time.Second, delay.Fixed(time.Minute), nil).(*fakeSession)
 	defer firstSession.Close()
-	secondSession := sm.NewSession(time.Second, delay.Fixed(time.Minute)).(*fakeSession)
+	secondSession := sm.NewSession(time.Second, delay.Fixed(time.Minute), nil).(*fakeSession)
 	defer secondSession.Close()
-	thirdSession := sm.NewSession(time.Second, delay.Fixed(time.Minute)).(*fakeSession)
+	thirdSession := sm.NewSession(time.Second, delay.Fixed(time.Minute), nil).(*fakeSession)
 	defer thirdSession.Close()
 
 	sim.RecordSessionInterest(firstSession.ID(), []cid.Cid{block.Cid()})
@@ -205,11 +207,11 @@ func TestReceiveBlocksWhenSessionContextCancelled(t *testing.T) {
 	p := peer.ID(strconv.Itoa(123))
 	block := blocks.NewBlock([]byte("block"))
 
-	firstSession := sm.NewSession(time.Second, delay.Fixed(time.Minute)).(*fakeSession)
+	firstSession := sm.NewSession(time.Second, delay.Fixed(time.Minute), nil).(*fakeSession)
 	defer firstSession.Close()
-	secondSession := sm.NewSession(time.Second, delay.Fixed(time.Minute)).(*fakeSession)
+	secondSession := sm.NewSession(time.Second, delay.Fixed(time.Minute), nil).(*fakeSession)
 	defer secondSession.Close()
-	thirdSession := sm.NewSession(time.Second, delay.Fixed(time.Minute)).(*fakeSession)
+	thirdSession := sm.NewSession(time.Second, delay.Fixed(time.Minute), nil).(*fakeSession)
 	defer thirdSession.Close()
 
 	sim.RecordSessionInterest(firstSession.ID(), []cid.Cid{block.Cid()})
@@ -242,7 +244,7 @@ func TestShutdown(t *testing.T) {
 	p := peer.ID(strconv.Itoa(123))
 	block := blocks.NewBlock([]byte("block"))
 	cids := []cid.Cid{block.Cid()}
-	firstSession := sm.NewSession(time.Second, delay.Fixed(time.Minute)).(*fakeSession)
+	firstSession := sm.NewSession(time.Second, delay.Fixed(time.Minute), nil).(*fakeSession)
 	defer firstSession.Close()
 	sim.RecordSessionInterest(firstSession.ID(), cids)
 	sm.ReceiveFrom(ctx, p, []cid.Cid{}, []cid.Cid{}, cids)

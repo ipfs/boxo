@@ -24,6 +24,7 @@ import (
 	"github.com/ipfs/boxo/bitswap/tracer"
 	blockstore "github.com/ipfs/boxo/blockstore"
 	exchange "github.com/ipfs/boxo/exchange"
+	"github.com/ipfs/boxo/retrieval"
 	rpqm "github.com/ipfs/boxo/routing/providerquerymanager"
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
@@ -309,6 +310,7 @@ func New(parent context.Context, network bsnet.BitSwapNetwork, providerFinder ro
 		provSearchDelay time.Duration,
 		rebroadcastDelay delay.D,
 		self peer.ID,
+		retrievalState *retrieval.RetrievalState,
 	) bssm.Session {
 		// careful when bs.pqm is nil. Since we are type-casting it
 		// into routing.ContentDiscovery when passing it, it will become
@@ -320,7 +322,7 @@ func New(parent context.Context, network bsnet.BitSwapNetwork, providerFinder ro
 		} else if providerFinder != nil {
 			sessionProvFinder = providerFinder
 		}
-		return bssession.New(sessmgr, id, spm, sessionProvFinder, sim, pm, bpm, notif, provSearchDelay, rebroadcastDelay, self, bs.havesReceivedGauge)
+		return bssession.New(sessmgr, id, spm, sessionProvFinder, sim, pm, bpm, notif, provSearchDelay, rebroadcastDelay, self, bs.havesReceivedGauge, retrievalState)
 	}
 	sessionPeerManagerFactory := func(id uint64) bssession.SessionPeerManager {
 		return bsspm.New(id, network)
@@ -704,7 +706,7 @@ func (bs *Client) NewSession(ctx context.Context) exchange.Fetcher {
 	ctx, span := internal.StartSpan(ctx, "NewSession")
 	defer span.End()
 
-	session := bs.sm.NewSession(bs.provSearchDelay, bs.rebroadcastDelay)
+	session := bs.sm.NewSession(bs.provSearchDelay, bs.rebroadcastDelay, retrieval.StateFromContext(ctx))
 	context.AfterFunc(ctx, func() {
 		session.Close()
 	})

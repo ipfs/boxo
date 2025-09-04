@@ -12,6 +12,7 @@ import (
 	bssession "github.com/ipfs/boxo/bitswap/client/internal/session"
 	bssim "github.com/ipfs/boxo/bitswap/client/internal/sessioninterestmanager"
 	exchange "github.com/ipfs/boxo/exchange"
+	"github.com/ipfs/boxo/retrieval"
 	cid "github.com/ipfs/go-cid"
 	delay "github.com/ipfs/go-ipfs-delay"
 	peer "github.com/libp2p/go-libp2p/core/peer"
@@ -38,7 +39,8 @@ type SessionFactory func(
 	notif notifications.PubSub,
 	provSearchDelay time.Duration,
 	rebroadcastDelay delay.D,
-	self peer.ID) Session
+	self peer.ID,
+	retrievalState *retrieval.RetrievalState) Session
 
 // PeerManagerFactory generates a new peer manager for a session.
 type PeerManagerFactory func(id uint64) bssession.SessionPeerManager
@@ -81,14 +83,14 @@ func New(sessionFactory SessionFactory, sessionInterestManager *bssim.SessionInt
 }
 
 // NewSession initializes a session and adds to the session manager.
-func (sm *SessionManager) NewSession(provSearchDelay time.Duration, rebroadcastDelay delay.D) Session {
+func (sm *SessionManager) NewSession(provSearchDelay time.Duration, rebroadcastDelay delay.D, retrievalState *retrieval.RetrievalState) Session {
 	id := sm.GetNextSessionID()
 
 	_, span := internal.StartSpan(context.Background(), "SessionManager.NewSession", trace.WithAttributes(attribute.String("ID", strconv.FormatUint(id, 10))))
 	defer span.End()
 
 	pm := sm.peerManagerFactory(id)
-	session := sm.sessionFactory(sm, id, pm, sm.sessionInterestManager, sm.peerManager, sm.blockPresenceManager, sm.notif, provSearchDelay, rebroadcastDelay, sm.self)
+	session := sm.sessionFactory(sm, id, pm, sm.sessionInterestManager, sm.peerManager, sm.blockPresenceManager, sm.notif, provSearchDelay, rebroadcastDelay, sm.self, retrievalState)
 
 	sm.sessLk.Lock()
 	if sm.sessions != nil { // check if SessionManager was shutdown
