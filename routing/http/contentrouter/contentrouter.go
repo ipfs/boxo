@@ -30,6 +30,9 @@ type Client interface {
 	FindPeers(ctx context.Context, pid peer.ID) (peers iter.ResultIter[*types.PeerRecord], err error)
 	GetIPNS(ctx context.Context, name ipns.Name) (*ipns.Record, error)
 	PutIPNS(ctx context.Context, name ipns.Name, record *ipns.Record) error
+	// GetClosestPeers returns the DHT closest peers to the given peer ID.
+	// If empty, it will use the content router's peer ID (self). `closerThan` (optional) forces resulting records to be closer to `PeerID` than to `closerThan`. `count` specifies how many records to return ([1,100], with 20 as default when set to 0).
+	GetClosestPeers(ctx context.Context, peerID, closerThan peer.ID, count int) (iter.ResultIter[*types.PeerRecord], error)
 }
 
 type contentRouter struct {
@@ -44,6 +47,7 @@ var (
 	_ routing.ValueStore               = (*contentRouter)(nil)
 	_ routinghelpers.ProvideManyRouter = (*contentRouter)(nil)
 	_ routinghelpers.ReadyAbleRouter   = (*contentRouter)(nil)
+	_ routinghelpers.DHTRouter         = (*contentRouter)(nil)
 )
 
 type option func(c *contentRouter)
@@ -302,4 +306,46 @@ func (c *contentRouter) SearchValue(ctx context.Context, key string, opts ...rou
 	}()
 
 	return ch, nil
+}
+
+func (c *contentRouter) GetClosestPeers(ctx context.Context, pid, closerThan peer.ID, count int) (<-chan peer.AddrInfo, error) {
+	iter, err := c.client.GetClosestPeers(ctx, pid, closerThan, count)
+	if err != nil {
+		return nil, err
+	}
+	defer iter.Close()
+
+	infos := make(chan peer.AddrInfo)
+	go func() {
+		defer close(infos)
+		for iter.Next() {
+			res := iter.Val()
+			if res.Err != nil {
+				logger.Warnf("error iterating peer responses: %s", res.Err)
+				continue
+			}
+
+			var addrs []multiaddr.Multiaddr
+			for _, a := range res.Val.Addrs {
+				addrs = append(addrs, a.Multiaddr)
+			}
+
+			// If there are no addresses there's nothing of value to return
+			if len(addrs) == 0 {
+				continue
+			}
+
+			select {
+			case <-ctx.Done():
+				logger.Warnf("aborting GetClosestPeers: %s", ctx.Err())
+				return
+			case infos <- peer.AddrInfo{
+				ID:    *res.Val.ID,
+				Addrs: addrs,
+			}:
+			}
+		}
+	}()
+
+	return infos, nil
 }
