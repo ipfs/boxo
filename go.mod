@@ -40,7 +40,7 @@ require (
 	github.com/libp2p/go-libp2p v0.43.0
 	github.com/libp2p/go-libp2p-kad-dht v0.34.0
 	github.com/libp2p/go-libp2p-record v0.3.1
-	github.com/libp2p/go-libp2p-routing-helpers v0.7.5
+	github.com/libp2p/go-libp2p-routing-helpers v0.7.6-0.20250903125449-17ee6fbf872c
 	github.com/libp2p/go-libp2p-testing v0.12.0
 	github.com/libp2p/go-msgio v0.3.0
 	github.com/miekg/dns v1.1.68

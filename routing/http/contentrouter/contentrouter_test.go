@@ -53,6 +53,11 @@ func (m *mockClient) PutIPNS(ctx context.Context, name ipns.Name, record *ipns.R
 	return args.Error(0)
 }
 
+func (m *mockClient) GetClosestPeers(ctx context.Context, peerID, closerThan peer.ID, count int) (iter.ResultIter[*types.PeerRecord], error) {
+	args := m.Called(ctx, peerID, closerThan, count)
+	return args.Get(0).(iter.ResultIter[*types.PeerRecord]), args.Error(1)
+}
+
 func TestProvide(t *testing.T) {
 	for _, c := range []struct {
 		name     string
@@ -256,6 +261,108 @@ func TestFindPeerNoPeer(t *testing.T) {
 
 	_, err := crc.FindPeer(ctx, p1)
 	require.ErrorIs(t, err, routing.ErrNotFound)
+}
+
+func TestGetClosestPeers(t *testing.T) {
+	t.Run("returns a channel and can read all results", func(t *testing.T) {
+		ctx := context.Background()
+		client := &mockClient{}
+		crc := NewContentRoutingClient(client)
+
+		peerID := peer.ID("test-peer")
+		closerThan := peer.ID("test-peer-2")
+		count := 2
+
+		// Mock response with two peer records
+		peer1 := peer.ID("peer1")
+		peer2 := peer.ID("peer2")
+		addr1 := multiaddr.StringCast("/ip4/1.2.3.4/tcp/1234")
+		addr2 := multiaddr.StringCast("/ip4/5.6.7.8/tcp/5678")
+		addrs1 := []types.Multiaddr{{Multiaddr: addr1}}
+		addrs2 := []types.Multiaddr{{Multiaddr: addr2}}
+		peerRec1 := &types.PeerRecord{
+			Schema:    types.SchemaPeer,
+			ID:        &peer1,
+			Addrs:     addrs1,
+			Protocols: []string{"transport-bitswap"},
+		}
+		peerRec2 := &types.PeerRecord{
+			Schema:    types.SchemaPeer,
+			ID:        &peer2,
+			Addrs:     addrs2,
+			Protocols: []string{"transport-bitswap"},
+		}
+
+		peerIter := iter.ToResultIter[*types.PeerRecord](iter.FromSlice([]*types.PeerRecord{peerRec1, peerRec2}))
+
+		client.On("GetClosestPeers", ctx, peerID, closerThan, count).Return(peerIter, nil)
+
+		infos, err := crc.GetClosestPeers(ctx, peerID, closerThan, count)
+		require.NoError(t, err)
+
+		var actual []peer.AddrInfo
+		for info := range infos {
+			actual = append(actual, info)
+		}
+
+		expected := []peer.AddrInfo{
+			{ID: peer1, Addrs: []multiaddr.Multiaddr{addr1}},
+			{ID: peer2, Addrs: []multiaddr.Multiaddr{addr2}},
+		}
+
+		assert.Equal(t, expected, actual)
+	})
+
+	t.Run("returns no results if addrs is empty", func(t *testing.T) {
+		ctx := context.Background()
+		client := &mockClient{}
+		crc := NewContentRoutingClient(client)
+
+		peerID := peer.ID("test-peer")
+		closerThan := peer.ID("closer-than")
+		count := 1
+
+		peer1 := peer.ID("peer1")
+		peerRec1 := &types.PeerRecord{
+			Schema:    types.SchemaPeer,
+			ID:        &peer1,
+			Protocols: []string{"transport-bitswap"},
+			// no addresses
+		}
+
+		// Mock response with an empty iterator
+		peerIter := iter.ToResultIter[*types.PeerRecord](iter.FromSlice([]*types.PeerRecord{peerRec1}))
+
+		client.On("GetClosestPeers", ctx, peerID, closerThan, count).Return(peerIter, nil)
+
+		infos, err := crc.GetClosestPeers(ctx, peerID, closerThan, count)
+		require.NoError(t, err)
+
+		var actual []peer.AddrInfo
+		for info := range infos {
+			actual = append(actual, info)
+		}
+
+		assert.Empty(t, actual)
+	})
+
+	t.Run("returns an error if call errors", func(t *testing.T) {
+		ctx := context.Background()
+		client := &mockClient{}
+		crc := NewContentRoutingClient(client)
+
+		peerID := peer.ID("test-peer")
+		closerThan := peer.ID("closer-than")
+		count := 1
+
+		// Mock error response
+		peerIter := iter.ToResultIter[*types.PeerRecord](iter.FromSlice([]*types.PeerRecord{}))
+		client.On("GetClosestPeers", ctx, peerID, closerThan, count).Return(peerIter, assert.AnError)
+
+		infos, err := crc.GetClosestPeers(ctx, peerID, closerThan, count)
+		require.ErrorIs(t, err, assert.AnError)
+		assert.Nil(t, infos)
+	})
 }
 
 func makeName(t *testing.T) (crypto.PrivKey, ipns.Name) {

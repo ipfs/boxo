@@ -631,9 +631,7 @@ func (s *server) getClosestPeers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var (
-		handlerFunc func(w http.ResponseWriter, provIter iter.ResultIter[*types.PeerRecord])
-	)
+	var handlerFunc func(w http.ResponseWriter, provIter iter.ResultIter[*types.PeerRecord])
 
 	if mediaType == mediaTypeNDJSON {
 		handlerFunc = s.getClosestPeersNDJSON

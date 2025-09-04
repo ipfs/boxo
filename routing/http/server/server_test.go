@@ -713,7 +713,7 @@ func TestGetClosestPeers(t *testing.T) {
 		requireCloseToNow(t, resp.Header.Get("Last-Modified"))
 	})
 
-	t.Run("GET /routing/v1/dht/closest/peers/{cid-libp2p-key-peer-id}?count=? is bewteen[0-100] per spec", func(t *testing.T) {
+	t.Run("GET /routing/v1/dht/closest/peers/{cid-libp2p-key-peer-id}?count=? is between[0-100] per spec", func(t *testing.T) {
 		t.Parallel()
 
 		_, pid := makeEd25519PeerID(t)
