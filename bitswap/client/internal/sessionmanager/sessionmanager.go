@@ -84,7 +84,7 @@ func New(sessionFactory SessionFactory, sessionInterestManager *bssim.SessionInt
 func (sm *SessionManager) NewSession(provSearchDelay time.Duration, rebroadcastDelay delay.D) Session {
 	id := sm.GetNextSessionID()
 
-	ctx, span := internal.StartSpan(context.Background(), "SessionManager.NewSession", trace.WithAttributes(attribute.String("ID", strconv.FormatUint(id, 10))))
+	_, span := internal.StartSpan(context.Background(), "SessionManager.NewSession", trace.WithAttributes(attribute.String("ID", strconv.FormatUint(id, 10))))
 	defer span.End()
 
 	pm := sm.peerManagerFactory(id)

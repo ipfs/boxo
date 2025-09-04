@@ -24,7 +24,6 @@ import (
 	"github.com/ipfs/boxo/bitswap/tracer"
 	blockstore "github.com/ipfs/boxo/blockstore"
 	exchange "github.com/ipfs/boxo/exchange"
-	"github.com/ipfs/boxo/retrieval"
 	rpqm "github.com/ipfs/boxo/routing/providerquerymanager"
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
