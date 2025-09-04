@@ -12,9 +12,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestRetrievalState(t *testing.T) {
-	t.Run("NewRetrievalState initializes correctly", func(t *testing.T) {
-		rs := NewRetrievalState()
+func TestState(t *testing.T) {
+	t.Run("NewState initializes correctly", func(t *testing.T) {
+		rs := NewState()
 		assert.NotNil(t, rs)
 		assert.Equal(t, PhaseInitializing, rs.GetPhase())
 		assert.Equal(t, int32(0), rs.ProvidersFound.Load())
@@ -24,7 +24,7 @@ func TestRetrievalState(t *testing.T) {
 	})
 
 	t.Run("SetPhase updates phase correctly", func(t *testing.T) {
-		rs := NewRetrievalState()
+		rs := NewState()
 
 		rs.SetPhase(PhasePathResolution)
 		assert.Equal(t, PhasePathResolution, rs.GetPhase())
@@ -40,7 +40,7 @@ func TestRetrievalState(t *testing.T) {
 	})
 
 	t.Run("SetPhase enforces monotonic progression", func(t *testing.T) {
-		rs := NewRetrievalState()
+		rs := NewState()
 
 		// Start at initializing
 		assert.Equal(t, PhaseInitializing, rs.GetPhase())
@@ -67,7 +67,7 @@ func TestRetrievalState(t *testing.T) {
 	})
 
 	t.Run("Provider stats are tracked correctly", func(t *testing.T) {
-		rs := NewRetrievalState()
+		rs := NewState()
 
 		rs.ProvidersFound.Add(3)
 		assert.Equal(t, int32(3), rs.ProvidersFound.Load())
@@ -80,7 +80,7 @@ func TestRetrievalState(t *testing.T) {
 	})
 
 	t.Run("Failed providers are tracked up to limit", func(t *testing.T) {
-		rs := NewRetrievalState()
+		rs := NewState()
 
 		// Create real peer IDs for testing
 		peerIDs := make([]peer.ID, 5)
@@ -103,19 +103,19 @@ func TestRetrievalState(t *testing.T) {
 	t.Run("Summary generates correct messages", func(t *testing.T) {
 		tests := []struct {
 			name              string
-			setup             func(*RetrievalState)
+			setup             func(*State)
 			expectedSubstring string
 		}{
 			{
 				name: "No providers found",
-				setup: func(rs *RetrievalState) {
+				setup: func(rs *State) {
 					rs.SetPhase(PhaseProviderDiscovery)
 				},
 				expectedSubstring: "no providers found for the CID",
 			},
 			{
 				name: "Providers found but none contacted",
-				setup: func(rs *RetrievalState) {
+				setup: func(rs *State) {
 					rs.ProvidersFound.Store(5)
 					rs.SetPhase(PhaseConnecting)
 				},
@@ -123,7 +123,7 @@ func TestRetrievalState(t *testing.T) {
 			},
 			{
 				name: "Providers attempted but none reachable",
-				setup: func(rs *RetrievalState) {
+				setup: func(rs *State) {
 					rs.ProvidersFound.Store(5)
 					rs.ProvidersAttempted.Store(3)
 					rs.SetPhase(PhaseConnecting)
@@ -132,7 +132,7 @@ func TestRetrievalState(t *testing.T) {
 			},
 			{
 				name: "Providers attempted but none reachable with failed peers",
-				setup: func(rs *RetrievalState) {
+				setup: func(rs *State) {
 					rs.ProvidersFound.Store(5)
 					rs.ProvidersAttempted.Store(3)
 					// Store peer IDs so we can verify they appear in the message
@@ -152,7 +152,7 @@ func TestRetrievalState(t *testing.T) {
 			},
 			{
 				name: "Providers connected but didn't return content",
-				setup: func(rs *RetrievalState) {
+				setup: func(rs *State) {
 					rs.ProvidersFound.Store(5)
 					rs.ProvidersAttempted.Store(3)
 					rs.ProvidersConnected.Store(2)
@@ -165,7 +165,7 @@ func TestRetrievalState(t *testing.T) {
 			},
 			{
 				name: "Timeout with successful connections",
-				setup: func(rs *RetrievalState) {
+				setup: func(rs *State) {
 					rs.ProvidersFound.Store(5)
 					rs.ProvidersAttempted.Store(3)
 					rs.ProvidersConnected.Store(2)
@@ -177,7 +177,7 @@ func TestRetrievalState(t *testing.T) {
 
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
-				rs := NewRetrievalState()
+				rs := NewState()
 				tt.setup(rs)
 				summary := rs.Summary()
 				assert.Contains(t, summary, tt.expectedSubstring)
@@ -218,7 +218,7 @@ func TestRetrievalState(t *testing.T) {
 	})
 
 	t.Run("Summary includes failed peer IDs", func(t *testing.T) {
-		rs := NewRetrievalState()
+		rs := NewState()
 		rs.ProvidersFound.Store(5)
 		rs.ProvidersAttempted.Store(3)
 		rs.ProvidersConnected.Store(2)
@@ -241,7 +241,7 @@ func TestRetrievalState(t *testing.T) {
 	})
 
 	t.Run("SetPhase is thread-safe and maintains monotonic ordering", func(t *testing.T) {
-		rs := NewRetrievalState()
+		rs := NewState()
 		stages := []RetrievalPhase{
 			PhasePathResolution,
 			PhaseProviderDiscovery,
@@ -276,7 +276,7 @@ func TestRetrievalState(t *testing.T) {
 func TestErrorWithState(t *testing.T) {
 	t.Run("ErrorWithState formats correctly - no providers", func(t *testing.T) {
 		baseErr := errors.New("block not found")
-		rs := NewRetrievalState()
+		rs := NewState()
 		rs.SetPhase(PhaseProviderDiscovery)
 
 		ctx := context.Background()
@@ -290,7 +290,7 @@ func TestErrorWithState(t *testing.T) {
 
 	t.Run("ErrorWithState formats correctly - providers found but none contacted", func(t *testing.T) {
 		baseErr := errors.New("block not found")
-		rs := NewRetrievalState()
+		rs := NewState()
 		rs.ProvidersFound.Store(5)
 		rs.SetPhase(PhaseConnecting)
 
@@ -305,7 +305,7 @@ func TestErrorWithState(t *testing.T) {
 
 	t.Run("ErrorWithState formats correctly - providers attempted but none reachable", func(t *testing.T) {
 		baseErr := errors.New("block not found")
-		rs := NewRetrievalState()
+		rs := NewState()
 		rs.ProvidersFound.Store(3)
 		rs.ProvidersAttempted.Store(2)
 		rs.SetPhase(PhaseConnecting)
@@ -321,7 +321,7 @@ func TestErrorWithState(t *testing.T) {
 
 	t.Run("ErrorWithState formats correctly - providers connected but didn't return content", func(t *testing.T) {
 		baseErr := errors.New("timeout")
-		rs := NewRetrievalState()
+		rs := NewState()
 		rs.ProvidersFound.Store(5)
 		rs.ProvidersAttempted.Store(3)
 		rs.ProvidersConnected.Store(2)
@@ -338,7 +338,7 @@ func TestErrorWithState(t *testing.T) {
 
 	t.Run("ErrorWithState formats correctly - with failed peers", func(t *testing.T) {
 		baseErr := errors.New("connection failed")
-		rs := NewRetrievalState()
+		rs := NewState()
 		rs.ProvidersFound.Store(3)
 		rs.ProvidersAttempted.Store(3)
 		rs.ProvidersConnected.Store(1)
@@ -363,7 +363,7 @@ func TestErrorWithState(t *testing.T) {
 
 	t.Run("ErrorWithState formats correctly - path resolution phase", func(t *testing.T) {
 		baseErr := errors.New("failed to resolve")
-		rs := NewRetrievalState()
+		rs := NewState()
 		rs.SetPhase(PhasePathResolution)
 
 		ctx := context.Background()
@@ -377,7 +377,7 @@ func TestErrorWithState(t *testing.T) {
 
 	t.Run("ErrorWithState formats correctly - initializing phase", func(t *testing.T) {
 		baseErr := errors.New("not started")
-		rs := NewRetrievalState()
+		rs := NewState()
 		// Phase is PhaseInitializing by default
 
 		ctx := context.Background()
@@ -391,7 +391,7 @@ func TestErrorWithState(t *testing.T) {
 
 	t.Run("ErrorWithState unwraps correctly", func(t *testing.T) {
 		baseErr := errors.New("base error")
-		rs := NewRetrievalState()
+		rs := NewState()
 
 		ctx := context.Background()
 		ctx = context.WithValue(ctx, ContextKey, rs)
@@ -406,7 +406,7 @@ func TestErrorWithState(t *testing.T) {
 
 	t.Run("ErrorWithState type extraction with errors.As", func(t *testing.T) {
 		baseErr := errors.New("base error")
-		rs := NewRetrievalState()
+		rs := NewState()
 
 		ctx := context.Background()
 		ctx = context.WithValue(ctx, ContextKey, rs)
@@ -425,8 +425,8 @@ func TestErrorWithState(t *testing.T) {
 		assert.False(t, errors.Is(err1, otherErr), "Should not match unrelated errors")
 	})
 
-	t.Run("ErrorWithState RetrievalState getter works", func(t *testing.T) {
-		rs := NewRetrievalState()
+	t.Run("ErrorWithState State getter works", func(t *testing.T) {
+		rs := NewState()
 		rs.ProvidersFound.Store(5)
 
 		ctx := context.Background()
@@ -436,7 +436,7 @@ func TestErrorWithState(t *testing.T) {
 		var err *ErrorWithState
 		require.True(t, errors.As(wrappedErr, &err))
 
-		retrievedState := err.RetrievalState()
+		retrievedState := err.State()
 		assert.Equal(t, rs, retrievedState)
 		assert.Equal(t, int32(5), retrievedState.ProvidersFound.Load())
 	})
@@ -453,7 +453,7 @@ func TestErrorWithState(t *testing.T) {
 		var errWithState *ErrorWithState
 		require.True(t, errors.As(wrappedErr, &errWithState))
 		assert.Equal(t, baseErr, errors.Unwrap(errWithState))
-		assert.Equal(t, rs, errWithState.RetrievalState())
+		assert.Equal(t, rs, errWithState.State())
 
 		// Check formatting
 		assert.Contains(t, wrappedErr.Error(), "connection failed: retrieval:")
@@ -521,7 +521,7 @@ func TestErrorWithState(t *testing.T) {
 		require.True(t, errors.As(wrappedErr, &errWithState))
 
 		// Access state through the getter
-		state := errWithState.RetrievalState()
+		state := errWithState.State()
 		assert.Equal(t, int32(2), state.ProvidersFound.Load())
 		assert.Len(t, state.GetFailedProviders(), 1)
 	})

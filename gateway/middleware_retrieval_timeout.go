@@ -32,7 +32,7 @@ func withRetrievalTimeout(handler http.Handler, timeout time.Duration, c *Config
 	}
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Add RetrievalState to request context for tracking provider diagnostics
+		// Add retrieval.State to request context for tracking provider diagnostics
 		ctx, retrievalState := retrieval.ContextWithState(r.Context())
 		r = r.WithContext(ctx)
 
