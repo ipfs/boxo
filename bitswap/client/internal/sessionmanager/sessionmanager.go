@@ -40,7 +40,7 @@ type SessionFactory func(
 	provSearchDelay time.Duration,
 	rebroadcastDelay delay.D,
 	self peer.ID,
-	retrievalState *retrieval.RetrievalState) Session
+	retrievalState *retrieval.State) Session
 
 // PeerManagerFactory generates a new peer manager for a session.
 type PeerManagerFactory func(id uint64) bssession.SessionPeerManager
@@ -83,7 +83,7 @@ func New(sessionFactory SessionFactory, sessionInterestManager *bssim.SessionInt
 }
 
 // NewSession initializes a session and adds to the session manager.
-func (sm *SessionManager) NewSession(provSearchDelay time.Duration, rebroadcastDelay delay.D, retrievalState *retrieval.RetrievalState) Session {
+func (sm *SessionManager) NewSession(provSearchDelay time.Duration, rebroadcastDelay delay.D, retrievalState *retrieval.State) Session {
 	id := sm.GetNextSessionID()
 
 	_, span := internal.StartSpan(context.Background(), "SessionManager.NewSession", trace.WithAttributes(attribute.String("ID", strconv.FormatUint(id, 10))))

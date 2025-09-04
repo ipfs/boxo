@@ -310,7 +310,7 @@ func New(parent context.Context, network bsnet.BitSwapNetwork, providerFinder ro
 		provSearchDelay time.Duration,
 		rebroadcastDelay delay.D,
 		self peer.ID,
-		retrievalState *retrieval.RetrievalState,
+		retrievalState *retrieval.State,
 	) bssm.Session {
 		// careful when bs.pqm is nil. Since we are type-casting it
 		// into routing.ContentDiscovery when passing it, it will become

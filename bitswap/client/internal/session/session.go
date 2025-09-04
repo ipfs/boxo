@@ -141,7 +141,7 @@ func New(
 	periodicSearchDelay delay.D,
 	self peer.ID,
 	havesReceivedGauge bspm.Gauge,
-	retrievalState *retrieval.RetrievalState,
+	retrievalState *retrieval.State,
 ) *Session {
 	ctx, cancel := context.WithCancel(context.Background())
 

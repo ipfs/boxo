@@ -95,7 +95,7 @@ func sessionFactory(
 	provSearchDelay time.Duration,
 	rebroadcastDelay delay.D,
 	self peer.ID,
-	retrievalState *retrieval.RetrievalState,
+	retrievalState *retrieval.State,
 ) Session {
 	fs := &fakeSession{
 		id:    id,
