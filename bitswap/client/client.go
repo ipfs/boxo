@@ -446,7 +446,7 @@ func (bs *Client) GetBlocks(ctx context.Context, keys []cid.Cid) (<-chan blocks.
 	// Temporary session closed indepentendly of cancellation ctx.
 	sessCtx, cancelSession := context.WithCancel(context.Background())
 
-	// Preserve RetrievalState from the original request context if present
+	// Preserve retrieval.State from the original request context if present
 	if retrievalState := retrieval.StateFromContext(ctx); retrievalState != nil {
 		sessCtx = context.WithValue(sessCtx, retrieval.ContextKey, retrievalState)
 	}

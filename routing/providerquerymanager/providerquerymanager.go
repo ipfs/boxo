@@ -508,7 +508,7 @@ func (npqm *newProvideQueryMessage) handle(pqm *ProviderQueryManager) {
 		span.AddEvent("NewQuery", trace.WithAttributes(attribute.Stringer("cid", npqm.k)))
 		ctx = trace.ContextWithSpan(ctx, span)
 
-		// Preserve RetrievalState from the original request context if present
+		// Preserve retrieval.State from the original request context if present
 		if retrievalState := retrieval.StateFromContext(npqm.ctx); retrievalState != nil {
 			ctx = context.WithValue(ctx, retrieval.ContextKey, retrievalState)
 		}

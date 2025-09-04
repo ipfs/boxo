@@ -18,9 +18,9 @@ import (
 
 type contextKey string
 
-// ContextKey is the key used to store RetrievalState in a context.Context.
-// This can be used directly with context.WithValue if needed, though the
-// ContextWithState and StateFromContext functions are preferred.
+// ContextKey is the key used to store State in a context.Context. This can be
+// used directly with context.WithValue if needed, though the ContextWithState
+// and StateFromContext functions are preferred.
 const ContextKey contextKey = "boxo-retrieval-state"
 
 // MaxFailedProvidersToTrack limits the number of failed provider peer IDs
@@ -65,11 +65,11 @@ func (p RetrievalPhase) String() string {
 	}
 }
 
-// RetrievalState tracks diagnostic information about IPFS content retrieval operations.
-// It is safe for concurrent use and maintains monotonic stage progression.
-// Use ContextWithState to add tracking to a context, and StateFromContext
-// to retrieve the state for updates or inspection
-type RetrievalState struct {
+// State tracks diagnostic information about IPFS content retrieval operations.
+// It is safe for concurrent use and maintains monotonic stage progression. Use
+// ContextWithState to add tracking to a context, and StateFromContext to
+// retrieve the state for updates or inspection
+type State struct {
 	// ProvidersFound tracks the number of providers discovered for the content.
 	ProvidersFound atomic.Int32
 	// ProvidersAttempted tracks the number of providers we tried to connect to.
@@ -86,10 +86,10 @@ type RetrievalState struct {
 	failedProviders []peer.ID
 }
 
-// NewRetrievalState creates a new RetrievalState initialized to PhaseInitializing.
-// The returned state is safe for concurrent use.
-func NewRetrievalState() *RetrievalState {
-	rs := &RetrievalState{}
+// NewState creates a new State initialized to PhaseInitializing. The returned
+// state is safe for concurrent use.
+func NewState() *State {
+	rs := &State{}
 	rs.phase.Store(int32(PhaseInitializing))
 	return rs
 }
@@ -98,7 +98,7 @@ func NewRetrievalState() *RetrievalState {
 // The phase progression is monotonic - phases can only move forward, never backward.
 // If the provided phase is less than or equal to the current phase, this is a no-op.
 // This method is safe for concurrent use.
-func (rs *RetrievalState) SetPhase(phase RetrievalPhase) {
+func (rs *State) SetPhase(phase RetrievalPhase) {
 	newPhase := int32(phase)
 	for {
 		current := rs.phase.Load()
@@ -116,14 +116,14 @@ func (rs *RetrievalState) SetPhase(phase RetrievalPhase) {
 
 // GetPhase returns the current retrieval phase.
 // This method is safe for concurrent use.
-func (rs *RetrievalState) GetPhase() RetrievalPhase {
+func (rs *State) GetPhase() RetrievalPhase {
 	return RetrievalPhase(rs.phase.Load())
 }
 
 // AddFailedProvider records a provider peer ID that failed to deliver the requested content.
 // Only the first MaxFailedProvidersToTrack providers are kept to prevent unbounded memory growth.
 // This method is safe for concurrent use.
-func (rs *RetrievalState) AddFailedProvider(peerID peer.ID) {
+func (rs *State) AddFailedProvider(peerID peer.ID) {
 	rs.mu.Lock()
 	defer rs.mu.Unlock()
 	if len(rs.failedProviders) < MaxFailedProvidersToTrack {
@@ -132,7 +132,7 @@ func (rs *RetrievalState) AddFailedProvider(peerID peer.ID) {
 }
 
 // GetFailedProviders returns the list of failed providers
-func (rs *RetrievalState) GetFailedProviders() []peer.ID {
+func (rs *State) GetFailedProviders() []peer.ID {
 	rs.mu.RLock()
 	defer rs.mu.RUnlock()
 	return slices.Clone(rs.failedProviders)
@@ -140,7 +140,7 @@ func (rs *RetrievalState) GetFailedProviders() []peer.ID {
 
 // Summary generates a human-readable summary of the retrieval state,
 // useful for timeout error messages and diagnostics.
-func (rs *RetrievalState) Summary() string {
+func (rs *State) Summary() string {
 	found := rs.ProvidersFound.Load()
 	attempted := rs.ProvidersAttempted.Load()
 	connected := rs.ProvidersConnected.Load()
@@ -179,30 +179,30 @@ func (rs *RetrievalState) Summary() string {
 		found, connected, phase.String())
 }
 
-// ContextWithState ensures a RetrievalState exists in the context.
-// If the context already contains a RetrievalState, it returns the existing one.
-// Otherwise, it creates a new RetrievalState and adds it to the context.
-// This function is idempotent and safe to call multiple times.
+// ContextWithState ensures a State exists in the context. If the context
+// already contains a State, it returns the existing one. Otherwise, it creates
+// a new State and adds it to the context. This function is idempotent and safe
+// to call multiple times.
 //
 // Example:
 //
 //	ctx, retrievalState := retrieval.ContextWithState(ctx)
 //	// Use retrievalState to track progress
 //	retrievalState.SetStage(retrieval.StageProviderDiscovery)
-func ContextWithState(ctx context.Context) (context.Context, *RetrievalState) {
-	// Check if context already has a RetrievalState
+func ContextWithState(ctx context.Context) (context.Context, *State) {
+	// Check if context already has a State
 	if existing := StateFromContext(ctx); existing != nil {
 		return ctx, existing
 	}
 	// Create new one if not present
-	rs := NewRetrievalState()
+	rs := NewState()
 	return context.WithValue(ctx, ContextKey, rs), rs
 }
 
-// StateFromContext retrieves the RetrievalState from the context.
-// Returns nil if no RetrievalState is present in the context.
-// This function is typically used by subsystems to check if retrieval tracking
-// is enabled and to update the state if it is.
+// StateFromContext retrieves the State from the context. Returns nil if no
+// State is present in the context. This function is typically used by
+// subsystems to check if retrieval tracking is enabled and to update the state
+// if it is.
 //
 // Example:
 //
@@ -210,9 +210,9 @@ func ContextWithState(ctx context.Context) (context.Context, *RetrievalState) {
 //	    retrievalState.SetStage(retrieval.StageBlockRetrieval)
 //	    retrievalState.ProvidersFound.Add(1)
 //	}
-func StateFromContext(ctx context.Context) *RetrievalState {
+func StateFromContext(ctx context.Context) *State {
 	if v := ctx.Value(ContextKey); v != nil {
-		return v.(*RetrievalState)
+		return v.(*State)
 	}
 	return nil
 }
@@ -232,7 +232,7 @@ type ErrorWithState struct {
 	// err is the underlying error being wrapped.
 	err error
 	// state contains the retrieval diagnostic information.
-	state *RetrievalState
+	state *State
 }
 
 // Error returns the error message with retrieval diagnostics appended.
@@ -259,9 +259,9 @@ func (e *ErrorWithState) Unwrap() error {
 	return e.err
 }
 
-// RetrievalState returns the retrieval state associated with this error.
-// This allows callers to access detailed diagnostics for custom handling.
-func (e *ErrorWithState) RetrievalState() *RetrievalState {
+// State returns the retrieval state associated with this error. This allows
+// callers to access detailed diagnostics for custom handling.
+func (e *ErrorWithState) State() *State {
 	return e.state
 }
 
@@ -288,7 +288,7 @@ func (e *ErrorWithState) RetrievalState() *RetrievalState {
 //
 //	var errWithState *retrieval.ErrorWithState
 //	if errors.As(err, &errWithState) {
-//	    state := errWithState.RetrievalState()
+//	    state := errWithState.State()
 //	    if state.ProvidersFound.Load() == 0 {
 //	        // Handle "content not in network" case specially
 //	    }
