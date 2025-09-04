@@ -339,7 +339,7 @@ func (pwm *peerWantManager) sendWants(p peer.ID, wantBlocks []cid.Cid, wantHaves
 	pws, ok := pwm.peerWants[p]
 	if !ok {
 		// In practice this should never happen
-		log.Errorf("sendWants() called with peer %s but peer not found in peerWantManager", string(p))
+		log.Errorf("sendWants() called with peer %s but peer not found in peerWantManager", p)
 		return
 	}
 
@@ -526,7 +526,7 @@ func (pwm *peerWantManager) wantPeerCounts(c cid.Cid) wantPeerCnts {
 	for p := range pwm.wantPeers[c] {
 		pws, ok := pwm.peerWants[p]
 		if !ok {
-			log.Errorf("reverse index has extra peer %s for key %s in peerWantManager", string(p), c)
+			log.Errorf("reverse index has extra peer %s for key %s in peerWantManager", p, c)
 			continue
 		}
 
