@@ -439,6 +439,10 @@ func (bs *Client) GetBlock(ctx context.Context, k cid.Cid) (blocks.Block, error)
 //
 // When the provided context is canceled, GetBlocks will stop returning blocks
 // and the returned channel will be closed.
+//
+// This method creates a temporary internal session that is automatically cleaned up
+// when the operation completes. Any retrieval.State attached to the context will be
+// preserved and used for diagnostic tracking throughout the retrieval process.
 func (bs *Client) GetBlocks(ctx context.Context, keys []cid.Cid) (<-chan blocks.Block, error) {
 	ctx, span := internal.StartSpan(ctx, "GetBlocks", trace.WithAttributes(attribute.Int("NumKeys", len(keys))))
 	defer span.End()
@@ -702,6 +706,15 @@ func (bs *Client) IsOnline() bool {
 // method, but the session will use the fact that the requests are related to
 // be more efficient in its requests to peers. If you are using a session
 // from blockservice, it will create a bitswap session automatically.
+//
+// The context is used for:
+//   - Automatic session cleanup: when the context is canceled, the session will be closed
+//   - Retrieval state tracking: any retrieval.State attached to the context will be
+//     preserved in the session for diagnostic tracking of provider discovery and data retrieval
+//
+// Note: The session's lifetime is independent of the context. The session maintains its
+// own internal context for operations. The automatic cleanup via context cancellation
+// ensures proper resource management.
 func (bs *Client) NewSession(ctx context.Context) exchange.Fetcher {
 	ctx, span := internal.StartSpan(ctx, "NewSession")
 	defer span.End()

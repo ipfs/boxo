@@ -94,6 +94,11 @@ type op struct {
 // Session holds state for an individual bitswap transfer operation.
 // This allows bitswap to make smarter decisions about who to send wantlist
 // info to, and who to request blocks from.
+//
+// Sessions manage their own lifecycle independently of any request contexts.
+// Each session maintains an internal context for its operations and must be
+// explicitly closed via the Close() method when no longer needed. The session's
+// internal context is used for provider discovery and other long-running operations.
 type Session struct {
 	// dependencies
 	ctx            context.Context
@@ -128,6 +133,16 @@ type Session struct {
 }
 
 // New creates a new bitswap session.
+//
+// The session maintains its own internal context for operations and is not tied to any
+// external context lifecycle. The caller MUST call Close() when the session is no longer
+// needed to ensure proper cleanup. Note: When sessions are created via Client.NewSession(ctx),
+// automatic cleanup via context.AfterFunc is provided.
+//
+// The retrievalState parameter, if provided, enables diagnostic tracking of the retrieval
+// process. It will be attached to the session's internal context and used to track
+// provider discovery, connection attempts, and data retrieval phases. This is particularly
+// useful for debugging timeout errors and understanding retrieval performance.
 func New(
 	sm SessionManager,
 	id uint64,
@@ -180,6 +195,13 @@ func (s *Session) ID() uint64 {
 	return s.id
 }
 
+// Close terminates the session and cleans up its resources.
+// This method MUST be called when the session is no longer needed to avoid resource leaks.
+// After calling Close, the session should not be used anymore.
+// Note: Session lifecycle is independent of the context used to create
+// requests - canceling a request context does not close the session.
+// When context-based automation is desired, Client.NewSession(ctx) uses
+// context.AfterFunc to automatically close sessions when the context is canceled.
 func (s *Session) Close() {
 	s.cancel()
 }

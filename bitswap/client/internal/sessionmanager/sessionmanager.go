@@ -20,7 +20,9 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-// Session is a session that is managed by the session manager
+// Session represents a bitswap session managed by the SessionManager.
+// Sessions have their own lifecycle independent of request contexts and
+// must be explicitly closed via the Close() method when no longer needed.
 type Session interface {
 	exchange.Fetcher
 	ID() uint64
@@ -83,6 +85,16 @@ func New(sessionFactory SessionFactory, sessionInterestManager *bssim.SessionInt
 }
 
 // NewSession initializes a session and adds to the session manager.
+//
+// The session is created with its own internal context and lifecycle management.
+// The retrievalState parameter, if provided, will be attached to the session's
+// internal context to enable diagnostic tracking of the retrieval process. This
+// includes tracking provider discovery attempts, peer connections, and data
+// retrieval phases, which is particularly useful for debugging timeout errors.
+//
+// The returned Session must be closed via its Close() method when no longer needed.
+// Note: When sessions are created via Client.NewSession(ctx), automatic cleanup
+// via context.AfterFunc is provided.
 func (sm *SessionManager) NewSession(provSearchDelay time.Duration, rebroadcastDelay delay.D, retrievalState *retrieval.State) Session {
 	id := sm.GetNextSessionID()
 
