@@ -20,7 +20,7 @@ The following emojis are used to highlight certain changes:
 
 ### Changed
 
-- `bitswap/client`: The `RebroadcastDelay` option now takes a `time.Duration` value. This is a potentially BREAKING CHANGE. The time varying functionality was never of `delay.Delay` was never used, so was replaced with a fixed duration value.
+- 🛠 `bitswap/client`: The `RebroadcastDelay` option now takes a `time.Duration` value. This is a potentially BREAKING CHANGE. The time-varying functionality of `delay.Delay` was never used, so it was replaced with a fixed duration value. This also removes the `github.com/ipfs/go-ipfs-delay` dependency.
 
 
 ### Removed
