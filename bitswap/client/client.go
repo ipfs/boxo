@@ -712,9 +712,8 @@ func (bs *Client) IsOnline() bool {
 //   - Retrieval state tracking: any retrieval.State attached to the context will be
 //     preserved in the session for diagnostic tracking of provider discovery and data retrieval
 //
-// Note: The session's lifetime is independent of the context. The session maintains its
-// own internal context for operations. The automatic cleanup via context cancellation
-// ensures proper resource management.
+// The session's lifetime is controlled by the context, and requires that the
+// context be canceled for the session to be closed.
 func (bs *Client) NewSession(ctx context.Context) exchange.Fetcher {
 	ctx, span := internal.StartSpan(ctx, "NewSession")
 	defer span.End()
