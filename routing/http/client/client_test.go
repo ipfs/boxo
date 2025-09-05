@@ -47,6 +47,11 @@ func (m *mockContentRouter) FindPeers(ctx context.Context, pid peer.ID, limit in
 	return args.Get(0).(iter.ResultIter[*types.PeerRecord]), args.Error(1)
 }
 
+func (m *mockContentRouter) GetClosestPeers(ctx context.Context, peerID, closerThan peer.ID, count int) (iter.ResultIter[*types.PeerRecord], error) {
+	args := m.Called(ctx, peerID, closerThan, count)
+	return args.Get(0).(iter.ResultIter[*types.PeerRecord]), args.Error(1)
+}
+
 func (m *mockContentRouter) GetIPNS(ctx context.Context, name ipns.Name) (*ipns.Record, error) {
 	args := m.Called(ctx, name)
 	rec, _ := args.Get(0).(*ipns.Record)
@@ -668,6 +673,146 @@ func TestClient_FindPeers(t *testing.T) {
 			}
 
 			resultIter, err := client.FindPeers(ctx, pid)
+			c.expErrContains.errContains(t, err)
+
+			results := iter.ReadAll(resultIter)
+			assert.Equal(t, c.expResult, results)
+		})
+	}
+}
+
+func TestClient_GetClosestPeers(t *testing.T) {
+	bitswapPeerRecord := makePeerRecord([]string{"transport-bitswap"})
+	httpPeerRecord := makePeerRecord([]string{"transport-ipfs-gateway-http"})
+
+	peerRecords := []iter.Result[*types.PeerRecord]{
+		{Val: &bitswapPeerRecord},
+		{Val: &httpPeerRecord},
+	}
+
+	pid := *bitswapPeerRecord.ID
+
+	cases := []struct {
+		name                    string
+		httpStatusCode          int
+		stopServer              bool
+		routerResult            []iter.Result[*types.PeerRecord]
+		routerErr               error
+		clientRequiresStreaming bool
+		serverStreamingDisabled bool
+		closerThan              peer.ID
+		count                   int
+
+		expErrContains       osErrContains
+		expResult            []iter.Result[*types.PeerRecord]
+		expStreamingResponse bool
+		expJSONResponse      bool
+	}{
+		{
+			name:                 "happy case",
+			routerResult:         peerRecords,
+			expResult:            peerRecords,
+			expStreamingResponse: true,
+		},
+		{
+			name:                    "server doesn't support streaming",
+			routerResult:            peerRecords,
+			expResult:               peerRecords,
+			serverStreamingDisabled: true,
+			expJSONResponse:         true,
+		},
+		{
+			name:                    "client requires streaming but server doesn't support it",
+			serverStreamingDisabled: true,
+			clientRequiresStreaming: true,
+			expErrContains:          osErrContains{expContains: "HTTP error with StatusCode=400: no supported content types"},
+		},
+		{
+			name:           "returns an error if there's a non-200 response",
+			httpStatusCode: 500,
+			expErrContains: osErrContains{expContains: "HTTP error with StatusCode=500"},
+		},
+		{
+			name:       "returns an error if the HTTP client returns a non-HTTP error",
+			stopServer: true,
+			expErrContains: osErrContains{
+				expContains:    "connect: connection refused",
+				expContainsWin: "connectex: No connection could be made because the target machine actively refused it.",
+			},
+		},
+		{
+			name:           "returns no providers if the HTTP server returns a 404 response",
+			httpStatusCode: 404,
+			expResult:      nil,
+		},
+		{
+			name:                 "passes count and closerThan along",
+			expStreamingResponse: true,
+			routerResult:         peerRecords,
+			expResult:            peerRecords,
+			count:                10,
+			closerThan:           pid,
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			var clientOpts []Option
+			var serverOpts []server.Option
+			var onRespReceived []func(*http.Response)
+			var onReqReceived []func(*http.Request)
+
+			if c.serverStreamingDisabled {
+				serverOpts = append(serverOpts, server.WithStreamingResultsDisabled())
+			}
+
+			if c.clientRequiresStreaming {
+				clientOpts = append(clientOpts, WithStreamResultsRequired())
+				onReqReceived = append(onReqReceived, func(r *http.Request) {
+					assert.Equal(t, mediaTypeNDJSON, r.Header.Get("Accept"))
+				})
+			}
+
+			if c.expStreamingResponse {
+				onRespReceived = append(onRespReceived, func(r *http.Response) {
+					assert.Equal(t, mediaTypeNDJSON, r.Header.Get("Content-Type"))
+				})
+			}
+
+			if c.expJSONResponse {
+				onRespReceived = append(onRespReceived, func(r *http.Response) {
+					assert.Equal(t, mediaTypeJSON, r.Header.Get("Content-Type"))
+				})
+			}
+
+			deps := makeTestDeps(t, clientOpts, serverOpts)
+
+			deps.recordingHTTPClient.f = append(deps.recordingHTTPClient.f, onRespReceived...)
+			deps.recordingHandler.f = append(deps.recordingHandler.f, onReqReceived...)
+
+			client := deps.client
+			router := deps.router
+
+			ctx, cancel := context.WithCancel(context.Background())
+			t.Cleanup(cancel)
+
+			if c.httpStatusCode != 0 {
+				deps.server.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					w.WriteHeader(c.httpStatusCode)
+				})
+			}
+
+			if c.stopServer {
+				deps.server.Close()
+			}
+
+			count := c.count
+			if count == 0 {
+				count = 20
+			}
+			routerResultIter := iter.FromSlice(c.routerResult)
+			router.On("GetClosestPeers", mock.Anything, pid, c.closerThan, count).Return(routerResultIter, c.routerErr)
+
+			resultIter, err := client.GetClosestPeers(ctx, pid, c.closerThan, c.count)
 			c.expErrContains.errContains(t, err)
 
 			results := iter.ReadAll(resultIter)
