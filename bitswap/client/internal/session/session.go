@@ -26,51 +26,54 @@ const (
 	broadcastLiveWantsLimit = 64
 )
 
-// PeerManager keeps track of which sessions are interested in which peers
-// and takes care of sending wants for the sessions
+// PeerManager keeps track of which sessions are interested in which peers and
+// takes care of sending wants for the sessions.
 type PeerManager interface {
-	// RegisterSession tells the PeerManager that the session is interested
-	// in a peer's connection state
+	// RegisterSession tells the PeerManager that the session is interested in
+	// a peer's connection state.
 	RegisterSession(peer.ID, bspm.Session)
 	// UnregisterSession tells the PeerManager that the session is no longer
-	// interested in a peer's connection state
+	// interested in a peer's connection state.
 	UnregisterSession(uint64)
-	// SendWants tells the PeerManager to send wants to the given peer
+	// SendWants tells the PeerManager to send wants to the given peer.
 	SendWants(peerId peer.ID, wantBlocks []cid.Cid, wantHaves []cid.Cid) bool
 	// BroadcastWantHaves sends want-haves to all connected peers (used for
-	// session discovery)
+	// session discovery).
 	BroadcastWantHaves([]cid.Cid)
-	// SendCancels tells the PeerManager to send cancels to all peers
+	// SendCancels tells the PeerManager to send cancels to all peers.
 	SendCancels([]cid.Cid)
 }
 
-// SessionManager manages all the sessions
+// SessionManager manages all the sessions,
 type SessionManager interface {
-	// Remove a session (called when the session shuts down)
+	// RemoveSession removes a session (called when the session shuts down).
 	RemoveSession(sesid uint64)
-	// Cancel wants (called when a call to GetBlocks() is cancelled)
+	// CancelSessionWants cancels the specified session's wants (called when a
+	// call to GetBlocks() is cancelled).
 	CancelSessionWants(sid uint64, wants []cid.Cid)
 }
 
 // SessionPeerManager keeps track of peers in the session
 type SessionPeerManager interface {
-	// PeersDiscovered indicates if any peers have been discovered yet
+	// PeersDiscovered indicates if any peers have been discovered yet,
 	PeersDiscovered() bool
-	// Shutdown the SessionPeerManager
+	// Shutdown stops the SessionPeerManager.
 	Shutdown()
-	// Adds a peer to the session, returning true if the peer is new
+	// AddPeer adds a peer to the session, returning true if the peer is new.
 	AddPeer(peer.ID) bool
-	// Removes a peer from the session, returning true if the peer existed
+	// RemovePeer removes a peer from the session, returning true if the peer
+	// existed.
 	RemovePeer(peer.ID) bool
-	// All peers in the session
+	// Peers returns all peers in the session.
 	Peers() []peer.ID
-	// Whether there are any peers in the session
+	// HasPeers returns true if there are any peers in the session.
 	HasPeers() bool
-	// Protect connection from being pruned by the connection manager
+	// ProtectConnection prevents a connection from being pruned by the
+	// connection manager.
 	ProtectConnection(peer.ID)
 }
 
-// opType is the kind of operation that is being processed by the event loop
+// opType is the kind of operation that is being processed by the event loop.
 type opType int
 
 const (
@@ -134,15 +137,17 @@ type Session struct {
 
 // New creates a new bitswap session.
 //
-// The session maintains its own internal context for operations and is not tied to any
-// external context lifecycle. The caller MUST call Close() when the session is no longer
-// needed to ensure proper cleanup. Note: When sessions are created via Client.NewSession(ctx),
-// automatic cleanup via context.AfterFunc is provided.
+// The session maintains its own internal context for operations and is not
+// tied to any external context lifecycle. The caller MUST call Close() when
+// the session is no longer needed to ensure proper cleanup. When sessions are
+// created via Client.NewSession(ctx), automatic cleanup via context.AfterFunc
+// is provided.
 //
-// The retrievalState parameter, if provided, enables diagnostic tracking of the retrieval
-// process. It will be attached to the session's internal context and used to track
-// provider discovery, connection attempts, and data retrieval phases. This is particularly
-// useful for debugging timeout errors and understanding retrieval performance.
+// The retrievalState parameter, if provided, enables diagnostic tracking of
+// the retrieval process. It is attached to the session's internal context and
+// used to track provider discovery, connection attempts, and data retrieval
+// phases. This is particularly useful for debugging timeout errors and
+// understanding retrieval performance.
 func New(
 	sm SessionManager,
 	id uint64,
@@ -195,13 +200,14 @@ func (s *Session) ID() uint64 {
 	return s.id
 }
 
-// Close terminates the session and cleans up its resources.
-// This method MUST be called when the session is no longer needed to avoid resource leaks.
+// Close terminates the session and cleans up its resources. This method MUST
+// be called when the session is no longer needed to avoid resource leaks.
 // After calling Close, the session should not be used anymore.
-// Note: Session lifecycle is independent of the context used to create
-// requests - canceling a request context does not close the session.
-// When context-based automation is desired, Client.NewSession(ctx) uses
-// context.AfterFunc to automatically close sessions when the context is canceled.
+//
+// Session lifecycle is independent of the context used to create requests -
+// canceling a request context does not close the session. When context-based
+// automation is desired, Client.NewSession(ctx) uses context.AfterFunc to
+// automatically close sessions when the context is canceled.
 func (s *Session) Close() {
 	s.cancel()
 }
@@ -217,14 +223,14 @@ func (s *Session) ReceiveFrom(from peer.ID, ks []cid.Cid, haves []cid.Cid, dontH
 	dontHaves = interestedRes[2]
 	s.logReceiveFrom(from, ks, haves, dontHaves)
 
-	// Inform the session want sender that a message has been received
+	// Inform the session want sender that a message has been received.
 	s.sws.Update(from, ks, haves, dontHaves)
 
 	if len(ks) == 0 {
 		return
 	}
 
-	// Inform the session that blocks have been received
+	// Inform the session that blocks have been received.
 	select {
 	case s.incoming <- op{op: opReceive, keys: ks}:
 	case <-s.ctx.Done():
@@ -232,7 +238,6 @@ func (s *Session) ReceiveFrom(from peer.ID, ks []cid.Cid, haves []cid.Cid, dontH
 }
 
 func (s *Session) logReceiveFrom(from peer.ID, interestedKs []cid.Cid, haves []cid.Cid, dontHaves []cid.Cid) {
-	// Save some CPU cycles if log level is higher than debug
 	if !log.LevelEnabled(logging.LevelDebug) {
 		return
 	}
@@ -299,9 +304,10 @@ func (s *Session) onPeersExhausted(ks []cid.Cid) {
 	s.nonBlockingEnqueue(op{op: opBroadcast, keys: ks})
 }
 
-// We don't want to block the sessionWantSender if the incoming channel
-// is full. So if we can't immediately send on the incoming channel spin
-// it off into a go-routine.
+// nonBlockingEnqueue enqueues an operation on the incoming queue without
+// blocking. We do not want to block the sessionWantSender if the incoming
+// channel is full. So if we cannot immediately send on the incoming channel
+// spin it off into a goroutine.
 func (s *Session) nonBlockingEnqueue(o op) {
 	select {
 	case s.incoming <- o:
@@ -315,8 +321,8 @@ func (s *Session) nonBlockingEnqueue(o op) {
 	}
 }
 
-// Session run loop -- everything in this function should not be called
-// outside of this loop
+// run is the session run loop. Everything in this function should not be
+// called outside of this loop.
 func (s *Session) run(ctx context.Context) {
 	go s.sws.Run()
 
@@ -373,30 +379,31 @@ func (s *Session) run(ctx context.Context) {
 	}
 }
 
-// Called when the session hasn't received any blocks for some time, or when
-// all peers in the session have sent DONT_HAVE for a particular set of CIDs.
-// Send want-haves to all connected peers, and search for new peers with the CID.
+// broadcast is called when the session has not received any blocks for some
+// time, or when all peers in the session have sent DONT_HAVE for a particular
+// set of CIDs. Send want-haves to all connected peers, and search for new
+// peers with the CID.
 func (s *Session) broadcast(ctx context.Context, wants []cid.Cid) {
-	// If this broadcast is because of an idle timeout (we haven't received
-	// any blocks for a while) then broadcast all pending wants
+	// If this broadcast is because of an idle timeout (we haven't received any
+	// blocks for a while) then broadcast all pending wants.
 	if wants == nil {
 		wants = s.sw.PrepareBroadcast()
 	}
 
-	// Broadcast a want-have for the live wants to everyone we're connected to
+	// Broadcast a want-have for the live wants to connected peers.
 	s.broadcastWantHaves(ctx, wants)
 
-	// do not find providers on consecutive ticks
-	// -- just rely on periodic search widening
+	// Do not find providers on consecutive ticks. Instead rely on periodic
+	// search widening.
 	if len(wants) > 0 && (s.consecutiveTicks == 0) {
-		// Search for providers who have the first want in the list.
-		// Typically if the provider has the first block they will have
-		// the rest of the blocks also.
+		// Search for providers who have the first want in the list. Typically
+		// if the provider has the first block they will have the rest of the
+		// blocks also.
 		log.Debugw("FindMorePeers", "session", s.id, "cid", wants[0], "pending", len(wants))
 		s.findMorePeers(ctx, wants[0])
 	}
 
-	// If we have live wants record a consecutive tick
+	// If there are live wants record a consecutive tick.
 	if s.sw.HasLiveWants() {
 		s.resetIdleTick() // call before incrementing s.consecutiveTicks
 		s.consecutiveTicks++
@@ -421,7 +428,7 @@ func (s *Session) handlePeriodicSearch(ctx context.Context) {
 }
 
 // findMorePeers attempts to find more peers for a session by searching for
-// providers for the given Cid
+// providers for the given CID.
 func (s *Session) findMorePeers(ctx context.Context, c cid.Cid) {
 	// noop when provider finder is disabled
 	if s.providerFinder == nil {
@@ -431,8 +438,8 @@ func (s *Session) findMorePeers(ctx context.Context, c cid.Cid) {
 		ctx, span := internal.StartSpan(ctx, "Session.FindMorePeers")
 		defer span.End()
 		for p := range s.providerFinder.FindProvidersAsync(ctx, k, 0) {
-			// When a provider indicates that it has a cid, it's equivalent to
-			// the providing peer sending a HAVE
+			// When a provider indicates that it has a cid, it is equivalent to
+			// the providing peer sending a HAVE.
 			log.Infow("Found peer for CID", "peer", p, "cid", k)
 			span.AddEvent("FoundPeer")
 			s.sws.Update(p.ID, nil, []cid.Cid{c}, nil)
@@ -440,7 +447,7 @@ func (s *Session) findMorePeers(ctx context.Context, c cid.Cid) {
 	}(c)
 }
 
-// handleShutdown is called when the session shuts down
+// handleShutdown is called when the session shuts down.
 func (s *Session) handleShutdown() {
 	// Stop the idle timer
 	s.idleTick.Stop()
@@ -454,10 +461,10 @@ func (s *Session) handleShutdown() {
 	s.sm.RemoveSession(s.id)
 }
 
-// handleReceive is called when the session receives blocks from a peer
+// handleReceive is called when the session receives blocks from a peer.
 func (s *Session) handleReceive(ks []cid.Cid) {
 	// Record which blocks have been received and figure out the total latency
-	// for fetching the blocks
+	// for fetching the blocks.
 	wanted, totalLatency := s.sw.BlocksReceived(ks)
 	if len(wanted) == 0 {
 		return
@@ -467,13 +474,13 @@ func (s *Session) handleReceive(ks []cid.Cid) {
 	s.latencyTrkr.receiveUpdate(len(wanted), totalLatency)
 
 	// Inform the SessionManager that this session is no longer expecting to
-	// receive the wanted keys, since we now have them
+	// receive the wanted keys, since we now have them,
 	s.sm.CancelSessionWants(s.id, wanted)
 
 	s.idleTick.Stop()
 
-	// We've received new wanted blocks, so reset the number of ticks
-	// that have occurred since the last new block
+	// We have received new wanted blocks, so reset the number of ticks that
+	// have occurred since the last new block,
 	s.consecutiveTicks = 0
 
 	// Reset rebroadcast timer if there are still outstanding wants.
@@ -507,12 +514,14 @@ func (s *Session) wantBlocks(ctx context.Context, newks []cid.Cid) {
 	}
 }
 
-// Send want-haves to all connected peers
+// broadcastWantHaves sends want-haves to all connected peers.
 func (s *Session) broadcastWantHaves(ctx context.Context, wants []cid.Cid) {
 	log.Debugw("broadcastWantHaves", "session", s.id, "cids", wants)
 	s.pm.BroadcastWantHaves(wants)
 }
 
+// resetIdleTick sets the idle tick time based on average latency.
+//
 // The session will broadcast if it has outstanding wants and doesn't receive
 // any blocks for some time.
 // The length of time is calculated
