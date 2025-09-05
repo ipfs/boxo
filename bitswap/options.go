@@ -6,7 +6,6 @@ import (
 	"github.com/ipfs/boxo/bitswap/client"
 	"github.com/ipfs/boxo/bitswap/server"
 	"github.com/ipfs/boxo/bitswap/tracer"
-	delay "github.com/ipfs/go-ipfs-delay"
 )
 
 type option func(*Bitswap)
@@ -74,7 +73,7 @@ func ProviderSearchDelay(newProvSearchDelay time.Duration) Option {
 	return Option{client.ProviderSearchDelay(newProvSearchDelay)}
 }
 
-func RebroadcastDelay(newRebroadcastDelay delay.D) Option {
+func RebroadcastDelay(newRebroadcastDelay time.Duration) Option {
 	return Option{client.RebroadcastDelay(newRebroadcastDelay)}
 }
 
