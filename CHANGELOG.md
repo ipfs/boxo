@@ -20,6 +20,9 @@ The following emojis are used to highlight certain changes:
 
 ### Changed
 
+- `bitswap/client`: The `RebroadcastDelay` option now takes a `time.Duration` value. This is a potentially BREAKING CHANGE. The time varying functionality was never of `delay.Delay` was never used, so was replaced with a fixed duration value.
+
+
 ### Removed
 
 ### Fixed
