@@ -12,6 +12,7 @@ import (
 	bssession "github.com/ipfs/boxo/bitswap/client/internal/session"
 	bssim "github.com/ipfs/boxo/bitswap/client/internal/sessioninterestmanager"
 	exchange "github.com/ipfs/boxo/exchange"
+	"github.com/ipfs/boxo/retrieval"
 	cid "github.com/ipfs/go-cid"
 	delay "github.com/ipfs/go-ipfs-delay"
 	peer "github.com/libp2p/go-libp2p/core/peer"
@@ -19,17 +20,18 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-// Session is a session that is managed by the session manager
+// Session represents a bitswap session managed by the SessionManager.
+// Sessions have their own lifecycle independent of request contexts and
+// must be explicitly closed via the Close() method when no longer needed.
 type Session interface {
 	exchange.Fetcher
 	ID() uint64
 	ReceiveFrom(peer.ID, []cid.Cid, []cid.Cid, []cid.Cid)
-	Shutdown()
+	Close()
 }
 
 // SessionFactory generates a new session for the SessionManager to track.
 type SessionFactory func(
-	ctx context.Context,
 	sm bssession.SessionManager,
 	id uint64,
 	sprm bssession.SessionPeerManager,
@@ -39,15 +41,15 @@ type SessionFactory func(
 	notif notifications.PubSub,
 	provSearchDelay time.Duration,
 	rebroadcastDelay delay.D,
-	self peer.ID) Session
+	self peer.ID,
+	retrievalState *retrieval.State) Session
 
 // PeerManagerFactory generates a new peer manager for a session.
-type PeerManagerFactory func(ctx context.Context, id uint64) bssession.SessionPeerManager
+type PeerManagerFactory func(id uint64) bssession.SessionPeerManager
 
 // SessionManager is responsible for creating, managing, and dispatching to
 // sessions.
 type SessionManager struct {
-	ctx                    context.Context
 	sessionFactory         SessionFactory
 	sessionInterestManager *bssim.SessionInterestManager
 	peerManagerFactory     PeerManagerFactory
@@ -67,11 +69,10 @@ type SessionManager struct {
 }
 
 // New creates a new SessionManager.
-func New(ctx context.Context, sessionFactory SessionFactory, sessionInterestManager *bssim.SessionInterestManager, peerManagerFactory PeerManagerFactory,
+func New(sessionFactory SessionFactory, sessionInterestManager *bssim.SessionInterestManager, peerManagerFactory PeerManagerFactory,
 	blockPresenceManager *bsbpm.BlockPresenceManager, peerManager bssession.PeerManager, notif notifications.PubSub, self peer.ID,
 ) *SessionManager {
 	return &SessionManager{
-		ctx:                    ctx,
 		sessionFactory:         sessionFactory,
 		sessionInterestManager: sessionInterestManager,
 		peerManagerFactory:     peerManagerFactory,
@@ -83,19 +84,25 @@ func New(ctx context.Context, sessionFactory SessionFactory, sessionInterestMana
 	}
 }
 
-// NewSession initializes a session with the given context, and adds to the
-// session manager.
-func (sm *SessionManager) NewSession(ctx context.Context,
-	provSearchDelay time.Duration,
-	rebroadcastDelay delay.D,
-) exchange.Fetcher {
+// NewSession initializes a session and adds to the session manager.
+//
+// The session is created with its own internal context and lifecycle management.
+// The retrievalState parameter, if provided, will be attached to the session's
+// internal context to enable diagnostic tracking of the retrieval process. This
+// includes tracking provider discovery attempts, peer connections, and data
+// retrieval phases, which is particularly useful for debugging timeout errors.
+//
+// The returned Session must be closed via its Close() method when no longer needed.
+// Note: When sessions are created via Client.NewSession(ctx), automatic cleanup
+// via context.AfterFunc is provided.
+func (sm *SessionManager) NewSession(provSearchDelay time.Duration, rebroadcastDelay delay.D, retrievalState *retrieval.State) Session {
 	id := sm.GetNextSessionID()
 
-	ctx, span := internal.StartSpan(ctx, "SessionManager.NewSession", trace.WithAttributes(attribute.String("ID", strconv.FormatUint(id, 10))))
+	_, span := internal.StartSpan(context.Background(), "SessionManager.NewSession", trace.WithAttributes(attribute.String("ID", strconv.FormatUint(id, 10))))
 	defer span.End()
 
-	pm := sm.peerManagerFactory(ctx, id)
-	session := sm.sessionFactory(ctx, sm, id, pm, sm.sessionInterestManager, sm.peerManager, sm.blockPresenceManager, sm.notif, provSearchDelay, rebroadcastDelay, sm.self)
+	pm := sm.peerManagerFactory(id)
+	session := sm.sessionFactory(sm, id, pm, sm.sessionInterestManager, sm.peerManager, sm.blockPresenceManager, sm.notif, provSearchDelay, rebroadcastDelay, sm.self, retrievalState)
 
 	sm.sessLk.Lock()
 	if sm.sessions != nil { // check if SessionManager was shutdown
@@ -109,11 +116,7 @@ func (sm *SessionManager) NewSession(ctx context.Context,
 func (sm *SessionManager) Shutdown() {
 	sm.sessLk.Lock()
 
-	sessions := make([]Session, 0, len(sm.sessions))
-	for _, ses := range sm.sessions {
-		sessions = append(sessions, ses)
-	}
-
+	sessions := sm.sessions
 	// Ensure that if Shutdown() is called twice we only shut down
 	// the sessions once
 	sm.sessions = nil
@@ -121,7 +124,7 @@ func (sm *SessionManager) Shutdown() {
 	sm.sessLk.Unlock()
 
 	for _, ses := range sessions {
-		ses.Shutdown()
+		ses.Close()
 	}
 }
 
@@ -198,5 +201,5 @@ func (sm *SessionManager) cancelWants(wants []cid.Cid) {
 	// Send CANCEL to all peers for blocks that no session is interested in
 	// anymore.
 	// Note: use bitswap context because session context may already be Done.
-	sm.peerManager.SendCancels(sm.ctx, wants)
+	sm.peerManager.SendCancels(wants)
 }
