@@ -1,6 +1,7 @@
 package blockservice
 
 import (
+	"bytes"
 	"context"
 	"testing"
 
@@ -286,6 +287,35 @@ func TestAllowlist(t *testing.T) {
 	blockservice := New(bs, nil, WithAllowlist(verifcid.NewAllowlist(map[uint64]bool{multihash.BLAKE3: true})))
 	check(blockservice.GetBlock)
 	check(NewSession(ctx, blockservice).GetBlock)
+}
+
+func TestIdentityHashSizeLimit(t *testing.T) {
+	a := assert.New(t)
+	ctx := context.Background()
+	bs := blockstore.NewBlockstore(dssync.MutexWrap(ds.NewMapDatastore()))
+	blockservice := New(bs, nil)
+
+	// Create identity CID at the DefaultMaxIdentityDigestSize limit (should be valid)
+	validData := bytes.Repeat([]byte("a"), verifcid.DefaultMaxIdentityDigestSize)
+	validHash, err := multihash.Sum(validData, multihash.IDENTITY, -1)
+	a.NoError(err)
+	validCID := cid.NewCidV1(cid.Raw, validHash)
+
+	// Create identity CID over the DefaultMaxIdentityDigestSize limit (should be rejected)
+	invalidData := bytes.Repeat([]byte("b"), verifcid.DefaultMaxIdentityDigestSize+1)
+	invalidHash, err := multihash.Sum(invalidData, multihash.IDENTITY, -1)
+	a.NoError(err)
+	invalidCID := cid.NewCidV1(cid.Raw, invalidHash)
+
+	// Valid identity CID should work (though block won't be found)
+	_, err = blockservice.GetBlock(ctx, validCID)
+	a.Error(err)
+	a.True(ipld.IsNotFound(err), "expected not found error for valid identity CID")
+
+	// Invalid identity CID should fail validation
+	_, err = blockservice.GetBlock(ctx, invalidCID)
+	a.Error(err)
+	a.ErrorIs(err, verifcid.ErrDigestTooLarge)
 }
 
 type fakeIsNewSessionCreateExchange struct {
