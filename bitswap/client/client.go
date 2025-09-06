@@ -28,7 +28,6 @@ import (
 	rpqm "github.com/ipfs/boxo/routing/providerquerymanager"
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
-	delay "github.com/ipfs/go-ipfs-delay"
 	logging "github.com/ipfs/go-log/v2"
 	"github.com/ipfs/go-metrics-interface"
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -64,7 +63,7 @@ func ProviderSearchDelay(newProvSearchDelay time.Duration) Option {
 // When the value ellapses, a random CID from the wantlist is chosen and the
 // client attempts to find more peers for it and sends them the single want.
 // [defaults.RebroadcastDelay] for the default.
-func RebroadcastDelay(newRebroadcastDelay delay.D) Option {
+func RebroadcastDelay(newRebroadcastDelay time.Duration) Option {
 	return func(bs *Client) {
 		bs.rebroadcastDelay = newRebroadcastDelay
 	}
@@ -241,7 +240,7 @@ func New(parent context.Context, network bsnet.BitSwapNetwork, providerFinder ro
 		havesReceivedGauge:          bmetrics.HavesReceivedGauge(ctx),
 		blocksReceivedGauge:         bmetrics.BlocksReceivedGauge(ctx),
 		provSearchDelay:             defaults.ProvSearchDelay,
-		rebroadcastDelay:            delay.Fixed(defaults.RebroadcastDelay),
+		rebroadcastDelay:            defaults.RebroadcastDelay,
 		simulateDontHavesOnTimeout:  true,
 		defaultProviderQueryManager: true,
 
@@ -308,7 +307,7 @@ func New(parent context.Context, network bsnet.BitSwapNetwork, providerFinder ro
 		bpm *bsbpm.BlockPresenceManager,
 		notif notifications.PubSub,
 		provSearchDelay time.Duration,
-		rebroadcastDelay delay.D,
+		rebroadcastDelay time.Duration,
 		self peer.ID,
 		retrievalState *retrieval.State,
 	) bssm.Session {
@@ -392,7 +391,7 @@ type Client struct {
 	provSearchDelay time.Duration
 
 	// how often to rebroadcast providing requests to find more optimized providers
-	rebroadcastDelay delay.D
+	rebroadcastDelay time.Duration
 
 	blockReceivedNotifier BlockReceivedNotifier
 

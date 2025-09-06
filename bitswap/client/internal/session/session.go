@@ -13,7 +13,6 @@ import (
 	"github.com/ipfs/boxo/retrieval"
 	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
-	delay "github.com/ipfs/go-ipfs-delay"
 	logging "github.com/ipfs/go-log/v2"
 	peer "github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/routing"
@@ -123,11 +122,10 @@ type Session struct {
 
 	// do not touch outside run loop
 	idleTick            *time.Timer
-	periodicSearchTimer *time.Timer
 	baseTickDelay       time.Duration
 	consecutiveTicks    int
 	initialSearchDelay  time.Duration
-	periodicSearchDelay delay.D
+	periodicSearchDelay time.Duration
 	// identifiers
 	notif notifications.PubSub
 	id    uint64
@@ -158,7 +156,7 @@ func New(
 	bpm *bsbpm.BlockPresenceManager,
 	notif notifications.PubSub,
 	initialSearchDelay time.Duration,
-	periodicSearchDelay delay.D,
+	periodicSearchDelay time.Duration,
 	self peer.ID,
 	havesReceivedGauge bspm.Gauge,
 	retrievalState *retrieval.State,
@@ -327,7 +325,7 @@ func (s *Session) run(ctx context.Context) {
 	go s.sws.Run()
 
 	s.idleTick = time.NewTimer(s.initialSearchDelay)
-	s.periodicSearchTimer = time.NewTimer(s.periodicSearchDelay.NextWaitTime())
+	periodicSearchTimer := time.NewTimer(s.periodicSearchDelay)
 	sessionSpan := trace.SpanFromContext(ctx)
 	for {
 		select {
@@ -363,15 +361,17 @@ func (s *Session) run(ctx context.Context) {
 			opCtx, span := internal.StartSpan(ctx, "Session.IdleBroadcast")
 			s.broadcast(opCtx, nil)
 			span.End()
-		case <-s.periodicSearchTimer.C:
+		case <-periodicSearchTimer.C:
 			// Periodically search for a random live want
 			opCtx, span := internal.StartSpan(ctx, "Session.PeriodicSearch")
 			s.handlePeriodicSearch(opCtx)
+			periodicSearchTimer.Reset(s.periodicSearchDelay)
 			span.End()
 		case baseTickDelay := <-s.tickDelayReqs:
 			// Set the base tick delay
 			s.baseTickDelay = baseTickDelay
 		case <-ctx.Done():
+			periodicSearchTimer.Stop()
 			// Shutdown
 			s.handleShutdown()
 			return
@@ -423,8 +423,6 @@ func (s *Session) handlePeriodicSearch(ctx context.Context) {
 	s.findMorePeers(ctx, randomWant)
 
 	s.broadcastWantHaves(ctx, []cid.Cid{randomWant})
-
-	s.periodicSearchTimer.Reset(s.periodicSearchDelay.NextWaitTime())
 }
 
 // findMorePeers attempts to find more peers for a session by searching for

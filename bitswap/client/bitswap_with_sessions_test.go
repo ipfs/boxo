@@ -334,7 +334,7 @@ func TestFetchAfterDisconnect(t *testing.T) {
 	router := mockrouting.NewServer()
 	ig := testinstance.NewTestInstanceGenerator(vnet, router, nil, []bitswap.Option{
 		bitswap.ProviderSearchDelay(10 * time.Millisecond),
-		bitswap.RebroadcastDelay(delay.Fixed(15 * time.Millisecond)),
+		bitswap.RebroadcastDelay(15 * time.Millisecond),
 		bitswap.WithClientOption(client.WithTraceBlock(true)),
 	})
 	defer ig.Close()

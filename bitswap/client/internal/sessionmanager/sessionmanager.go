@@ -14,7 +14,6 @@ import (
 	exchange "github.com/ipfs/boxo/exchange"
 	"github.com/ipfs/boxo/retrieval"
 	cid "github.com/ipfs/go-cid"
-	delay "github.com/ipfs/go-ipfs-delay"
 	peer "github.com/libp2p/go-libp2p/core/peer"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -40,7 +39,7 @@ type SessionFactory func(
 	bpm *bsbpm.BlockPresenceManager,
 	notif notifications.PubSub,
 	provSearchDelay time.Duration,
-	rebroadcastDelay delay.D,
+	rebroadcastDelay time.Duration,
 	self peer.ID,
 	retrievalState *retrieval.State) Session
 
@@ -95,7 +94,7 @@ func New(sessionFactory SessionFactory, sessionInterestManager *bssim.SessionInt
 // The returned Session must be closed via its Close() method when no longer needed.
 // Note: When sessions are created via Client.NewSession(ctx), automatic cleanup
 // via context.AfterFunc is provided.
-func (sm *SessionManager) NewSession(provSearchDelay time.Duration, rebroadcastDelay delay.D, retrievalState *retrieval.State) Session {
+func (sm *SessionManager) NewSession(provSearchDelay, rebroadcastDelay time.Duration, retrievalState *retrieval.State) Session {
 	id := sm.GetNextSessionID()
 
 	_, span := internal.StartSpan(context.Background(), "SessionManager.NewSession", trace.WithAttributes(attribute.String("ID", strconv.FormatUint(id, 10))))
