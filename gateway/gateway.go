@@ -32,6 +32,9 @@ const (
 	//
 	// See the MaxConcurrentRequests field documentation for detailed tuning guidance.
 	DefaultMaxConcurrentRequests = 4096
+
+	// DefaultDiagnosticServiceURL is the default URL for CID diagnostic service
+	DefaultDiagnosticServiceURL = "https://check.ipfs.network"
 )
 
 // Config is the configuration used when creating a new gateway handler.
@@ -114,6 +117,13 @@ type Config struct {
 	//
 	// A value of 0 disables the limit entirely (use with caution).
 	MaxConcurrentRequests int
+
+	// DiagnosticServiceURL is the URL for a service that can be used to diagnose
+	// issues with CID retrievability. When the gateway returns a 504 Gateway Timeout
+	// error, an "Inspect retrievability of CID" button will be shown that links to
+	// this service with the CID as a query parameter. When set to empty string, the
+	// button is not shown.
+	DiagnosticServiceURL string
 
 	// MetricsRegistry is the Prometheus registry to use for metrics.
 	// If nil, prometheus.DefaultRegisterer will be used.
