@@ -52,9 +52,8 @@ func (defaultAllowlist) IsAllowed(code uint64) bool {
 		mh.IDENTITY,
 
 		mh.SHA3_224, mh.SHA3_256, mh.SHA3_384, mh.SHA3_512,
-		mh.KECCAK_224, mh.KECCAK_256, mh.KECCAK_384, mh.KECCAK_512,
+		mh.KECCAK_224, mh.KECCAK_256, mh.KECCAK_384, mh.KECCAK_512:
 
-		mh.SHA1: // not really secure but still useful for git
 		return true
 	default:
 		if code >= mh.BLAKE2B_MIN+19 && code <= mh.BLAKE2B_MAX {
