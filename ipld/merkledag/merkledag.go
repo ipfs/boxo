@@ -444,8 +444,7 @@ func sequentialWalkDepth(ctx context.Context, getLinks GetLinks, root cid.Cid, d
 	// Successfully fetched "root". Provide it when needed.
 	if prov := options.Provider; prov != nil {
 		log.Debugf("merkledag: provide %s", root)
-		err := prov.StartProviding(false, root.Hash())
-		if err != nil {
+		if err := prov.StartProviding(false, root.Hash()); err != nil {
 			log.Warnf("merkledag: error while providing %s: %s", root, err)
 		}
 	}
@@ -541,8 +540,7 @@ func parallelWalkDepth(ctx context.Context, getLinks GetLinks, root cid.Cid, vis
 					// Successfully fetched "ci". Provide it when needed,
 					if prov := options.Provider; prov != nil {
 						log.Debugf("merkledag: provide %s", root)
-						err := prov.StartProviding(false, root.Hash())
-						if err != nil {
+						if err := prov.StartProviding(false, root.Hash()); err != nil {
 							log.Warnf("merkledag: error while providing %s: %s", root, err)
 						}
 					}

@@ -296,8 +296,7 @@ func (p *pinner) doPinRecursive(ctx context.Context, c cid.Cid, fetch bool, name
 	// we would provide the roots twice.
 	if p.rootsProvider != nil && p.pinnedProvider == nil {
 		log.Debugf("pinner: provide root %s", c)
-		err := p.rootsProvider.StartProviding(false, c.Hash())
-		if err != nil {
+		if err := p.rootsProvider.StartProviding(false, c.Hash()); err != nil {
 			log.Warnf("pinner: error while providing %s: %s", c, err)
 		}
 	}
@@ -346,8 +345,7 @@ func (p *pinner) doPinDirect(ctx context.Context, c cid.Cid, name string) error 
 
 	if p.rootsProvider != nil {
 		log.Debugf("pinner: provide direct pin %s", c)
-		err := p.rootsProvider.StartProviding(false, c.Hash())
-		if err != nil {
+		if err := p.rootsProvider.StartProviding(false, c.Hash()); err != nil {
 			log.Warnf("pinner: error while providing %s: %s", c, err)
 		}
 	}

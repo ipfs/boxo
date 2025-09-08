@@ -67,8 +67,7 @@ func NewDirectory(ctx context.Context, name string, node ipld.Node, parent paren
 
 	if prov != nil {
 		log.Debugf("mfs: provide: %s", nd.Cid())
-		err := prov.StartProviding(false, nd.Cid().Hash())
-		if err != nil {
+		if err := prov.StartProviding(false, nd.Cid().Hash()); err != nil {
 			log.Warnf("mfs: error while providing %s: %s", nd.Cid(), err)
 		}
 	}
@@ -184,8 +183,7 @@ func (d *Directory) localUpdate(c child) (*dag.ProtoNode, error) {
 
 	if d.prov != nil {
 		log.Debugf("mfs: provide: %s", nd.Cid())
-		err := d.prov.StartProviding(false, nd.Cid().Hash())
-		if err != nil {
+		if err := d.prov.StartProviding(false, nd.Cid().Hash()); err != nil {
 			log.Warnf("mfs: error while providing %s: %s", nd.Cid(), err)
 		}
 	}
@@ -425,8 +423,7 @@ func (d *Directory) AddChild(name string, nd ipld.Node) error {
 
 	if d.prov != nil {
 		log.Debugf("mfs: provide: %s", nd.Cid())
-		err := d.prov.StartProviding(false, nd.Cid().Hash())
-		if err != nil {
+		if err := d.prov.StartProviding(false, nd.Cid().Hash()); err != nil {
 			log.Warnf("mfs: error while providing %s: %s", nd.Cid(), err)
 		}
 	}
@@ -566,8 +563,7 @@ func (d *Directory) setNodeData(data []byte, links []*ipld.Link) error {
 
 	if d.prov != nil {
 		log.Debugf("mfs: provide: %s", nd.Cid())
-		err := d.prov.StartProviding(false, nd.Cid().Hash())
-		if err != nil {
+		if err := d.prov.StartProviding(false, nd.Cid().Hash()); err != nil {
 			log.Warnf("mfs: error while providing %s: %s", nd.Cid(), err)
 		}
 	}

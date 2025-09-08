@@ -214,8 +214,7 @@ func (bs *blockstore) Put(ctx context.Context, block blocks.Block) error {
 
 	if bs.provider != nil {
 		logger.Debugf("blockstore: provide %s", block.Cid())
-		err := bs.provider.StartProviding(false, block.Cid().Hash())
-		if err != nil {
+		if err := bs.provider.StartProviding(false, block.Cid().Hash()); err != nil {
 			logger.Warnf("blockstore: error while providing %s: %s", block.Cid(), err)
 		}
 	}
@@ -256,8 +255,7 @@ func (bs *blockstore) PutMany(ctx context.Context, blocks []blocks.Block) error 
 		hashes = append(hashes, block.Cid().Hash())
 	}
 	if bs.provider != nil {
-		err := bs.provider.StartProviding(false, hashes...)
-		if err != nil {
+		if err := bs.provider.StartProviding(false, hashes...); err != nil {
 			logger.Warnf("blockstore: error while providing blocks: %s", err)
 		}
 	}
