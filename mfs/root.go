@@ -220,7 +220,7 @@ func (kr *Root) updateChildEntry(c child) error {
 
 	if kr.prov != nil {
 		go func(c cid.Cid) {
-			log.Errorf("mfs: provide: %s", c)
+			log.Debugf("mfs: provide: %s", c)
 			if err := kr.prov.StartProviding(false, c.Hash()); err != nil {
 				log.Warnf("mfs: error while providing %s: %s", c, err)
 			}
