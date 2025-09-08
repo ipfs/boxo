@@ -13,6 +13,7 @@ import (
 	dag "github.com/ipfs/boxo/ipld/merkledag"
 	ft "github.com/ipfs/boxo/ipld/unixfs"
 	"github.com/ipfs/boxo/provider"
+	cid "github.com/ipfs/go-cid"
 	ipld "github.com/ipfs/go-ipld-format"
 	logging "github.com/ipfs/go-log/v2"
 )
@@ -218,11 +219,12 @@ func (kr *Root) updateChildEntry(c child) error {
 	// applying the same procedure as `Directory.updateChildEntry`?
 
 	if kr.prov != nil {
-		log.Debugf("mfs: provide: %s", c.Node.Cid())
-		err := kr.prov.StartProviding(false, c.Node.Cid().Hash())
-		if err != nil {
-			log.Warnf("mfs: error while providing %s: %s", c.Node.Cid(), err)
-		}
+		go func(c cid.Cid) {
+			log.Errorf("mfs: provide: %s", c)
+			if err := kr.prov.StartProviding(false, c.Hash()); err != nil {
+				log.Warnf("mfs: error while providing %s: %s", c, err)
+			}
+		}(c.Node.Cid())
 	}
 
 	if kr.repub != nil {

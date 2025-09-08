@@ -493,11 +493,12 @@ func (d *Directory) getNode(cacheClean bool) (ipld.Node, error) {
 	}
 
 	if d.prov != nil {
-		log.Debugf("mfs: provide: %s", nd.Cid())
-		err := d.prov.StartProviding(false, nd.Cid().Hash())
-		if err != nil {
-			log.Warnf("mfs: error while providing %s: %s", nd.Cid(), err)
-		}
+		go func(c cid.Cid) {
+			log.Debugf("mfs: provide: %s", c)
+			if err := d.prov.StartProviding(false, c.Hash()); err != nil {
+				log.Warnf("mfs: error while providing %s: %s", c, err)
+			}
+		}(nd.Cid())
 	}
 
 	return nd.Copy(), err
