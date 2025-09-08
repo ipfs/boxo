@@ -23,6 +23,10 @@ type Provider interface {
 
 // MultihashProvider is the interface implementing StartProviding.
 type MultihashProvider interface {
+	// StartProviding announces blocks to the network, batching multiple keys for efficiency.
+	// The force parameter, when true, forces re-providing even if the keys were recently provided.
+	// When false, the implementation may skip keys that were recently announced based on internal
+	// rate limiting or caching strategies.
 	StartProviding(force bool, keys ...mh.Multihash) error
 }
 
