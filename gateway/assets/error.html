@@ -32,7 +32,7 @@
       {{ else if eq .StatusCode 500 }}
         <p>This gateway was unable to return the requested data due to an internal error. Please check the error below for more information.</p>
       {{ else if eq .StatusCode 502 }}
-        <p>The gateway backed was unable to fullfil your request due to an error.</p>
+        <p>The gateway backend was unable to fulfill your request due to an error.</p>
       {{ else if eq .StatusCode 504 }}
         <p>This gateway is taking too long to fetch content from content providers. Please check the error below for more information.</p>
 
@@ -41,7 +41,7 @@
         {{ end }}
 
       {{ else if eq .StatusCode 506 }}
-        <p>The gateway backend was unable to fullfil your request at this time. Try again later.</p>
+        <p>The gateway backend was unable to fulfill your request at this time. Try again later.</p>
       {{ end }}
 
       <pre class="terminal wrap">{{ .Error }}</pre>
