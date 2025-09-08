@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -128,6 +129,22 @@ type Config struct {
 	// MetricsRegistry is the Prometheus registry to use for metrics.
 	// If nil, prometheus.DefaultRegisterer will be used.
 	MetricsRegistry prometheus.Registerer
+}
+
+// validateConfig validates and normalizes the Config, returning a modified copy.
+// Invalid values are logged and set to safe defaults.
+func validateConfig(c Config) Config {
+	// Validate DiagnosticServiceURL
+	if c.DiagnosticServiceURL != "" {
+		if _, err := url.Parse(c.DiagnosticServiceURL); err != nil {
+			log.Errorf("invalid DiagnosticServiceURL %q: %v, disabling diagnostic service", c.DiagnosticServiceURL, err)
+			c.DiagnosticServiceURL = ""
+		}
+	}
+
+	// Future validations can be added here
+
+	return c
 }
 
 // PublicGateway is the specification of an IPFS Public Gateway.
