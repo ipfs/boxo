@@ -132,26 +132,32 @@ func (rs *State) GetPhase() RetrievalPhase {
 	return RetrievalPhase(rs.phase.Load())
 }
 
-// addProvider is a helper to add a provider to a sample list with size limit.
+// appendProviders is a helper to append providers to a sample list with size limit.
 // Only the first MaxProvidersSampleSize providers are kept to prevent unbounded memory growth.
-func (rs *State) addProvider(list *[]peer.ID, peerID peer.ID) {
+// This follows the idiomatic append pattern but operates on internal state.
+func (rs *State) appendProviders(list *[]peer.ID, peerIDs ...peer.ID) {
 	rs.mu.Lock()
 	defer rs.mu.Unlock()
-	if len(*list) < MaxProvidersSampleSize {
-		*list = append(*list, peerID)
+	if len(*list) >= MaxProvidersSampleSize {
+		return
 	}
+	remaining := MaxProvidersSampleSize - len(*list)
+	if len(peerIDs) > remaining {
+		peerIDs = peerIDs[:remaining]
+	}
+	*list = append(*list, peerIDs...)
 }
 
 // AddFoundProvider records a provider peer ID that was discovered during provider search.
 // This method is safe for concurrent use.
 func (rs *State) AddFoundProvider(peerID peer.ID) {
-	rs.addProvider(&rs.foundProviders, peerID)
+	rs.appendProviders(&rs.foundProviders, peerID)
 }
 
 // AddFailedProvider records a provider peer ID that failed to deliver the requested content.
 // This method is safe for concurrent use.
 func (rs *State) AddFailedProvider(peerID peer.ID) {
-	rs.addProvider(&rs.failedProviders, peerID)
+	rs.appendProviders(&rs.failedProviders, peerID)
 }
 
 // getProviders is a helper to get a cloned list of providers.
