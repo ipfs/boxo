@@ -28,7 +28,6 @@ import (
 	rpqm "github.com/ipfs/boxo/routing/providerquerymanager"
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
-	delay "github.com/ipfs/go-ipfs-delay"
 	logging "github.com/ipfs/go-log/v2"
 	"github.com/ipfs/go-metrics-interface"
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -64,7 +63,7 @@ func ProviderSearchDelay(newProvSearchDelay time.Duration) Option {
 // When the value ellapses, a random CID from the wantlist is chosen and the
 // client attempts to find more peers for it and sends them the single want.
 // [defaults.RebroadcastDelay] for the default.
-func RebroadcastDelay(newRebroadcastDelay delay.D) Option {
+func RebroadcastDelay(newRebroadcastDelay time.Duration) Option {
 	return func(bs *Client) {
 		bs.rebroadcastDelay = newRebroadcastDelay
 	}
@@ -241,7 +240,7 @@ func New(parent context.Context, network bsnet.BitSwapNetwork, providerFinder ro
 		havesReceivedGauge:          bmetrics.HavesReceivedGauge(ctx),
 		blocksReceivedGauge:         bmetrics.BlocksReceivedGauge(ctx),
 		provSearchDelay:             defaults.ProvSearchDelay,
-		rebroadcastDelay:            delay.Fixed(defaults.RebroadcastDelay),
+		rebroadcastDelay:            defaults.RebroadcastDelay,
 		simulateDontHavesOnTimeout:  true,
 		defaultProviderQueryManager: true,
 
@@ -300,7 +299,6 @@ func New(parent context.Context, network bsnet.BitSwapNetwork, providerFinder ro
 	}
 
 	sessionFactory := func(
-		sessctx context.Context,
 		sessmgr bssession.SessionManager,
 		id uint64,
 		spm bssession.SessionPeerManager,
@@ -309,8 +307,9 @@ func New(parent context.Context, network bsnet.BitSwapNetwork, providerFinder ro
 		bpm *bsbpm.BlockPresenceManager,
 		notif notifications.PubSub,
 		provSearchDelay time.Duration,
-		rebroadcastDelay delay.D,
+		rebroadcastDelay time.Duration,
 		self peer.ID,
+		retrievalState *retrieval.State,
 	) bssm.Session {
 		// careful when bs.pqm is nil. Since we are type-casting it
 		// into routing.ContentDiscovery when passing it, it will become
@@ -322,13 +321,13 @@ func New(parent context.Context, network bsnet.BitSwapNetwork, providerFinder ro
 		} else if providerFinder != nil {
 			sessionProvFinder = providerFinder
 		}
-		return bssession.New(sessctx, sessmgr, id, spm, sessionProvFinder, sim, pm, bpm, notif, provSearchDelay, rebroadcastDelay, self, bs.havesReceivedGauge)
+		return bssession.New(sessmgr, id, spm, sessionProvFinder, sim, pm, bpm, notif, provSearchDelay, rebroadcastDelay, self, bs.havesReceivedGauge, retrievalState)
 	}
-	sessionPeerManagerFactory := func(ctx context.Context, id uint64) bssession.SessionPeerManager {
+	sessionPeerManagerFactory := func(id uint64) bssession.SessionPeerManager {
 		return bsspm.New(id, network)
 	}
 	notif := notifications.New(bs.traceBlock)
-	sm = bssm.New(ctx, sessionFactory, sim, sessionPeerManagerFactory, bpm, pm, notif, network.Self())
+	sm = bssm.New(sessionFactory, sim, sessionPeerManagerFactory, bpm, pm, notif, network.Self())
 
 	bs.sm = sm
 	bs.notif = notif
@@ -392,7 +391,7 @@ type Client struct {
 	provSearchDelay time.Duration
 
 	// how often to rebroadcast providing requests to find more optimized providers
-	rebroadcastDelay delay.D
+	rebroadcastDelay time.Duration
 
 	blockReceivedNotifier BlockReceivedNotifier
 
@@ -439,22 +438,19 @@ func (bs *Client) GetBlock(ctx context.Context, k cid.Cid) (blocks.Block, error)
 //
 // When the provided context is canceled, GetBlocks will stop returning blocks
 // and the returned channel will be closed.
+//
+// This method creates a temporary internal session that is automatically cleaned up
+// when the operation completes. Any retrieval.State attached to the context will be
+// preserved and used for diagnostic tracking throughout the retrieval process.
 func (bs *Client) GetBlocks(ctx context.Context, keys []cid.Cid) (<-chan blocks.Block, error) {
 	ctx, span := internal.StartSpan(ctx, "GetBlocks", trace.WithAttributes(attribute.Int("NumKeys", len(keys))))
 	defer span.End()
 
-	// Temporary session closed indepentendly of cancellation ctx.
-	sessCtx, cancelSession := context.WithCancel(context.Background())
-
-	// Preserve retrieval.State from the original request context if present
-	if retrievalState := retrieval.StateFromContext(ctx); retrievalState != nil {
-		sessCtx = context.WithValue(sessCtx, retrieval.ContextKey, retrievalState)
-	}
-	session := bs.sm.NewSession(sessCtx, bs.provSearchDelay, bs.rebroadcastDelay)
+	session := bs.sm.NewSession(bs.provSearchDelay, bs.rebroadcastDelay, retrieval.StateFromContext(ctx))
 
 	blocksChan, err := session.GetBlocks(ctx, keys)
 	if err != nil {
-		cancelSession()
+		session.Close()
 		return nil, err
 	}
 
@@ -462,7 +458,7 @@ func (bs *Client) GetBlocks(ctx context.Context, keys []cid.Cid) (<-chan blocks.
 	go func() {
 		defer func() {
 			close(out)
-			cancelSession()
+			session.Close()
 		}()
 
 		ctxDone := ctx.Done()
@@ -709,8 +705,21 @@ func (bs *Client) IsOnline() bool {
 // method, but the session will use the fact that the requests are related to
 // be more efficient in its requests to peers. If you are using a session
 // from blockservice, it will create a bitswap session automatically.
+//
+// The context is used for:
+//   - Automatic session cleanup: when the context is canceled, the session will be closed
+//   - Retrieval state tracking: any retrieval.State attached to the context will be
+//     preserved in the session for diagnostic tracking of provider discovery and data retrieval
+//
+// The session's lifetime is controlled by the context and requires that the
+// context be canceled for the session to be closed.
 func (bs *Client) NewSession(ctx context.Context) exchange.Fetcher {
 	ctx, span := internal.StartSpan(ctx, "NewSession")
 	defer span.End()
-	return bs.sm.NewSession(ctx, bs.provSearchDelay, bs.rebroadcastDelay)
+
+	session := bs.sm.NewSession(bs.provSearchDelay, bs.rebroadcastDelay, retrieval.StateFromContext(ctx))
+	context.AfterFunc(ctx, func() {
+		session.Close()
+	})
+	return session
 }

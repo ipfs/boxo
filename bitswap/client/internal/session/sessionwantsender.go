@@ -579,7 +579,7 @@ func (sws *sessionWantSender) sendWants(sends allWants) {
 		// precedence over want-haves.
 		wblks := snd.wantBlocks.Keys()
 		whaves := snd.wantHaves.Keys()
-		snd.sent = sws.pm.SendWants(sws.ctx, p, wblks, whaves)
+		snd.sent = sws.pm.SendWants(p, wblks, whaves)
 		if !snd.sent {
 			// Do not update state if the wants not sent.
 			continue
