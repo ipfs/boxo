@@ -2,16 +2,15 @@ package autoconf
 
 import (
 	"math/rand"
+	"slices"
 	"strings"
 )
 
 // normalizeURLs ensures all URLs in the slice have no trailing slashes
-func normalizeURLs(urls []string) []string {
-	normalized := make([]string, len(urls))
+func normalizeURLs(urls []string) {
 	for i, url := range urls {
-		normalized[i] = strings.TrimRight(url, "/")
+		urls[i] = strings.TrimRight(url, "/")
 	}
-	return normalized
 }
 
 // expandAutoConfSlice is a generic helper for expanding "auto" placeholders in string slices.
@@ -163,33 +162,30 @@ func ExpandDelegatedEndpoints(configEndpoints []string, autoConf *Config, native
 		return result
 	}
 
-	var routers []string
 	seen := make(map[string]struct{})
-
 	for baseURL, config := range endpoints {
 		// Combine both Read and Write paths (already filtered by WithSupportedPathsOnly)
-		allPaths := append(config.Read, config.Write...)
-
+		uniquePaths := slices.Concat(config.Read, config.Write)
 		// Deduplicate paths (in case same path appears in both Read and Write)
-		uniquePaths := make(map[string]struct{}, len(allPaths))
-		for _, path := range allPaths {
-			uniquePaths[path] = struct{}{}
-		}
+		slices.Sort(uniquePaths)
+		uniquePaths = slices.Compact(uniquePaths)
 
-		for path := range uniquePaths {
+		for _, path := range uniquePaths {
 			url := buildEndpointURL(baseURL, path)
-			if _, exists := seen[url]; !exists {
-				routers = append(routers, url)
-				seen[url] = struct{}{}
-			}
+			seen[url] = struct{}{}
 		}
+	}
+
+	routers := make([]string, 0, len(seen))
+	for url := range seen {
+		routers = append(routers, url)
 	}
 
 	resolved := expandAutoConfSlice(configEndpoints, routers)
 
 	// Normalize all URLs to ensure no trailing slashes
 	// (autoconf URLs are already normalized, but user-provided custom URLs might not be)
-	resolved = normalizeURLs(resolved)
+	normalizeURLs(resolved)
 
 	log.Debugf("ExpandDelegatedEndpoints: final result contains %d endpoints", len(resolved))
 	return resolved

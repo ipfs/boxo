@@ -20,6 +20,7 @@ import (
 	uio "github.com/ipfs/boxo/ipld/unixfs/io"
 	"github.com/ipfs/boxo/path"
 	"github.com/ipfs/boxo/path/resolver"
+	"github.com/ipfs/boxo/retrieval"
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
 	format "github.com/ipfs/go-ipld-format"
@@ -141,7 +142,8 @@ func (bb *BlocksBackend) Get(ctx context.Context, path path.ImmutablePath, range
 		// Fetch only the root block to check if it's a UnixFS file
 		rootBlock, err := bb.blockService.GetBlock(ctx, lastRoot)
 		if err != nil {
-			return md, nil, err
+			// Wrap error with retrieval diagnostics if available
+			return md, nil, retrieval.WrapWithState(ctx, err)
 		}
 
 		// Try to optimize for dag-pb blocks that might be UnixFS files
@@ -322,7 +324,8 @@ func (bb *BlocksBackend) GetBlock(ctx context.Context, path path.ImmutablePath) 
 
 	b, err := bb.blockService.GetBlock(ctx, lastRoot)
 	if err != nil {
-		return md, nil, err
+		// Wrap error with retrieval diagnostics if available
+		return md, nil, retrieval.WrapWithState(ctx, err)
 	}
 
 	return md, files.NewBytesFile(b.RawData()), nil
@@ -657,13 +660,19 @@ func (bb *BlocksBackend) getNode(ctx context.Context, path path.ImmutablePath) (
 
 	nd, err := bb.dagService.Get(ctx, lastRoot)
 	if err != nil {
-		return ContentPathMetadata{}, nil, err
+		// Wrap error with retrieval diagnostics if available
+		return ContentPathMetadata{}, nil, retrieval.WrapWithState(ctx, err)
 	}
 
 	return md, nd, err
 }
 
 func (bb *BlocksBackend) getPathRoots(ctx context.Context, contentPath path.ImmutablePath) ([]cid.Cid, path.ImmutablePath, []string, error) {
+	// Update retrieval progress, if tracked in the existing context
+	if retrievalState := retrieval.StateFromContext(ctx); retrievalState != nil {
+		retrievalState.SetPhase(retrieval.PhasePathResolution)
+	}
+
 	/*
 		These are logical roots where each CID represent one path segment
 		and resolves to either a directory or the root block of a file.
@@ -708,7 +717,8 @@ func (bb *BlocksBackend) getPathRoots(ctx context.Context, contentPath path.Immu
 			if isErrNotFound(err) {
 				return nil, path.ImmutablePath{}, nil, &resolver.ErrNoLink{Name: root, Node: lastPath.RootCid()}
 			}
-			return nil, path.ImmutablePath{}, nil, err
+			// Wrap error with retrieval diagnostics if available
+			return nil, path.ImmutablePath{}, nil, retrieval.WrapWithState(ctx, err)
 		}
 		lastPath = resolvedSubPath
 		remainder = remainderSubPath
@@ -768,7 +778,8 @@ func (bb *BlocksBackend) resolvePath(ctx context.Context, p path.Path) (path.Imm
 
 	node, remainder, err := bb.resolver.ResolveToLastNode(ctx, imPath)
 	if err != nil {
-		return path.ImmutablePath{}, nil, err
+		// Wrap error with retrieval diagnostics if available
+		return path.ImmutablePath{}, nil, retrieval.WrapWithState(ctx, err)
 	}
 
 	p, err = path.Join(path.FromCid(node), remainder...)

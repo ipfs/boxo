@@ -633,10 +633,7 @@ func TestCalculateEffectiveRefreshInterval(t *testing.T) {
 			// Verify the result is always the minimum of the two values (when server TTL > 0)
 			if tt.cacheTTL > 0 {
 				serverTTL := time.Duration(tt.cacheTTL) * time.Second
-				expectedMin := tt.userInterval
-				if serverTTL < tt.userInterval {
-					expectedMin = serverTTL
-				}
+				expectedMin := min(serverTTL, tt.userInterval)
 				assert.Equal(t, expectedMin, result, "result should be minimum of user interval and server TTL")
 			} else {
 				// When server TTL <= 0, should always return user interval

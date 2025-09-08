@@ -356,15 +356,27 @@ func TestCancelOverridesPendingWants(t *testing.T) {
 	}
 
 	// Cancel the remaining want-blocks and want-haves
-	cancels = append(wantHaves, wantBlocks...)
+	// These CIDs were sent in the first message, so canceling them should
+	// generate cancel messages
+
+	// Small delay to avoid race condition: after collectMessages returns,
+	// the message has been sent to the channel, but the queue's goroutine
+	// might still be marking items as "sent". Without this delay, AddCancels
+	// might not find the CIDs in the sent list and won't generate cancel messages.
+	time.Sleep(10 * time.Millisecond)
+
+	cancels = []cid.Cid{wantBlocks[1], wantHaves[1]}
 	messageQueue.AddCancels(cancels)
 	messages = collectMessages(ctx, t, messagesSent, collectTimeout)
 
 	// The remaining 2 cancels should be sent to the network as they are for
 	// wants that were sent to the network
+	if len(messages) == 0 {
+		t.Fatal("Expected cancel messages but got none")
+	}
 	_, _, cl = filterWantTypes(messages[0])
 	if len(cl) != 2 {
-		t.Fatal("Expected 2 cancels")
+		t.Fatalf("Expected 2 cancels, got %d", len(cl))
 	}
 }
 

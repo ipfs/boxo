@@ -1,6 +1,6 @@
 module github.com/ipfs/boxo/cmd/boxo-migrate
 
-go 1.23
+go 1.24
 
 require github.com/urfave/cli/v2 v2.25.1
 

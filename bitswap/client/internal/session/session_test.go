@@ -14,7 +14,6 @@ import (
 	bsspm "github.com/ipfs/boxo/bitswap/client/internal/sessionpeermanager"
 	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
-	delay "github.com/ipfs/go-ipfs-delay"
 	"github.com/ipfs/go-test/random"
 	peer "github.com/libp2p/go-libp2p/core/peer"
 	"github.com/stretchr/testify/require"
@@ -146,20 +145,16 @@ func newFakePeerManager() *fakePeerManager {
 
 func (pm *fakePeerManager) RegisterSession(peer.ID, bspm.Session) {}
 func (pm *fakePeerManager) UnregisterSession(uint64)              {}
-func (pm *fakePeerManager) SendWants(context.Context, peer.ID, []cid.Cid, []cid.Cid) bool {
+func (pm *fakePeerManager) SendWants(peer.ID, []cid.Cid, []cid.Cid) bool {
 	return true
 }
 
-func (pm *fakePeerManager) BroadcastWantHaves(ctx context.Context, cids []cid.Cid) {
-	select {
-	case pm.wantReqs <- wantReq{cids}:
-	case <-ctx.Done():
-	}
+func (pm *fakePeerManager) BroadcastWantHaves(cids []cid.Cid) {
+	pm.wantReqs <- wantReq{cids}
 }
-func (pm *fakePeerManager) SendCancels(ctx context.Context, cancels []cid.Cid) {}
+func (pm *fakePeerManager) SendCancels(cancels []cid.Cid) {}
 
 func TestSessionGetBlocks(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	fpm := newFakePeerManager()
 	fspm := newFakeSessionPeerManager()
 	fpf := newFakeProviderFinder()
@@ -169,14 +164,15 @@ func TestSessionGetBlocks(t *testing.T) {
 	defer notif.Shutdown()
 	id := random.SequenceNext()
 	sm := newMockSessionMgr(sim)
-	session := New(ctx, sm, id, fspm, fpf, sim, fpm, bpm, notif, time.Second, delay.Fixed(time.Minute), "", nil)
+	session := New(sm, id, fspm, fpf, sim, fpm, bpm, notif, time.Second, time.Minute, "", nil, nil)
+	defer session.Close()
 	blks := random.BlocksOfSize(broadcastLiveWantsLimit*2, blockSize)
 	var cids []cid.Cid
 	for _, block := range blks {
 		cids = append(cids, block.Cid())
 	}
 
-	_, err := session.GetBlocks(ctx, cids)
+	_, err := session.GetBlocks(context.Background(), cids)
 	require.NoError(t, err, "error getting blocks")
 
 	// Wait for initial want request
@@ -229,7 +225,7 @@ func TestSessionGetBlocks(t *testing.T) {
 	require.Len(t, wanted, len(blks)-1, "session wants incorrect number of blocks")
 
 	// Shut down session
-	cancel()
+	session.Close()
 
 	time.Sleep(10 * time.Millisecond)
 
@@ -238,8 +234,6 @@ func TestSessionGetBlocks(t *testing.T) {
 }
 
 func TestSessionFindMorePeers(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 900*time.Millisecond)
-	defer cancel()
 	fpm := newFakePeerManager()
 	fspm := newFakeSessionPeerManager()
 	fpf := newFakeProviderFinder()
@@ -249,13 +243,18 @@ func TestSessionFindMorePeers(t *testing.T) {
 	defer notif.Shutdown()
 	id := random.SequenceNext()
 	sm := newMockSessionMgr(sim)
-	session := New(ctx, sm, id, fspm, fpf, sim, fpm, bpm, notif, time.Second, delay.Fixed(time.Minute), "", nil)
+	session := New(sm, id, fspm, fpf, sim, fpm, bpm, notif, time.Second, time.Minute, "", nil, nil)
+	defer session.Close()
 	session.SetBaseTickDelay(200 * time.Microsecond)
 	blks := random.BlocksOfSize(broadcastLiveWantsLimit*2, blockSize)
 	var cids []cid.Cid
 	for _, block := range blks {
 		cids = append(cids, block.Cid())
 	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
 	_, err := session.GetBlocks(ctx, cids)
 	require.NoError(t, err, "error getting blocks")
 
@@ -307,8 +306,6 @@ func TestSessionFindMorePeers(t *testing.T) {
 }
 
 func TestSessionOnPeersExhausted(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
-	defer cancel()
 	fpm := newFakePeerManager()
 	fspm := newFakeSessionPeerManager()
 	fpf := newFakeProviderFinder()
@@ -319,12 +316,17 @@ func TestSessionOnPeersExhausted(t *testing.T) {
 	defer notif.Shutdown()
 	id := random.SequenceNext()
 	sm := newMockSessionMgr(sim)
-	session := New(ctx, sm, id, fspm, fpf, sim, fpm, bpm, notif, time.Second, delay.Fixed(time.Minute), "", nil)
+	session := New(sm, id, fspm, fpf, sim, fpm, bpm, notif, time.Second, time.Minute, "", nil, nil)
+	defer session.Close()
 	blks := random.BlocksOfSize(broadcastLiveWantsLimit+5, blockSize)
 	var cids []cid.Cid
 	for _, block := range blks {
 		cids = append(cids, block.Cid())
 	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
+	defer cancel()
+
 	_, err := session.GetBlocks(ctx, cids)
 	require.NoError(t, err, "error getting blocks")
 
@@ -345,8 +347,6 @@ func TestSessionOnPeersExhausted(t *testing.T) {
 }
 
 func TestSessionFailingToGetFirstBlock(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
 	fpm := newFakePeerManager()
 	fspm := newFakeSessionPeerManager()
 	fpf := newFakeProviderFinder()
@@ -356,12 +356,17 @@ func TestSessionFailingToGetFirstBlock(t *testing.T) {
 	defer notif.Shutdown()
 	id := random.SequenceNext()
 	sm := newMockSessionMgr(sim)
-	session := New(ctx, sm, id, fspm, fpf, sim, fpm, bpm, notif, 10*time.Millisecond, delay.Fixed(100*time.Millisecond), "", nil)
+	session := New(sm, id, fspm, fpf, sim, fpm, bpm, notif, 10*time.Millisecond, 100*time.Millisecond, "", nil, nil)
+	defer session.Close()
 	blks := random.BlocksOfSize(4, blockSize)
 	var cids []cid.Cid
 	for _, block := range blks {
 		cids = append(cids, block.Cid())
 	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
 	_, err := session.GetBlocks(ctx, cids)
 	require.NoError(t, err, "error getting blocks")
 
@@ -456,8 +461,8 @@ func TestSessionCtxCancelClosesGetBlocksChannel(t *testing.T) {
 	sm := newMockSessionMgr(sim)
 
 	// Create a new session with its own context
-	sessctx, sesscancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
-	session := New(sessctx, sm, id, fspm, fpf, sim, fpm, bpm, notif, time.Second, delay.Fixed(time.Minute), "", nil)
+	session := New(sm, id, fspm, fpf, sim, fpm, bpm, notif, time.Second, time.Minute, "", nil, nil)
+	defer session.Close()
 
 	timerCtx, timerCancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
 	defer timerCancel()
@@ -470,8 +475,8 @@ func TestSessionCtxCancelClosesGetBlocksChannel(t *testing.T) {
 	getBlocksCh, err := session.GetBlocks(getctx, []cid.Cid{blks[0].Cid()})
 	require.NoError(t, err, "error getting blocks")
 
-	// Cancel the session context
-	sesscancel()
+	// Cancel the session
+	session.Close()
 
 	// Expect the GetBlocks() channel to be closed
 	select {
@@ -498,13 +503,11 @@ func TestSessionOnShutdownCalled(t *testing.T) {
 	id := random.SequenceNext()
 	sm := newMockSessionMgr(sim)
 
-	// Create a new session with its own context
-	sessctx, sesscancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
-	defer sesscancel()
-	session := New(sessctx, sm, id, fspm, fpf, sim, fpm, bpm, notif, time.Second, delay.Fixed(time.Minute), "", nil)
+	// Create a new session
+	session := New(sm, id, fspm, fpf, sim, fpm, bpm, notif, time.Second, time.Minute, "", nil, nil)
 
 	// Shutdown the session
-	session.Shutdown()
+	session.Close()
 
 	time.Sleep(10 * time.Millisecond)
 
@@ -512,8 +515,7 @@ func TestSessionOnShutdownCalled(t *testing.T) {
 	require.True(t, sm.removeSessionCalled(), "expected onShutdown to be called")
 }
 
-func TestSessionReceiveMessageAfterCtxCancel(t *testing.T) {
-	ctx, cancelCtx := context.WithTimeout(context.Background(), 20*time.Millisecond)
+func TestSessionReceiveMessageAfterClose(t *testing.T) {
 	fpm := newFakePeerManager()
 	fspm := newFakeSessionPeerManager()
 	fpf := newFakeProviderFinder()
@@ -524,18 +526,20 @@ func TestSessionReceiveMessageAfterCtxCancel(t *testing.T) {
 	defer notif.Shutdown()
 	id := random.SequenceNext()
 	sm := newMockSessionMgr(sim)
-	session := New(ctx, sm, id, fspm, fpf, sim, fpm, bpm, notif, time.Second, delay.Fixed(time.Minute), "", nil)
+	session := New(sm, id, fspm, fpf, sim, fpm, bpm, notif, time.Second, time.Minute, "", nil, nil)
+	defer session.Close()
+
 	blks := random.BlocksOfSize(2, blockSize)
 	cids := []cid.Cid{blks[0].Cid(), blks[1].Cid()}
 
-	_, err := session.GetBlocks(ctx, cids)
+	_, err := session.GetBlocks(context.Background(), cids)
 	require.NoError(t, err, "error getting blocks")
 
 	// Wait for initial want request
 	<-fpm.wantReqs
 
 	// Shut down session
-	cancelCtx()
+	session.Close()
 
 	// Simulate receiving block for a CID
 	peer := random.Peers(1)[0]

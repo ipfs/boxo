@@ -7,6 +7,7 @@ import (
 
 	"github.com/gammazero/chanqueue"
 	"github.com/gammazero/deque"
+	"github.com/ipfs/boxo/retrieval"
 	"github.com/ipfs/go-cid"
 	logging "github.com/ipfs/go-log/v2"
 	peer "github.com/libp2p/go-libp2p/core/peer"
@@ -357,6 +358,13 @@ func (pqm *ProviderQueryManager) findProviderWorker() {
 			findProviderCtx, cancel := context.WithTimeout(ctx, pqm.findProviderTimeout)
 			span := trace.SpanFromContext(findProviderCtx)
 			span.AddEvent("StartFindProvidersAsync")
+
+			// Update retrieval progress, if tracked in the existing context
+			retrievalState := retrieval.StateFromContext(ctx)
+			if retrievalState != nil {
+				retrievalState.SetPhase(retrieval.PhaseProviderDiscovery)
+			}
+
 			// We set count == 0. We will cancel the query manually once we
 			// have enough. This assumes the ContentDiscovery
 			// implementation does that, which a requirement per the
@@ -374,13 +382,25 @@ func (pqm *ProviderQueryManager) findProviderWorker() {
 					}
 
 					span.AddEvent("FoundProvider", trace.WithAttributes(attribute.Stringer("peer", p.ID)))
+					if retrievalState != nil {
+						retrievalState.ProvidersFound.Add(1)
+						retrievalState.SetPhase(retrieval.PhaseConnecting)
+						retrievalState.ProvidersAttempted.Add(1)
+					}
+
 					err := pqm.dialer.Connect(findProviderCtx, p)
 					if err != nil && err != swarm.ErrDialToSelf {
 						span.RecordError(err, trace.WithAttributes(attribute.Stringer("peer", p.ID)))
 						log.Debugf("failed to connect to provider %s: %s", p.ID, err)
+						if retrievalState != nil {
+							retrievalState.AddFailedProvider(p.ID)
+						}
 						return
 					}
 					span.AddEvent("ConnectedToProvider", trace.WithAttributes(attribute.Stringer("peer", p.ID)))
+					if retrievalState != nil {
+						retrievalState.ProvidersConnected.Add(1)
+					}
 					select {
 					case pqm.providerQueryMessages <- &receivedProviderMessage{
 						ctx: ctx,
@@ -487,6 +507,11 @@ func (npqm *newProvideQueryMessage) handle(pqm *ProviderQueryManager) {
 		span := trace.SpanFromContext(npqm.ctx)
 		span.AddEvent("NewQuery", trace.WithAttributes(attribute.Stringer("cid", npqm.k)))
 		ctx = trace.ContextWithSpan(ctx, span)
+
+		// Preserve retrieval.State from the original request context if present
+		if retrievalState := retrieval.StateFromContext(npqm.ctx); retrievalState != nil {
+			ctx = context.WithValue(ctx, retrieval.ContextKey, retrievalState)
+		}
 
 		// Use context derived from background here, and not the context from the
 		// request (npqm.ctx), because this inProgressRequestStatus applies to

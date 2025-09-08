@@ -16,7 +16,12 @@ The following emojis are used to highlight certain changes:
 
 ### Added
 
+- `gateway`: Added retrieval state tracking for timeout diagnostics. When retrieval timeouts occur, the error messages now include detailed information about which phase failed (path resolution, provider discovery, connecting, or data retrieval) and provider statistics. [#1015](https://github.com/ipfs/boxo/pull/1015)
+
 ### Changed
+
+- 🛠 `bitswap/client`: The `RebroadcastDelay` option now takes a `time.Duration` value. This is a potentially BREAKING CHANGE. The time-varying functionality of `delay.Delay` was never used, so it was replaced with a fixed duration value. This also removes the `github.com/ipfs/go-ipfs-delay` dependency.
+
 
 ### Removed
 

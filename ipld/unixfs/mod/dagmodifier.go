@@ -167,10 +167,10 @@ func (dm *DagModifier) Size() (int64, error) {
 	if err != nil {
 		return 0, err
 	}
-	if dm.wrBuf != nil && int64(dm.wrBuf.Len())+int64(dm.writeStart) > int64(fileSize) {
-		return int64(dm.wrBuf.Len()) + int64(dm.writeStart), nil
+	if dm.wrBuf == nil {
+		return int64(fileSize), nil
 	}
-	return int64(fileSize), nil
+	return max(int64(fileSize), int64(dm.wrBuf.Len())+int64(dm.writeStart)), nil
 }
 
 func fileSize(n ipld.Node) (uint64, error) {
