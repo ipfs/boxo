@@ -213,6 +213,8 @@ func resolvePathWithRootsAndBlock(ctx context.Context, p path.ImmutablePath, uni
 	// Update retrieval progress, if tracked in the existing context
 	if retrievalState := retrieval.StateFromContext(ctx); retrievalState != nil {
 		retrievalState.SetPhase(retrieval.PhasePathResolution)
+		// Set the root CID (first CID in the path)
+		retrievalState.SetRootCID(p.RootCid())
 	}
 	md, terminalBlk, err := resolvePathToLastWithRoots(ctx, p, unixFSLsys)
 	if err != nil {
@@ -232,6 +234,11 @@ func resolvePathWithRootsAndBlock(ctx context.Context, p path.ImmutablePath, uni
 		if err != nil {
 			return ContentPathMetadata{}, nil, err
 		}
+	}
+
+	// Set the terminal CID after successful path resolution
+	if retrievalState := retrieval.StateFromContext(ctx); retrievalState != nil {
+		retrievalState.SetTerminalCID(terminalCid)
 	}
 
 	return md, terminalBlk, err
