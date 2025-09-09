@@ -384,6 +384,7 @@ func (pqm *ProviderQueryManager) findProviderWorker() {
 					span.AddEvent("FoundProvider", trace.WithAttributes(attribute.Stringer("peer", p.ID)))
 					if retrievalState != nil {
 						retrievalState.ProvidersFound.Add(1)
+						retrievalState.AddFoundProvider(p.ID)
 						retrievalState.SetPhase(retrieval.PhaseConnecting)
 						retrievalState.ProvidersAttempted.Add(1)
 					}

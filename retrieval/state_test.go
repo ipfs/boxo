@@ -79,6 +79,27 @@ func TestState(t *testing.T) {
 		assert.Equal(t, int32(1), rs.ProvidersConnected.Load())
 	})
 
+	t.Run("Found providers are tracked up to limit", func(t *testing.T) {
+		rs := NewState()
+
+		// Create real peer IDs for testing
+		peerIDs := make([]peer.ID, 5)
+		for i := range peerIDs {
+			peerIDs[i] = test.RandPeerIDFatal(t)
+		}
+
+		// Add more than MaxProvidersSampleSize providers
+		for _, peerID := range peerIDs {
+			rs.AddFoundProvider(peerID)
+		}
+
+		foundProviders := rs.GetFoundProviders()
+		assert.Len(t, foundProviders, MaxProvidersSampleSize)
+		assert.Equal(t, peerIDs[0], foundProviders[0])
+		assert.Equal(t, peerIDs[1], foundProviders[1])
+		assert.Equal(t, peerIDs[2], foundProviders[2])
+	})
+
 	t.Run("Failed providers are tracked up to limit", func(t *testing.T) {
 		rs := NewState()
 
@@ -88,13 +109,13 @@ func TestState(t *testing.T) {
 			peerIDs[i] = test.RandPeerIDFatal(t)
 		}
 
-		// Add more than MaxFailedProvidersToTrack providers
+		// Add more than MaxProvidersSampleSize providers
 		for _, peerID := range peerIDs {
 			rs.AddFailedProvider(peerID)
 		}
 
 		failedProviders := rs.GetFailedProviders()
-		assert.Len(t, failedProviders, MaxFailedProvidersToTrack)
+		assert.Len(t, failedProviders, MaxProvidersSampleSize)
 		assert.Equal(t, peerIDs[0], failedProviders[0])
 		assert.Equal(t, peerIDs[1], failedProviders[1])
 		assert.Equal(t, peerIDs[2], failedProviders[2])
@@ -122,6 +143,21 @@ func TestState(t *testing.T) {
 				expectedSubstring: "found 5 provider(s) but none could be contacted",
 			},
 			{
+				name: "Single provider found but not reachable shows peer ID",
+				setup: func(rs *State) {
+					rs.ProvidersFound.Store(1)
+					rs.ProvidersAttempted.Store(1)
+					peerID := test.RandPeerIDFatal(t)
+					rs.AddFoundProvider(peerID)
+					rs.SetPhase(PhaseConnecting)
+
+					// Verify the peer ID appears in the summary
+					summary := rs.Summary()
+					assert.Contains(t, summary, peerID.String())
+				},
+				expectedSubstring: "found 1 provider(s), attempted 1, but none were reachable (phase: connecting to providers, peers:",
+			},
+			{
 				name: "Providers attempted but none reachable",
 				setup: func(rs *State) {
 					rs.ProvidersFound.Store(5)
@@ -131,20 +167,20 @@ func TestState(t *testing.T) {
 				expectedSubstring: "found 5 provider(s), attempted 3, but none were reachable",
 			},
 			{
-				name: "Providers attempted but none reachable with failed peers",
+				name: "Providers attempted but none reachable with found peers",
 				setup: func(rs *State) {
 					rs.ProvidersFound.Store(5)
 					rs.ProvidersAttempted.Store(3)
 					// Store peer IDs so we can verify they appear in the message
 					peerID1 := test.RandPeerIDFatal(t)
 					peerID2 := test.RandPeerIDFatal(t)
-					rs.AddFailedProvider(peerID1)
-					rs.AddFailedProvider(peerID2)
+					rs.AddFoundProvider(peerID1)
+					rs.AddFoundProvider(peerID2)
 					rs.SetPhase(PhaseConnecting)
 
 					// Verify the summary includes the actual peer IDs
 					summary := rs.Summary()
-					assert.Contains(t, summary, "failed peers:")
+					assert.Contains(t, summary, "peers:")
 					assert.Contains(t, summary, peerID1.String())
 					assert.Contains(t, summary, peerID2.String())
 				},
@@ -356,7 +392,7 @@ func TestErrorWithState(t *testing.T) {
 
 		// Check that error includes failed peers
 		errMsg := err.Error()
-		assert.Contains(t, errMsg, "connection failed: retrieval: found 3 provider(s), connected to 1, but they did not return the requested content (phase: data retrieval, failed peers: [")
+		assert.Contains(t, errMsg, "connection failed: retrieval: found 3 provider(s), connected to 1, but they did not return the requested content (phase: data retrieval, failed peers: ")
 		assert.Contains(t, errMsg, peerID1.String())
 		assert.Contains(t, errMsg, peerID2.String())
 	})

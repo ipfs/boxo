@@ -671,6 +671,8 @@ func (bb *BlocksBackend) getPathRoots(ctx context.Context, contentPath path.Immu
 	// Update retrieval progress, if tracked in the existing context
 	if retrievalState := retrieval.StateFromContext(ctx); retrievalState != nil {
 		retrievalState.SetPhase(retrieval.PhasePathResolution)
+		// Set the root CID (first CID in the path)
+		retrievalState.SetRootCID(contentPath.RootCid())
 	}
 
 	/*
@@ -726,6 +728,14 @@ func (bb *BlocksBackend) getPathRoots(ctx context.Context, contentPath path.Immu
 	}
 
 	pathRoots = pathRoots[:len(pathRoots)-1]
+
+	// Set the terminal CID after successful path resolution
+	if retrievalState := retrieval.StateFromContext(ctx); retrievalState != nil {
+		if rootCid := lastPath.RootCid(); rootCid.Defined() {
+			retrievalState.SetTerminalCID(rootCid)
+		}
+	}
+
 	return pathRoots, lastPath, remainder, nil
 }
 

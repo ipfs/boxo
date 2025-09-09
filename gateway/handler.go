@@ -68,6 +68,9 @@ type handler struct {
 //
 // [IPFS HTTP Gateway]: https://specs.ipfs.tech/http-gateways/
 func NewHandler(c Config, backend IPFSBackend) http.Handler {
+	// Validate and normalize configuration
+	c = validateConfig(c)
+
 	// Get registry from config or use default
 	reg := c.MetricsRegistry
 	if reg == nil {
