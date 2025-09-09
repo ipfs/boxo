@@ -1660,7 +1660,7 @@ func TestIgnoresCidsAboveLimit(t *testing.T) {
 
 	wl := warsaw.Engine.WantlistForPeer(riga.Peer)
 	if len(wl) != 1 {
-		t.Fatal("wantlist add a CID too big")
+		t.Fatalf("expected 1 entry in wantlist, got %d", len(wl))
 	}
 }
 
