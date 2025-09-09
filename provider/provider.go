@@ -69,31 +69,27 @@ func NewBufferedProvider(pinsF KeyChanFunc) KeyChanFunc {
 	}
 }
 
-func NewPrioritizedProvider(priorityCids KeyChanFunc, otherCids KeyChanFunc) KeyChanFunc {
+func NewPrioritizedProvider(streams ...KeyChanFunc) KeyChanFunc {
 	return func(ctx context.Context) (<-chan cid.Cid, error) {
 		outCh := make(chan cid.Cid)
-
-		priorityCh, err := priorityCids(ctx)
-		if err != nil {
-			return nil, err
-		}
-		otherCh, err := otherCids(ctx)
-		if err != nil {
-			return nil, err
-		}
 
 		go func() {
 			defer close(outCh)
 			visited := cidutil.NewSet()
 
-			handleStream := func(ch <-chan cid.Cid, markVisited bool) {
+			handleStream := func(stream KeyChanFunc, markVisited bool) error {
+				ch, err := stream(ctx)
+				if err != nil {
+					return err
+				}
+
 				for {
 					select {
 					case <-ctx.Done():
-						return
+						return nil
 					case c, ok := <-ch:
 						if !ok {
-							return
+							return nil
 						}
 
 						if visited.Has(c) {
@@ -102,7 +98,7 @@ func NewPrioritizedProvider(priorityCids KeyChanFunc, otherCids KeyChanFunc) Key
 
 						select {
 						case <-ctx.Done():
-							return
+							return nil
 						case outCh <- c:
 							if markVisited {
 								_ = visited.Visit(c)
@@ -112,8 +108,13 @@ func NewPrioritizedProvider(priorityCids KeyChanFunc, otherCids KeyChanFunc) Key
 				}
 			}
 
-			handleStream(priorityCh, true)
-			handleStream(otherCh, false)
+			last := len(streams) - 1
+			for i, stream := range streams {
+				if err := handleStream(stream, i < last); err != nil {
+					log.Warnf("error in prioritized strategy while handling CID stream %d: %w", i, err)
+					return
+				}
+			}
 		}()
 
 		return outCh, nil
