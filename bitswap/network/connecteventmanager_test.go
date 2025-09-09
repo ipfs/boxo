@@ -17,23 +17,47 @@ type mockConnEvent struct {
 
 type mockConnListener struct {
 	sync.Mutex
-	events []mockConnEvent
+	events      []mockConnEvent
+	eventSignal chan struct{}
 }
 
 func newMockConnListener() *mockConnListener {
-	return new(mockConnListener)
+	return &mockConnListener{
+		eventSignal: make(chan struct{}, 1),
+	}
 }
 
 func (cl *mockConnListener) PeerConnected(p peer.ID) {
 	cl.Lock()
 	defer cl.Unlock()
 	cl.events = append(cl.events, mockConnEvent{connected: true, peer: p})
+	cl.signalEvent()
 }
 
 func (cl *mockConnListener) PeerDisconnected(p peer.ID) {
 	cl.Lock()
 	defer cl.Unlock()
 	cl.events = append(cl.events, mockConnEvent{connected: false, peer: p})
+	cl.signalEvent()
+}
+
+func (cl *mockConnListener) signalEvent() {
+	select {
+	case cl.eventSignal <- struct{}{}:
+	default:
+	}
+}
+
+func (cl *mockConnListener) waitEvent(t *testing.T) {
+	t.Helper()
+	timeout := time.NewTimer(time.Second)
+	defer timeout.Stop()
+
+	select {
+	case <-cl.eventSignal:
+	case <-timeout.C:
+		t.Fatal("timed out waiting for ConnListener event")
+	}
 }
 
 func wait(t *testing.T, c *ConnectEventManager) {
@@ -63,6 +87,7 @@ func TestConnectEventManagerConnectDisconnect(t *testing.T) {
 
 	// Flush the event queue.
 	wait(t, cem)
+	connListener.waitEvent(t)
 	require.Equal(t, expectedEvents, connListener.events)
 
 	// Block up the event loop.
@@ -80,6 +105,7 @@ func TestConnectEventManagerConnectDisconnect(t *testing.T) {
 	connListener.Unlock()
 
 	wait(t, cem)
+	connListener.waitEvent(t)
 	require.Equal(t, expectedEvents, connListener.events)
 }
 
@@ -100,6 +126,7 @@ func TestConnectEventManagerMarkUnresponsive(t *testing.T) {
 	// Handle connected event.
 	cem.Connected(p)
 	wait(t, cem)
+	connListener.waitEvent(t)
 
 	expectedEvents = append(expectedEvents, mockConnEvent{
 		peer:      p,
@@ -110,6 +137,7 @@ func TestConnectEventManagerMarkUnresponsive(t *testing.T) {
 	// Becomes unresponsive.
 	cem.MarkUnresponsive(p)
 	wait(t, cem)
+	connListener.waitEvent(t)
 
 	expectedEvents = append(expectedEvents, mockConnEvent{
 		peer:      p,
@@ -120,6 +148,7 @@ func TestConnectEventManagerMarkUnresponsive(t *testing.T) {
 	// We have a new connection, mark them responsive.
 	cem.Connected(p)
 	wait(t, cem)
+	connListener.waitEvent(t)
 	expectedEvents = append(expectedEvents, mockConnEvent{
 		peer:      p,
 		connected: true,
@@ -144,6 +173,7 @@ func TestConnectEventManagerDisconnectAfterMarkUnresponsive(t *testing.T) {
 	// Handle connected event.
 	cem.Connected(p)
 	wait(t, cem)
+	connListener.waitEvent(t)
 
 	expectedEvents = append(expectedEvents, mockConnEvent{
 		peer:      p,
@@ -154,6 +184,7 @@ func TestConnectEventManagerDisconnectAfterMarkUnresponsive(t *testing.T) {
 	// Becomes unresponsive.
 	cem.MarkUnresponsive(p)
 	wait(t, cem)
+	connListener.waitEvent(t)
 
 	expectedEvents = append(expectedEvents, mockConnEvent{
 		peer:      p,
