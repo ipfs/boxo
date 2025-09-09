@@ -278,7 +278,7 @@ func PutPublicKey(ctx context.Context, r routing.ValueStore, pid peer.ID, pubKey
 		return err
 	}
 
-	log.Debugf("Storing public key at: %x", routingKey)
+	log.Debugf("Storing public key at: %q", routingKey) // routingKey may contain binary data per IPNS spec
 	return r.PutValue(ctx, routingKey, bytes)
 }
 
@@ -298,6 +298,6 @@ func PutIPNSRecord(ctx context.Context, r routing.ValueStore, name ipns.Name, re
 		return err
 	}
 
-	log.Debugf("Storing ipns record at: %x", routingKey)
+	log.Debugf("Storing ipns record at: %q", routingKey) // routingKey may contain binary data per IPNS spec
 	return r.PutValue(ctx, routingKey, bytes)
 }

@@ -16,6 +16,11 @@ The following emojis are used to highlight certain changes:
 
 ### Added
 
+- `gateway`: Enhanced error handling and UX for timeouts:
+  - Added retrieval state tracking for timeout diagnostics. When retrieval timeouts occur, the error messages now include detailed information about which phase failed (path resolution, provider discovery, connecting, or data retrieval) and provider statistics including failed peer IDs [#1015](https://github.com/ipfs/boxo/pull/1015) [#1023](https://github.com/ipfs/boxo/pull/1023)
+  - Added `Config.DiagnosticServiceURL` to configure a CID retrievability diagnostic service. When set, 504 Gateway Timeout errors show a "Check CID retrievability" button linking to the service with `?cid=<failed-cid>` [#1023](https://github.com/ipfs/boxo/pull/1023)
+  - Improved 504 error pages with "Retry" button, diagnostic service integration, and clear indication when timeout occurs on sub-resource vs root CID [#1023](https://github.com/ipfs/boxo/pull/1023)
+
 ### Changed
 
 - `verifcid`: 🛠 Enhanced Allowlist interface with per-hash size limits ([#1018](https://github.com/ipfs/boxo/pull/1018))
@@ -26,6 +31,7 @@ The following emojis are used to highlight certain changes:
   - `ErrBelowMinimumHashLength` and `ErrAboveMaximumHashLength` remain as deprecated aliases pointing to the new errors
 - `bitswap`: Updated to use `verifcid.DefaultMaxDigestSize` for `MaximumHashLength` constant
   - The default `MaximumAllowedCid` limit for incoming CIDs can be adjusted using `bitswap.MaxCidSize` or `server.MaxCidSize` options
+- 🛠 `bitswap/client`: The `RebroadcastDelay` option now takes a `time.Duration` value. This is a potentially BREAKING CHANGE. The time-varying functionality of `delay.Delay` was never used, so it was replaced with a fixed duration value. This also removes the `github.com/ipfs/go-ipfs-delay` dependency.
 
 ### Removed
 

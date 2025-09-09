@@ -16,6 +16,7 @@ import (
 	"github.com/ipfs/boxo/ipld/unixfs"
 	"github.com/ipfs/boxo/path"
 	"github.com/ipfs/boxo/path/resolver"
+	"github.com/ipfs/boxo/retrieval"
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
 	format "github.com/ipfs/go-ipld-format"
@@ -209,6 +210,12 @@ func (api *CarBackend) fetchCAR(ctx context.Context, p path.ImmutablePath, param
 
 // resolvePathWithRootsAndBlock takes a path and linksystem and returns the set of non-terminal cids, the terminal cid, the remainder, and the block corresponding to the terminal cid
 func resolvePathWithRootsAndBlock(ctx context.Context, p path.ImmutablePath, unixFSLsys *ipld.LinkSystem) (ContentPathMetadata, blocks.Block, error) {
+	// Update retrieval progress, if tracked in the existing context
+	if retrievalState := retrieval.StateFromContext(ctx); retrievalState != nil {
+		retrievalState.SetPhase(retrieval.PhasePathResolution)
+		// Set the root CID (first CID in the path)
+		retrievalState.SetRootCID(p.RootCid())
+	}
 	md, terminalBlk, err := resolvePathToLastWithRoots(ctx, p, unixFSLsys)
 	if err != nil {
 		return ContentPathMetadata{}, nil, err
@@ -229,6 +236,11 @@ func resolvePathWithRootsAndBlock(ctx context.Context, p path.ImmutablePath, uni
 		}
 	}
 
+	// Set the terminal CID after successful path resolution
+	if retrievalState := retrieval.StateFromContext(ctx); retrievalState != nil {
+		retrievalState.SetTerminalCID(terminalCid)
+	}
+
 	return md, terminalBlk, err
 }
 
@@ -237,6 +249,10 @@ func resolvePathWithRootsAndBlock(ctx context.Context, p path.ImmutablePath, uni
 //
 // Note: the block returned will be nil if the terminal element is a link or the path is just a CID
 func resolvePathToLastWithRoots(ctx context.Context, p path.ImmutablePath, unixFSLsys *ipld.LinkSystem) (ContentPathMetadata, blocks.Block, error) {
+	// Update retrieval progress, if tracked in the existing context
+	if retrievalState := retrieval.StateFromContext(ctx); retrievalState != nil {
+		retrievalState.SetPhase(retrieval.PhasePathResolution)
+	}
 	root, segments := p.RootCid(), p.Segments()[2:]
 	if len(segments) == 0 {
 		return ContentPathMetadata{
