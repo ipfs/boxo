@@ -873,12 +873,11 @@ func getOffset(reader uio.DagReader) int64 {
 	return offset
 }
 
-// makeTestDataPattern generates test data with a repeating pattern
-func makeTestDataPattern(size int, pattern string) []byte {
+// makeTestData generates test data with repeating lowercase ascii alphabet.
+func makeTestData(size int) []byte {
 	data := make([]byte, size)
-	patternBytes := []byte(pattern)
 	for i := range data {
-		data[i] = patternBytes[i%len(patternBytes)]
+		data[i] = byte('a' + i%26)
 	}
 	return data
 }
@@ -906,7 +905,7 @@ func TestIdentityCIDHandling(t *testing.T) {
 		// Create a UnixFS file node with identity hash near the size limit
 		// UnixFS overhead is approximately 8-10 bytes, so we use data that will
 		// encode to just under DefaultMaxIdentityDigestSize when combined with metadata
-		initialData := makeTestDataPattern(verifcid.DefaultMaxIdentityDigestSize-10, "abcdefghijklmnopqrstuvwxyz")
+		initialData := makeTestData(verifcid.DefaultMaxIdentityDigestSize - 10)
 
 		// Create a UnixFS file node with identity CID
 		node := makeIdentityNode(initialData)
@@ -914,7 +913,7 @@ func TestIdentityCIDHandling(t *testing.T) {
 		// Verify the encoded size is under limit
 		encoded, _ := node.EncodeProtobuf(false)
 		if len(encoded) > verifcid.DefaultMaxIdentityDigestSize {
-			t.Skipf("Initial node too large for identity: %d bytes", len(encoded))
+			t.Fatalf("Test setup error: initial node too large for identity: %d bytes (max %d)", len(encoded), verifcid.DefaultMaxIdentityDigestSize)
 		}
 
 		// Store the node
@@ -1015,10 +1014,7 @@ func TestIdentityCIDHandling(t *testing.T) {
 		// Create initial data that fits well within identity CID limit
 		// This needs to be large enough to trigger modifyDag but small enough
 		// to fit in identity with UnixFS overhead
-		initialData := make([]byte, 100)
-		for i := range initialData {
-			initialData[i] = byte('a' + i%26)
-		}
+		initialData := makeTestData(100)
 
 		// Create identity CID ProtoNode with UnixFS data
 		initialNode := dag.NodeWithData(unixfs.FilePBData(initialData, uint64(len(initialData))))
@@ -1056,10 +1052,7 @@ func TestIdentityCIDHandling(t *testing.T) {
 
 		// Write within the existing data bounds to trigger modifyDag
 		// Use enough data that would cause identity overflow
-		modData := make([]byte, 50)
-		for i := range modData {
-			modData[i] = 'X'
-		}
+		modData := bytes.Repeat([]byte{'X'}, 50)
 
 		// Write at offset 0, replacing first 50 bytes
 		n, err := dmod.WriteAt(modData, 0)
@@ -1113,10 +1106,7 @@ func TestIdentityCIDHandling(t *testing.T) {
 	t.Run("raw node preserves codec", func(t *testing.T) {
 		// Create a RawNode with identity CID that's near the limit
 		// This allows us to test overflow with small modifications
-		initialData := make([]byte, verifcid.DefaultMaxIdentityDigestSize-10)
-		for i := range initialData {
-			initialData[i] = byte('a' + i%26)
-		}
+		initialData := makeTestData(verifcid.DefaultMaxIdentityDigestSize - 10)
 
 		rawNode, err := dag.NewRawNodeWPrefix(initialData, cid.Prefix{
 			Version:  1,
@@ -1191,10 +1181,7 @@ func TestIdentityCIDHandling(t *testing.T) {
 	t.Run("raw node identity overflow via truncate", func(t *testing.T) {
 		// Test that Truncate also handles identity overflow correctly for RawNodes
 		// Start with a RawNode using identity that's at max size
-		maxData := make([]byte, verifcid.DefaultMaxIdentityDigestSize)
-		for i := range maxData {
-			maxData[i] = byte('A' + i%26)
-		}
+		maxData := makeTestData(verifcid.DefaultMaxIdentityDigestSize)
 
 		rawNode, err := dag.NewRawNodeWPrefix(maxData, cid.Prefix{
 			Version:  1,
@@ -1265,10 +1252,7 @@ func TestIdentityCIDHandling(t *testing.T) {
 	t.Run("raw node switches from identity when modified to exceed limit", func(t *testing.T) {
 		// Create a RawNode with identity CID near the limit
 		// Use size that allows modification without triggering append
-		initialData := make([]byte, verifcid.DefaultMaxIdentityDigestSize-1) // 127 bytes
-		for i := range initialData {
-			initialData[i] = byte('a')
-		}
+		initialData := bytes.Repeat([]byte{'a'}, verifcid.DefaultMaxIdentityDigestSize-1) // 127 bytes
 
 		rawNode, err := dag.NewRawNodeWPrefix(initialData, cid.Prefix{
 			Version:  1,
@@ -1395,10 +1379,7 @@ func TestRawNodeGrowthConversion(t *testing.T) {
 		}
 
 		// Append data that will create multiple blocks
-		largeData := make([]byte, 100)
-		for i := range largeData {
-			largeData[i] = byte('A' + i%26)
-		}
+		largeData := makeTestData(100)
 
 		_, err = dmod.Write(largeData)
 		if err != nil {
@@ -1493,10 +1474,7 @@ func TestRawNodeGrowthConversion(t *testing.T) {
 		}
 
 		// Append enough data to force multi-block structure
-		appendData := make([]byte, 200)
-		for i := range appendData {
-			appendData[i] = byte('X')
-		}
+		appendData := bytes.Repeat([]byte{'X'}, 200)
 
 		_, err = dmod.Write(appendData)
 		if err != nil {
