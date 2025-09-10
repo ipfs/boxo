@@ -233,9 +233,9 @@ func (pm *PeerManager) UnregisterSession(ses uint64) {
 	pm.psLk.Lock()
 	defer pm.psLk.Unlock()
 
-	for p := range pm.peerSessions {
-		delete(pm.peerSessions[p], ses)
-		if len(pm.peerSessions[p]) == 0 {
+	for p, sesSet := range pm.peerSessions {
+		delete(sesSet, ses)
+		if len(sesSet) == 0 {
 			delete(pm.peerSessions, p)
 		}
 	}
