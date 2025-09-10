@@ -12,12 +12,22 @@ import (
 	"github.com/gammazero/chanqueue"
 	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-cidutil"
+	mh "github.com/multiformats/go-multihash"
 )
 
 // Provider announces blocks to the network
 type Provider interface {
 	// Provide takes a cid and makes an attempt to announce it to the network
 	Provide(context.Context, cid.Cid, bool) error
+}
+
+// MultihashProvider is the interface implementing StartProviding.
+type MultihashProvider interface {
+	// StartProviding announces blocks to the network, batching multiple keys for efficiency.
+	// The force parameter, when true, forces re-providing even if the keys were recently provided.
+	// When false, the implementation may skip keys that were recently announced based on internal
+	// rate limiting or caching strategies.
+	StartProviding(force bool, keys ...mh.Multihash) error
 }
 
 // Reprovider reannounces blocks to the network
@@ -59,7 +69,7 @@ func NewBufferedProvider(pinsF KeyChanFunc) KeyChanFunc {
 	}
 }
 
-func NewPrioritizedProvider(priorityCids KeyChanFunc, otherCids KeyChanFunc) KeyChanFunc {
+func NewPrioritizedProvider(streams ...KeyChanFunc) KeyChanFunc {
 	return func(ctx context.Context) (<-chan cid.Cid, error) {
 		outCh := make(chan cid.Cid)
 
@@ -98,15 +108,12 @@ func NewPrioritizedProvider(priorityCids KeyChanFunc, otherCids KeyChanFunc) Key
 				}
 			}
 
-			err := handleStream(priorityCids, true)
-			if err != nil {
-				log.Warnf("error in prioritized strategy while handling priority CIDs: %w", err)
-				return
-			}
-
-			err = handleStream(otherCids, false)
-			if err != nil {
-				log.Warnf("error in prioritized strategy while handling other CIDs: %w", err)
+			last := len(streams) - 1
+			for i, stream := range streams {
+				if err := handleStream(stream, i < last); err != nil {
+					log.Warnf("error in prioritized strategy while handling CID stream %d: %w", i, err)
+					return
+				}
 			}
 		}()
 
