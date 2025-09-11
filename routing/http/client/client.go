@@ -27,6 +27,7 @@ import (
 	logging "github.com/ipfs/go-log/v2"
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/libp2p/go-libp2p/core/routing"
 	"github.com/multiformats/go-multiaddr"
 )
 
@@ -279,6 +280,8 @@ func (c *Client) FindProviders(ctx context.Context, key cid.Cid) (providers iter
 	}
 
 	m.statusCode = resp.StatusCode
+	// Per IPIP-0513: Handle 404 as empty results for backward compatibility
+	// New servers return 200 with empty results, old servers return 404
 	if resp.StatusCode == http.StatusNotFound {
 		resp.Body.Close()
 		m.record(ctx)
@@ -462,6 +465,8 @@ func (c *Client) FindPeers(ctx context.Context, pid peer.ID) (peers iter.ResultI
 	}
 
 	m.statusCode = resp.StatusCode
+	// Per IPIP-0513: Handle 404 as empty results for backward compatibility
+	// New servers return 200 with empty results, old servers return 404
 	if resp.StatusCode == http.StatusNotFound {
 		resp.Body.Close()
 		m.record(ctx)
@@ -533,8 +538,23 @@ func (c *Client) GetIPNS(ctx context.Context, name ipns.Name) (*ipns.Record, err
 	}
 	defer resp.Body.Close()
 
+	// Per IPIP-0513: Handle 404 as "no record found" for backward compatibility
+	// New servers return 200 with text/plain for no record, old servers return 404
+	if resp.StatusCode == http.StatusNotFound {
+		io.Copy(io.Discard, resp.Body) // Drain body for connection reuse
+		return nil, routing.ErrNotFound
+	}
+
 	if resp.StatusCode != http.StatusOK {
 		return nil, httpError(resp.StatusCode, resp.Body)
+	}
+
+	// Per IPIP-0513: Only Content-Type: application/vnd.ipfs.ipns-record indicates a valid record
+	// Any other content type (e.g., text/plain) means no record found
+	contentType := resp.Header.Get("Content-Type")
+	if !strings.Contains(contentType, mediaTypeIPNSRecord) {
+		io.Copy(io.Discard, resp.Body) // Drain body for connection reuse
+		return nil, routing.ErrNotFound
 	}
 
 	// Limit the reader to the maximum record size.
