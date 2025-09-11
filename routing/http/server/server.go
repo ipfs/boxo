@@ -295,6 +295,11 @@ func (s *server) findProvidersJSON(w http.ResponseWriter, provIter iter.ResultIt
 		return
 	}
 
+	// Ensure providers is an empty slice instead of nil for proper JSON marshaling
+	if providers == nil {
+		providers = []types.Record{}
+	}
+
 	writeJSONResult(w, "FindProviders", jsontypes.ProvidersResponse{
 		Providers: providers,
 	})
@@ -451,6 +456,11 @@ func (s *server) findPeersJSON(w http.ResponseWriter, peersIter iter.ResultIter[
 		return
 	}
 
+	// Ensure peers is an empty slice instead of nil for proper JSON marshaling
+	if peers == nil {
+		peers = []*types.PeerRecord{}
+	}
+
 	writeJSONResult(w, "FindPeers", jsontypes.PeersResponse{
 		Peers: peers,
 	})
@@ -503,7 +513,9 @@ func (s *server) GetIPNS(w http.ResponseWriter, r *http.Request) {
 	record, err := s.svc.GetIPNS(ctx, name)
 	if err != nil {
 		if errors.Is(err, routing.ErrNotFound) {
-			writeErr(w, "GetIPNS", http.StatusNotFound, fmt.Errorf("delegate error: %w", err))
+			// Per IPIP-0513: Return 200 with text/plain to indicate no record found
+			setCacheControl(w, maxAgeWithoutResults, maxStale)
+			http.Error(w, fmt.Sprintf("delegate error: %s", err), http.StatusOK)
 			return
 		} else {
 			writeErr(w, "GetIPNS", http.StatusInternalServerError, fmt.Errorf("delegate error: %w", err))
@@ -629,11 +641,8 @@ func writeJSONResult(w http.ResponseWriter, method string, val interface{ Length
 		return
 	}
 
-	if val.Length() > 0 {
-		w.WriteHeader(http.StatusOK)
-	} else {
-		w.WriteHeader(http.StatusNotFound)
-	}
+	// Always return 200 OK per IPIP-0513
+	w.WriteHeader(http.StatusOK)
 
 	_, err = io.Copy(w, bytes.NewBuffer(b))
 	if err != nil {
@@ -708,8 +717,8 @@ func writeResultsIterNDJSON[T types.Record](w http.ResponseWriter, resultIter it
 	}
 
 	if !hasResults {
-		// There weren't results, cache for shorter and send 404
+		// There weren't results, cache for shorter but still send 200 per IPIP-0513
 		setCacheControl(w, maxAgeWithoutResults, maxStale)
-		w.WriteHeader(http.StatusNotFound)
+		w.WriteHeader(http.StatusOK)
 	}
 }

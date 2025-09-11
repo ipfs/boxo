@@ -23,6 +23,10 @@ The following emojis are used to highlight certain changes:
 
 ### Changed
 
+- `routing/http`: ✨ Delegated Routing V1 HTTP endpoints now return 200 with empty results instead of 404 when no records are found, per [IPIP-513](https://github.com/ipfs/specs/pull/513) ([#1024](https://github.com/ipfs/boxo/issues/1024))
+  - Server endpoints (`/routing/v1/providers/{cid}`, `/routing/v1/peers/{peer-id}`, `/routing/v1/ipns/{name}`) return HTTP 200 with empty JSON arrays or appropriate content types for empty results
+  - Client maintains backward compatibility by treating both 200 with empty results and 404 as "no records found"
+  - IPNS endpoint distinguishes between valid records (Content-Type: `application/vnd.ipfs.ipns-record`) and no record found (any other content type)
 - `verifcid`: 🛠 Enhanced Allowlist interface with per-hash size limits ([#1018](https://github.com/ipfs/boxo/pull/1018))
   - Expanded `Allowlist` interface with `MinDigestSize(code uint64)` and `MaxDigestSize(code uint64)` methods for per-hash function size validation
   - Added public constants: `DefaultMinDigestSize` (20 bytes), `DefaultMaxDigestSize` (128 bytes for cryptographic hashes), and `DefaultMaxIdentityDigestSize` (128 bytes for identity CIDs)
@@ -37,6 +41,12 @@ The following emojis are used to highlight certain changes:
 
 ### Fixed
 
+- `routing/http/client`:
+  - Fixed off-by-one error in `routing_http_client_length` metric - the metric now correctly reports 0 for empty results instead of 1
+  - Added metrics for IPNS operations (`GetIPNS` and `PutIPNS`) - these now report latency, status code, and result count (0 or 1 for GetIPNS)
+  - Added simple counter metrics to avoid confusing histogram bucket math:
+    - `routing_http_client_requests_total` - total requests including errors
+    - `routing_http_client_positive_responses_total` - requests that returned at least 1 result
 - `ipld/unixfs/mod`:
   - `DagModifier` now correctly preserves raw node codec when modifying data under the chunker threshold, instead of incorrectly forcing everything to dag-pb
   - `DagModifier` prevents creation of identity CIDs exceeding `verifcid.DefaultMaxIdentityDigestSize` limit when modifying data, automatically switching to proper cryptographic hash while preserving small identity CIDs
