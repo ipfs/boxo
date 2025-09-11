@@ -23,6 +23,10 @@ The following emojis are used to highlight certain changes:
 
 ### Changed
 
+- `routing/http`: ✨ Delegated Routing V1 HTTP endpoints now return 200 with empty results instead of 404 when no records are found, per [IPIP-513](https://github.com/ipfs/specs/pull/513) ([#1024](https://github.com/ipfs/boxo/issues/1024))
+  - Server endpoints (`/routing/v1/providers/{cid}`, `/routing/v1/peers/{peer-id}`, `/routing/v1/ipns/{name}`) return HTTP 200 with empty JSON arrays or appropriate content types for empty results
+  - Client maintains backward compatibility by treating both 200 with empty results and 404 as "no records found"
+  - IPNS endpoint distinguishes between valid records (Content-Type: `application/vnd.ipfs.ipns-record`) and no record found (any other content type)
 - `verifcid`: 🛠 Enhanced Allowlist interface with per-hash size limits ([#1018](https://github.com/ipfs/boxo/pull/1018))
   - Expanded `Allowlist` interface with `MinDigestSize(code uint64)` and `MaxDigestSize(code uint64)` methods for per-hash function size validation
   - Added public constants: `DefaultMinDigestSize` (20 bytes), `DefaultMaxDigestSize` (128 bytes for cryptographic hashes), and `DefaultMaxIdentityDigestSize` (128 bytes for identity CIDs)
