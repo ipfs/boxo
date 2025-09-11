@@ -9,11 +9,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ipfs/boxo/provider/internal/queue"
+	oldqueue "github.com/ipfs/boxo/provider/internal/queue"
 	"github.com/ipfs/boxo/verifcid"
 	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-datastore"
 	"github.com/ipfs/go-datastore/namespace"
+	"github.com/ipfs/go-dsqueue"
 	logging "github.com/ipfs/go-log/v2"
 	metrics "github.com/ipfs/go-metrics-interface"
 	"github.com/multiformats/go-multihash"
@@ -58,7 +59,7 @@ type reprovider struct {
 	keyProviderLock sync.RWMutex
 	keyProvider     KeyChanFunc
 
-	q  *queue.Queue
+	q  *dsqueue.DSQueue
 	ds datastore.Batching
 
 	maxReprovideBatchSize uint
@@ -146,7 +147,17 @@ func New(ds datastore.Batching, opts ...Option) (System, error) {
 	}
 
 	s.ds = namespace.Wrap(ds, s.keyPrefix)
-	s.q = queue.New(s.ds)
+
+	// Remove any items from the old queue.
+	cleaned, err := oldqueue.ClearDatastore(s.ds)
+	if err != nil {
+		log.Error(err)
+	}
+	if cleaned != 0 {
+		log.Infof("removed %d cids from old provide queue", cleaned)
+	}
+
+	s.q = dsqueue.New(s.ds, "provide")
 
 	// This is after the options processing so we do not have to worry about leaking a context if there is an
 	// initialization error processing the options
@@ -278,7 +289,7 @@ func (s *reprovider) run() {
 
 func (s *reprovider) provideWorker() {
 	defer s.closewg.Done()
-	provCh := s.q.Dequeue()
+	provCh := s.q.Out()
 
 	provideFunc := func(ctx context.Context, c cid.Cid) {
 		log.Debugf("provider worker: providing %s", c)
@@ -334,8 +345,13 @@ func (s *reprovider) provideWorker() {
 		}
 	}
 
-	for c := range provCh {
-		if err := verifcid.ValidateCid(s.allowlist, c); err != nil {
+	for data := range provCh {
+		c, err := cid.Parse(data)
+		if err != nil {
+			log.Errorf("invalid cid read from queue: %s", err)
+			continue
+		}
+		if err = verifcid.ValidateCid(s.allowlist, c); err != nil {
 			log.Errorf("insecure hash in reprovider, %s (%s)", c, err)
 			continue
 		}
@@ -425,7 +441,7 @@ func (s *reprovider) Close() error {
 }
 
 func (s *reprovider) Provide(ctx context.Context, cid cid.Cid, announce bool) error {
-	return s.q.Enqueue(cid)
+	return s.q.Put(cid.Bytes())
 }
 
 func (s *reprovider) Reprovide(ctx context.Context) error {
