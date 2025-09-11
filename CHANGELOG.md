@@ -41,7 +41,9 @@ The following emojis are used to highlight certain changes:
 
 ### Fixed
 
-- `routing/http/client`: Fixed off-by-one error in `routing_http_client_length` metric - the metric now correctly reports 0 for empty results instead of 1
+- `routing/http/client`:
+  - Fixed off-by-one error in `routing_http_client_length` metric - the metric now correctly reports 0 for empty results instead of 1
+  - Added metrics for IPNS operations (`GetIPNS` and `PutIPNS`) - these now report latency, status code, and result count (0 or 1 for GetIPNS)
 - `ipld/unixfs/mod`:
   - `DagModifier` now correctly preserves raw node codec when modifying data under the chunker threshold, instead of incorrectly forcing everything to dag-pb
   - `DagModifier` prevents creation of identity CIDs exceeding `verifcid.DefaultMaxIdentityDigestSize` limit when modifying data, automatically switching to proper cryptographic hash while preserving small identity CIDs

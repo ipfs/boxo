@@ -526,7 +526,20 @@ func (c *Client) FindPeers(ctx context.Context, pid peer.ID) (peers iter.ResultI
 // GetIPNS tries to retrieve the [ipns.Record] for the given [ipns.Name]. The record is
 // validated against the given name. If validation fails, an error is returned, but no
 // record.
-func (c *Client) GetIPNS(ctx context.Context, name ipns.Name) (*ipns.Record, error) {
+func (c *Client) GetIPNS(ctx context.Context, name ipns.Name) (record *ipns.Record, err error) {
+	m := newMeasurement("GetIPNS")
+	start := time.Now()
+	defer func() {
+		m.latency = time.Since(start)
+		m.err = err
+		if record != nil {
+			m.length = 1
+		} else {
+			m.length = 0
+		}
+		m.record(ctx)
+	}()
+
 	url := c.baseURL + "/routing/v1/ipns/" + name.String()
 
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
@@ -535,11 +548,15 @@ func (c *Client) GetIPNS(ctx context.Context, name ipns.Name) (*ipns.Record, err
 	}
 	httpReq.Header.Set("Accept", mediaTypeIPNSRecord)
 
+	m.host = httpReq.Host
+
 	resp, err := c.httpClient.Do(httpReq)
 	if err != nil {
 		return nil, fmt.Errorf("making HTTP req to get IPNS record: %w", err)
 	}
 	defer resp.Body.Close()
+
+	m.statusCode = resp.StatusCode
 
 	// Per IPIP-0513: Handle 404 as "no record found" for backward compatibility
 	// New servers return 200 with text/plain for no record, old servers return 404
@@ -566,7 +583,7 @@ func (c *Client) GetIPNS(ctx context.Context, name ipns.Name) (*ipns.Record, err
 		return nil, fmt.Errorf("making HTTP req to get IPNS record: %w", err)
 	}
 
-	record, err := ipns.UnmarshalRecord(rawRecord)
+	record, err = ipns.UnmarshalRecord(rawRecord)
 	if err != nil {
 		return nil, fmt.Errorf("IPNS record from remote endpoint is not valid: %w", err)
 	}
@@ -580,7 +597,16 @@ func (c *Client) GetIPNS(ctx context.Context, name ipns.Name) (*ipns.Record, err
 }
 
 // PutIPNS attempts at putting the given [ipns.Record] for the given [ipns.Name].
-func (c *Client) PutIPNS(ctx context.Context, name ipns.Name, record *ipns.Record) error {
+func (c *Client) PutIPNS(ctx context.Context, name ipns.Name, record *ipns.Record) (err error) {
+	m := newMeasurement("PutIPNS")
+	start := time.Now()
+	defer func() {
+		m.latency = time.Since(start)
+		m.err = err
+		// Don't set m.length for PutIPNS - not meaningful
+		m.record(ctx)
+	}()
+
 	url := c.baseURL + "/routing/v1/ipns/" + name.String()
 
 	rawRecord, err := ipns.MarshalRecord(record)
@@ -594,11 +620,15 @@ func (c *Client) PutIPNS(ctx context.Context, name ipns.Name, record *ipns.Recor
 	}
 	httpReq.Header.Set("Content-Type", mediaTypeIPNSRecord)
 
+	m.host = httpReq.Host
+
 	resp, err := c.httpClient.Do(httpReq)
 	if err != nil {
 		return fmt.Errorf("making HTTP req to get IPNS record: %w", err)
 	}
 	defer resp.Body.Close()
+
+	m.statusCode = resp.StatusCode
 
 	if resp.StatusCode != http.StatusOK {
 		return httpError(resp.StatusCode, resp.Body)
