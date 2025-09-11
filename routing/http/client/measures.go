@@ -13,7 +13,35 @@ import (
 )
 
 var (
-	distMS     = view.Distribution(0, 1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000)
+	// distMS defines the histogram buckets for latency in milliseconds.
+	// Similar to distLength, bucket selection uses value < boundary:
+	//   - 0ms → bucket with bound 1ms
+	//   - 1ms → bucket with bound 2ms
+	//   - 50ms → bucket with bound 100ms
+	//   - etc.
+	//
+	// In Prometheus:
+	//   - routing_http_client_latency_bucket{le="1"} = requests with latency 0ms
+	//   - routing_http_client_latency_bucket{le="100"} = requests with latency <100ms
+	//   - routing_http_client_latency_bucket{le="1000"} = requests with latency <1s
+	distMS = view.Distribution(0, 1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000)
+	// distLength defines the histogram buckets for result counts.
+	// In OpenCensus, bucket selection uses value < boundary comparisons:
+	//   - Value 0 → bucket with bound 1
+	//   - Value 1 → bucket with bound 2
+	//   - Value 2 → bucket with bound 5
+	//   - etc.
+	//
+	// When exported to Prometheus, these become cumulative "le" (less than) buckets:
+	//   - routing_http_client_length_bucket{le="1"} = count of operations with 0 results
+	//   - routing_http_client_length_bucket{le="2"} = count of operations with 0 or 1 results
+	//   - routing_http_client_length_bucket{le="5"} = count of operations with 0-4 results
+	//
+	// To determine specific counts from Prometheus metrics:
+	//   - Operations with exactly 0 results: bucket{le="1"}
+	//   - Operations with 1+ results: bucket{le="+Inf"} - bucket{le="1"}
+	//   - Operations with exactly 1 result: bucket{le="2"} - bucket{le="1"}
+	//   - Operations with exactly 2-4 results: bucket{le="5"} - bucket{le="2"}
 	distLength = view.Distribution(0, 1, 2, 5, 10, 11, 12, 15, 20, 50, 100, 200, 500)
 
 	measureLatency = stats.Int64("routing_http_client_latency", "the latency of operations by the routing HTTP client", stats.UnitMilliseconds)
