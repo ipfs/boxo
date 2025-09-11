@@ -235,8 +235,11 @@ type measuringIter[T any] struct {
 }
 
 func (c *measuringIter[T]) Next() bool {
-	c.m.length++
-	return c.Iter.Next()
+	hasNext := c.Iter.Next()
+	if hasNext {
+		c.m.length++
+	}
+	return hasNext
 }
 
 func (c *measuringIter[T]) Val() T {
