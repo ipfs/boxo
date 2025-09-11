@@ -47,6 +47,11 @@ var (
 	measureLatency = stats.Int64("routing_http_client_latency", "the latency of operations by the routing HTTP client", stats.UnitMilliseconds)
 	measureLength  = stats.Int64("routing_http_client_length", "the number of elements in a response collection", stats.UnitDimensionless)
 
+	// Simple counters for tracking requests and positive responses
+	// These avoid the confusing bucket math required for histograms
+	measureRequests          = stats.Int64("routing_http_client_requests", "total number of requests", stats.UnitDimensionless)
+	measurePositiveResponses = stats.Int64("routing_http_client_positive_responses", "requests that returned at least one result", stats.UnitDimensionless)
+
 	keyOperation  = tag.MustNewKey("operation")
 	keyHost       = tag.MustNewKey("host")
 	keyStatusCode = tag.MustNewKey("code")
@@ -63,10 +68,31 @@ var (
 		Aggregation: distLength,
 		TagKeys:     []tag.Key{keyOperation, keyHost},
 	}
+	// ViewRequests counts all requests (including errors)
+	// Simple Grafana queries:
+	//   - Total requests: routing_http_client_requests_total
+	//   - Request rate: rate(routing_http_client_requests_total[5m])
+	ViewRequests = &view.View{
+		Measure:     measureRequests,
+		Aggregation: view.Count(),
+		TagKeys:     []tag.Key{keyOperation, keyHost},
+	}
+	// ViewPositiveResponses counts requests that returned at least 1 result
+	// Simple Grafana queries:
+	//   - Requests with results: routing_http_client_positive_responses_total
+	//   - Success rate: positive_responses_total / requests_total
+	//   - Empty/error rate: (requests_total - positive_responses_total) / requests_total
+	ViewPositiveResponses = &view.View{
+		Measure:     measurePositiveResponses,
+		Aggregation: view.Count(),
+		TagKeys:     []tag.Key{keyOperation, keyHost},
+	}
 
 	OpenCensusViews = []*view.View{
 		ViewLatency,
 		ViewLength,
+		ViewRequests,
+		ViewPositiveResponses,
 	}
 )
 
@@ -90,6 +116,15 @@ func (m measurement) record(ctx context.Context) {
 	}
 	stats.RecordWithTags(ctx, muts, measureLatency.M(m.latency.Milliseconds()))
 	stats.RecordWithTags(ctx, muts, measureLength.M(int64(m.length)))
+
+	// Record simple counters
+	// Always record a request (even on error)
+	stats.RecordWithTags(ctx, muts, measureRequests.M(1))
+
+	// Record positive response if we got results and no error
+	if m.length > 0 && m.err == nil {
+		stats.RecordWithTags(ctx, muts, measurePositiveResponses.M(1))
+	}
 }
 
 func newMeasurement(operation string) *measurement {
