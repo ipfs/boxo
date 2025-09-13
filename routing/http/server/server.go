@@ -24,6 +24,7 @@ import (
 	jsontypes "github.com/ipfs/boxo/routing/http/types/json"
 	"github.com/ipfs/go-cid"
 	logging "github.com/ipfs/go-log/v2"
+	"github.com/libp2p/go-libp2p-kad-dht/amino"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/routing"
 	"github.com/multiformats/go-multiaddr"
@@ -43,7 +44,7 @@ const (
 	DefaultRecordsLimit          = 20
 	DefaultStreamingRecordsLimit = 0
 	DefaultRoutingTimeout        = 30 * time.Second
-	DefaultGetClosestPeersCount  = 20
+	DefaultGetClosestPeersCount  = amino.DefaultBucketSize // 20 - Amino DHT bucket size
 )
 
 var logger = logging.Logger("routing/http/server")
@@ -82,8 +83,14 @@ type ContentRouter interface {
 	// It is guaranteed that the record matches the provided name.
 	PutIPNS(ctx context.Context, name ipns.Name, record *ipns.Record) error
 
-	// GetClosestPeers returns the DHT closest peers to the given peer ID.
-	// If empty, it will use the content router's peer ID (self). `closerThan` (optional) forces resulting records to be closer to `PeerID` than to `closerThan`. `count` specifies how many records to return ([1,100], with 20 as default when set to 0).
+	// GetClosestPeers returns up to count peers closest to the given peerID in the DHT keyspace.
+	//
+	// If peerID is empty, implementations should use their own peer ID.
+	// If closerThan is specified, only peers closer to peerID than closerThan are returned.
+	// If count is 0, a sensible default of the routing system is used.
+	//
+	// Note: Amino DHT implementations are limited to returning at most 20 peers
+	// due to the DHT bucket size.
 	GetClosestPeers(ctx context.Context, peerID, closerThan peer.ID, count int) (iter.ResultIter[*types.PeerRecord], error)
 }
 
