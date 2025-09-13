@@ -607,7 +607,7 @@ func (s *server) getClosestPeers(w http.ResponseWriter, r *http.Request) {
 	if closerThanStr != "" { // it is fine to omit. We will pass an empty peer.ID then.
 		closerThanPid, err = parsePeerID(closerThanStr)
 		if err != nil {
-			writeErr(w, "GetClosestPeers", http.StatusBadRequest, fmt.Errorf("unable to parse closer-than PeerID %q: %w", pidStr, err))
+			writeErr(w, "GetClosestPeers", http.StatusBadRequest, fmt.Errorf("unable to parse closer-than PeerID %q: %w", closerThanStr, err))
 			return
 		}
 	}
