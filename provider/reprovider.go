@@ -148,6 +148,8 @@ func New(ds datastore.Batching, opts ...Option) (System, error) {
 
 	s.ds = namespace.Wrap(ds, s.keyPrefix)
 
+	// TODO: Remove this after kubo v0.39 is released.
+	//
 	// Remove any items from the old queue.
 	cleaned, err := oldqueue.ClearDatastore(s.ds)
 	if err != nil {
