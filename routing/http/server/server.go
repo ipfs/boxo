@@ -62,7 +62,14 @@ type FindProvidersAsyncResponse struct {
 	Error            error
 }
 
-type ContentRouter interface {
+// DelegatedRouter provides the Delegated Routing V1 HTTP API for offloading
+// routing operations to another process/server.
+//
+// This interface focuses on querying operations for content providers, peers,
+// IPNS records, and DHT routing information. It also supports delegated IPNS
+// publishing. Additional publishing methods may be added in the future via the
+// IPIP process as the ecosystem evolves and new needs arise.
+type DelegatedRouter interface {
 	// FindProviders searches for peers who are able to provide the given [cid.Cid].
 	// Limit indicates the maximum amount of results to return; 0 means unbounded.
 	FindProviders(ctx context.Context, cid cid.Cid, limit int) (iter.ResultIter[types.Record], error)
@@ -93,6 +100,10 @@ type ContentRouter interface {
 	// due to the DHT bucket size.
 	GetClosestPeers(ctx context.Context, peerID, closerThan peer.ID, count int) (iter.ResultIter[*types.PeerRecord], error)
 }
+
+// ContentRouter is deprecated, use DelegatedRouter instead.
+// Deprecated: use DelegatedRouter. ContentRouter will be removed in a future version.
+type ContentRouter = DelegatedRouter
 
 // Deprecated: protocol-agnostic provide is being worked on in [IPIP-378]:
 //
@@ -205,7 +216,7 @@ func Handler(svc ContentRouter, opts ...Option) http.Handler {
 var handlerCount atomic.Int32
 
 type server struct {
-	svc                   ContentRouter
+	svc                   DelegatedRouter
 	disableNDJSON         bool
 	recordsLimit          int
 	streamingRecordsLimit int
