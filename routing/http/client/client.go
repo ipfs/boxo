@@ -653,7 +653,7 @@ func (c *Client) GetClosestPeers(ctx context.Context, peerID, closerThan peer.ID
 	// Add query parameters
 	queryParams := make(gourl.Values)
 	if closerThan != "" {
-		queryParams.Set("closerThan", closerThan.String())
+		queryParams.Set("closer-than", closerThan.String())
 	}
 	if count > 0 {
 		queryParams.Set("count", strconv.Itoa(count))

@@ -602,7 +602,7 @@ func (s *server) getClosestPeers(w http.ResponseWriter, r *http.Request) {
 	}
 
 	query := r.URL.Query()
-	closerThanStr := query.Get("closerThan")
+	closerThanStr := query.Get("closer-than")
 	var closerThanPid peer.ID
 	if closerThanStr != "" { // it is fine to omit. We will pass an empty peer.ID then.
 		closerThanPid, err = parsePeerID(closerThanStr)

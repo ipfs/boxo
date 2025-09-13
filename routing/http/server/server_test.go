@@ -673,7 +673,7 @@ func TestGetClosestPeers(t *testing.T) {
 		server := httptest.NewServer(Handler(router))
 		t.Cleanup(server.Close)
 
-		urlStr := fmt.Sprintf("http://%s/routing/v1/dht/closest/peers/%s?closerThan=%s&count=%s", server.Listener.Addr().String(), arg, closerThan, count)
+		urlStr := fmt.Sprintf("http://%s/routing/v1/dht/closest/peers/%s?closer-than=%s&count=%s", server.Listener.Addr().String(), arg, closerThan, count)
 		t.Log(urlStr)
 
 		req, err := http.NewRequest(http.MethodGet, urlStr, nil)
@@ -746,7 +746,7 @@ func TestGetClosestPeers(t *testing.T) {
 		}
 	})
 
-	t.Run("GET /routing/v1/dht/closest/peers/{cid-libp2p-key-peer-id}?closerThan=? gets parsed or set to empty peer.ID", func(t *testing.T) {
+	t.Run("GET /routing/v1/dht/closest/peers/{cid-libp2p-key-peer-id}?closer-than=? gets parsed or set to empty peer.ID", func(t *testing.T) {
 		t.Parallel()
 
 		_, pid := makeEd25519PeerID(t)
