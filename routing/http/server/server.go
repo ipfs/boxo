@@ -9,6 +9,7 @@ import (
 	"io"
 	"mime"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -23,6 +24,7 @@ import (
 	jsontypes "github.com/ipfs/boxo/routing/http/types/json"
 	"github.com/ipfs/go-cid"
 	logging "github.com/ipfs/go-log/v2"
+	"github.com/libp2p/go-libp2p-kad-dht/amino"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/routing"
 	"github.com/multiformats/go-multiaddr"
@@ -42,15 +44,17 @@ const (
 	DefaultRecordsLimit          = 20
 	DefaultStreamingRecordsLimit = 0
 	DefaultRoutingTimeout        = 30 * time.Second
+	DefaultGetClosestPeersCount  = amino.DefaultBucketSize // 20 - Amino DHT bucket size
 )
 
 var logger = logging.Logger("routing/http/server")
 
 const (
-	providePath       = "/routing/v1/providers/"
-	findProvidersPath = "/routing/v1/providers/{cid}"
-	findPeersPath     = "/routing/v1/peers/{peer-id}"
-	GetIPNSPath       = "/routing/v1/ipns/{cid}"
+	providePath         = "/routing/v1/providers/"
+	findProvidersPath   = "/routing/v1/providers/{cid}"
+	findPeersPath       = "/routing/v1/peers/{peer-id}"
+	getIPNSPath         = "/routing/v1/ipns/{cid}"
+	getClosestPeersPath = "/routing/v1/dht/closest/peers/{peer-id}"
 )
 
 type FindProvidersAsyncResponse struct {
@@ -58,7 +62,14 @@ type FindProvidersAsyncResponse struct {
 	Error            error
 }
 
-type ContentRouter interface {
+// DelegatedRouter provides the Delegated Routing V1 HTTP API for offloading
+// routing operations to another process/server.
+//
+// This interface focuses on querying operations for content providers, peers,
+// IPNS records, and DHT routing information. It also supports delegated IPNS
+// publishing. Additional publishing methods may be added in the future via the
+// IPIP process as the ecosystem evolves and new needs arise.
+type DelegatedRouter interface {
 	// FindProviders searches for peers who are able to provide the given [cid.Cid].
 	// Limit indicates the maximum amount of results to return; 0 means unbounded.
 	FindProviders(ctx context.Context, cid cid.Cid, limit int) (iter.ResultIter[types.Record], error)
@@ -78,7 +89,21 @@ type ContentRouter interface {
 	// PutIPNS stores the provided [ipns.Record] for the given [ipns.Name].
 	// It is guaranteed that the record matches the provided name.
 	PutIPNS(ctx context.Context, name ipns.Name, record *ipns.Record) error
+
+	// GetClosestPeers returns up to count peers closest to the given peerID in the DHT keyspace.
+	//
+	// If peerID is empty, implementations should use their own peer ID.
+	// If closerThan is specified, only peers closer to peerID than closerThan are returned.
+	// If count is 0, a sensible default of the routing system is used.
+	//
+	// Note: Amino DHT implementations are limited to returning at most 20 peers
+	// due to the DHT bucket size.
+	GetClosestPeers(ctx context.Context, peerID, closerThan peer.ID, count int) (iter.ResultIter[*types.PeerRecord], error)
 }
+
+// ContentRouter is deprecated, use DelegatedRouter instead.
+// Deprecated: use DelegatedRouter. ContentRouter will be removed in a future version.
+type ContentRouter = DelegatedRouter
 
 // Deprecated: protocol-agnostic provide is being worked on in [IPIP-378]:
 //
@@ -181,8 +206,9 @@ func Handler(svc ContentRouter, opts ...Option) http.Handler {
 	r.Handle(findProvidersPath, middlewarestd.Handler(findProvidersPath, mdlw, http.HandlerFunc(server.findProviders))).Methods(http.MethodGet)
 	r.Handle(providePath, middlewarestd.Handler(providePath, mdlw, http.HandlerFunc(server.provide))).Methods(http.MethodPut)
 	r.Handle(findPeersPath, middlewarestd.Handler(findPeersPath, mdlw, http.HandlerFunc(server.findPeers))).Methods(http.MethodGet)
-	r.Handle(GetIPNSPath, middlewarestd.Handler(GetIPNSPath, mdlw, http.HandlerFunc(server.GetIPNS))).Methods(http.MethodGet)
-	r.Handle(GetIPNSPath, middlewarestd.Handler(GetIPNSPath, mdlw, http.HandlerFunc(server.PutIPNS))).Methods(http.MethodPut)
+	r.Handle(getIPNSPath, middlewarestd.Handler(getIPNSPath, mdlw, http.HandlerFunc(server.GetIPNS))).Methods(http.MethodGet)
+	r.Handle(getIPNSPath, middlewarestd.Handler(getIPNSPath, mdlw, http.HandlerFunc(server.PutIPNS))).Methods(http.MethodPut)
+	r.Handle(getClosestPeersPath, middlewarestd.Handler(getClosestPeersPath, mdlw, http.HandlerFunc(server.getClosestPeers))).Methods(http.MethodGet)
 
 	return r
 }
@@ -190,7 +216,7 @@ func Handler(svc ContentRouter, opts ...Option) http.Handler {
 var handlerCount atomic.Int32
 
 type server struct {
-	svc                   ContentRouter
+	svc                   DelegatedRouter
 	disableNDJSON         bool
 	recordsLimit          int
 	streamingRecordsLimit int
@@ -308,30 +334,7 @@ func (s *server) findProvidersNDJSON(w http.ResponseWriter, provIter iter.Result
 
 func (s *server) findPeers(w http.ResponseWriter, r *http.Request) {
 	pidStr := mux.Vars(r)["peer-id"]
-
-	// While specification states that peer-id is expected to be in CIDv1 format, reality
-	// is the clients will often learn legacy PeerID string from other sources,
-	// and try to use it.
-	// See https://github.com/libp2p/specs/blob/master/peer-ids/peer-ids.md#string-representation
-	// We are liberal in inputs here, and uplift legacy PeerID to CID if necessary.
-	// Rationale: it is better to fix this common mistake than to error and break peer routing.
-
-	// Attempt to parse PeerID
-	pid, err := peer.Decode(pidStr)
-	if err != nil {
-		// Retry by parsing PeerID as CID, then setting codec to libp2p-key
-		// and turning that back to PeerID.
-		// This is necessary to make sure legacy keys like:
-		// - RSA QmYyQSo1c1Ym7orWxLYvCrM2EmxFTANf8wXmmE7DWjhx5N
-		// - ED25519 12D3KooWD3eckifWpRn9wQpMG9R9hX3sD158z7EqHWmweQAJU5SA
-		// are parsed correctly.
-		pidAsCid, err2 := cid.Decode(pidStr)
-		if err2 == nil {
-			pidAsCid = cid.NewCidV1(cid.Libp2pKey, pidAsCid.Hash())
-			pid, err = peer.FromCid(pidAsCid)
-		}
-	}
-
+	pid, err := parsePeerID(pidStr)
 	if err != nil {
 		writeErr(w, "FindPeers", http.StatusBadRequest, fmt.Errorf("unable to parse PeerID %q: %w", pidStr, err))
 		return
@@ -596,6 +599,86 @@ func (s *server) PutIPNS(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
+func (s *server) getClosestPeers(w http.ResponseWriter, r *http.Request) {
+	pidStr := mux.Vars(r)["peer-id"]
+	pid, err := parsePeerID(pidStr)
+	if err != nil {
+		writeErr(w, "GetClosestPeers", http.StatusBadRequest, fmt.Errorf("unable to parse PeerID %q: %w", pidStr, err))
+		return
+	}
+
+	query := r.URL.Query()
+	closerThanStr := query.Get("closer-than")
+	var closerThanPid peer.ID
+	if closerThanStr != "" { // it is fine to omit. We will pass an empty peer.ID then.
+		closerThanPid, err = parsePeerID(closerThanStr)
+		if err != nil {
+			writeErr(w, "GetClosestPeers", http.StatusBadRequest, fmt.Errorf("unable to parse closer-than PeerID %q: %w", closerThanStr, err))
+			return
+		}
+	}
+
+	countStr := query.Get("count")
+	count, err := strconv.Atoi(countStr)
+	if err != nil {
+		count = 0
+	}
+	if count > 100 {
+		count = 100
+	}
+	// If limit is still 0, set THE default.
+	if count <= 0 {
+		count = DefaultGetClosestPeersCount
+	}
+
+	mediaType, err := s.detectResponseType(r)
+	if err != nil {
+		writeErr(w, "GetClosestPeers", http.StatusBadRequest, err)
+		return
+	}
+
+	var handlerFunc func(w http.ResponseWriter, provIter iter.ResultIter[*types.PeerRecord])
+
+	if mediaType == mediaTypeNDJSON {
+		handlerFunc = s.getClosestPeersNDJSON
+	} else {
+		handlerFunc = s.getClosestPeersJSON
+	}
+
+	// Add timeout to the routing operation
+	ctx, cancel := context.WithTimeout(r.Context(), s.routingTimeout)
+	defer cancel()
+
+	provIter, err := s.svc.GetClosestPeers(ctx, pid, closerThanPid, count)
+	if err != nil {
+		if errors.Is(err, routing.ErrNotFound) {
+			// handlerFunc takes care of setting the 404 and necessary headers
+			provIter = iter.FromSlice([]iter.Result[*types.PeerRecord]{})
+		} else {
+			writeErr(w, "GetClosestPeers", http.StatusInternalServerError, fmt.Errorf("delegate error: %w", err))
+			return
+		}
+	}
+	handlerFunc(w, provIter)
+}
+
+func (s *server) getClosestPeersJSON(w http.ResponseWriter, peersIter iter.ResultIter[*types.PeerRecord]) {
+	defer peersIter.Close()
+	peers, err := iter.ReadAllResults(peersIter)
+	if err != nil {
+		writeErr(w, "GetClosestPeers", http.StatusInternalServerError, fmt.Errorf("delegate error: %w", err))
+		return
+	}
+
+	writeJSONResult(w, "FindPeers", jsontypes.PeersResponse{
+		Peers: peers,
+	})
+}
+
+func (s *server) getClosestPeersNDJSON(w http.ResponseWriter, peersIter iter.ResultIter[*types.PeerRecord]) {
+	writeResultsIterNDJSON(w, peersIter)
+}
+
 var (
 	// Rule-of-thumb Cache-Control policy is to work well with caching proxies and load balancers.
 	// If there are any results, cache on the client for longer, and hint any in-between caches to
@@ -605,6 +688,32 @@ var (
 	maxAgeWithoutResults = int((15 * time.Second).Seconds()) // cache no results briefly
 	maxStale             = int((48 * time.Hour).Seconds())   // allow stale results as long within Amino DHT  Expiration window
 )
+
+func parsePeerID(pidStr string) (peer.ID, error) {
+	// While specification states that peer-id is expected to be in CIDv1 format, reality
+	// is the clients will often learn legacy PeerID string from other sources,
+	// and try to use it.
+	// See https://github.com/libp2p/specs/blob/master/peer-ids/peer-ids.md#string-representation
+	// We are liberal in inputs here, and uplift legacy PeerID to CID if necessary.
+	// Rationale: it is better to fix this common mistake than to error and break peer routing.
+
+	// Attempt to parse PeerID
+	pid, err := peer.Decode(pidStr)
+	if err != nil {
+		// Retry by parsing PeerID as CID, then setting codec to libp2p-key
+		// and turning that back to PeerID.
+		// This is necessary to make sure legacy keys like:
+		// - RSA QmYyQSo1c1Ym7orWxLYvCrM2EmxFTANf8wXmmE7DWjhx5N
+		// - ED25519 12D3KooWD3eckifWpRn9wQpMG9R9hX3sD158z7EqHWmweQAJU5SA
+		// are parsed correctly.
+		pidAsCid, err2 := cid.Decode(pidStr)
+		if err2 == nil {
+			pidAsCid = cid.NewCidV1(cid.Libp2pKey, pidAsCid.Hash())
+			pid, err = peer.FromCid(pidAsCid)
+		}
+	}
+	return pid, err
+}
 
 func setCacheControl(w http.ResponseWriter, maxAge int, stale int) {
 	w.Header().Set("Cache-Control", fmt.Sprintf("public, max-age=%d, stale-while-revalidate=%d, stale-if-error=%d", maxAge, stale, stale))
