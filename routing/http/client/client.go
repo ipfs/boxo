@@ -286,6 +286,7 @@ func (c *Client) FindProviders(ctx context.Context, key cid.Cid) (providers iter
 	// Per IPIP-0513: Handle 404 as empty results for backward compatibility
 	// New servers return 200 with empty results, old servers return 404
 	if resp.StatusCode == http.StatusNotFound {
+		io.Copy(io.Discard, resp.Body) // Drain body for connection reuse
 		resp.Body.Close()
 		m.record(ctx)
 		return iter.FromSlice[iter.Result[types.Record]](nil), nil
@@ -471,6 +472,7 @@ func (c *Client) FindPeers(ctx context.Context, pid peer.ID) (peers iter.ResultI
 	// Per IPIP-0513: Handle 404 as empty results for backward compatibility
 	// New servers return 200 with empty results, old servers return 404
 	if resp.StatusCode == http.StatusNotFound {
+		io.Copy(io.Discard, resp.Body) // Drain body for connection reuse
 		resp.Body.Close()
 		m.record(ctx)
 		return iter.FromSlice[iter.Result[*types.PeerRecord]](nil), nil
