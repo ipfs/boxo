@@ -783,22 +783,15 @@ func (e *Engine) MessageReceived(ctx context.Context, p peer.ID, m bsmsg.BitSwap
 }
 
 func (e *Engine) filterOverflow(p peer.ID, wants, overflow []bsmsg.Entry) ([]bsmsg.Entry, []bsmsg.Entry) {
-	if len(wants) == 0 {
-		return wants, overflow
-	}
-
-	filteredWants := wants[:0] // shift inplace
-	for _, entry := range wants {
-		if !e.peerLedger.Wants(p, entry.Entry) {
-			// Cannot add entry because it would exceed size limit.
-			overflow = append(overflow, entry)
-			continue
+	wants = slices.DeleteFunc(wants, func(entry bsmsg.Entry) bool {
+		if e.peerLedger.Wants(p, entry.Entry) {
+			return false
 		}
-		filteredWants = append(filteredWants, entry)
-	}
-	// Clear truncated entries - early GC.
-	clear(wants[len(filteredWants):])
-	return filteredWants, overflow
+		// Cannot add entry because it would exceed size limit.
+		overflow = append(overflow, entry)
+		return true
+	})
+	return wants, overflow
 }
 
 // handleOverflow processes incoming wants that could not be addded to the peer

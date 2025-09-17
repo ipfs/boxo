@@ -20,6 +20,7 @@ import (
 	"github.com/ipfs/go-cid"
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/libp2p/go-libp2p/core/routing"
 	"github.com/multiformats/go-multiaddr"
 	"github.com/multiformats/go-multibase"
 	"github.com/multiformats/go-multihash"
@@ -317,6 +318,19 @@ func TestClient_FindProviders(t *testing.T) {
 			httpStatusCode: 404,
 			expResult:      nil,
 		},
+		{
+			name:                    "returns no providers if the HTTP server returns 200 with empty JSON array",
+			routerResult:            []iter.Result[types.Record]{},
+			expResult:               nil,
+			serverStreamingDisabled: true,
+			expJSONResponse:         true,
+		},
+		{
+			name:                 "returns no providers if the HTTP server returns 200 with empty NDJSON",
+			routerResult:         []iter.Result[types.Record]{},
+			expResult:            nil,
+			expStreamingResponse: true,
+		},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -604,6 +618,19 @@ func TestClient_FindPeers(t *testing.T) {
 			httpStatusCode: 404,
 			expResult:      nil,
 		},
+		{
+			name:                    "returns no providers if the HTTP server returns 200 with empty JSON array",
+			routerResult:            []iter.Result[*types.PeerRecord]{},
+			expResult:               nil,
+			serverStreamingDisabled: true,
+			expJSONResponse:         true,
+		},
+		{
+			name:                 "returns no providers if the HTTP server returns 200 with empty NDJSON",
+			routerResult:         []iter.Result[*types.PeerRecord]{},
+			expResult:            nil,
+			expStreamingResponse: true,
+		},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -672,6 +699,139 @@ func TestClient_FindPeers(t *testing.T) {
 
 			results := iter.ReadAll(resultIter)
 			assert.Equal(t, c.expResult, results)
+		})
+	}
+}
+
+func TestClient_EmptyResponses(t *testing.T) {
+	// Test that client handles various empty response formats correctly
+	cid := makeCID()
+	pid := peer.ID("12D3KooWD3eckifWpRn9wQpMG9R9hX3sD158z7EqHWmweQAJU5SA")
+	_, name := makeName(t)
+
+	// Helper to create test server with given response
+	makeTestServer := func(handler http.HandlerFunc) *httptest.Server {
+		return httptest.NewServer(handler)
+	}
+
+	// Helper to verify empty results for providers
+	verifyEmptyProviders := func(t *testing.T, serverURL string) {
+		client, err := New(serverURL, WithHTTPClient((&http.Client{})))
+		require.NoError(t, err)
+
+		resultsIter, err := client.FindProviders(context.Background(), cid)
+		require.NoError(t, err)
+
+		results, err := iter.ReadAllResults(resultsIter)
+		require.NoError(t, err)
+		require.Empty(t, results)
+	}
+
+	// Helper to verify empty results for peers
+	verifyEmptyPeers := func(t *testing.T, serverURL string) {
+		client, err := New(serverURL, WithHTTPClient((&http.Client{})))
+		require.NoError(t, err)
+
+		resultsIter, err := client.FindPeers(context.Background(), pid)
+		require.NoError(t, err)
+
+		results, err := iter.ReadAllResults(resultsIter)
+		require.NoError(t, err)
+		require.Empty(t, results)
+	}
+
+	// Helper to verify IPNS not found
+	verifyIPNSNotFound := func(t *testing.T, serverURL string) {
+		client, err := New(serverURL, WithHTTPClient((&http.Client{})))
+		require.NoError(t, err)
+
+		record, err := client.GetIPNS(context.Background(), name)
+		require.ErrorIs(t, err, routing.ErrNotFound)
+		require.Nil(t, record)
+	}
+
+	testCases := []struct {
+		name     string
+		handler  http.HandlerFunc
+		testFunc func(*testing.T, string)
+	}{
+		// FindProviders tests
+		{
+			name: "404 Not Found (legacy server)",
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusNotFound)
+				w.Write([]byte("404 page not found"))
+			},
+			testFunc: verifyEmptyProviders,
+		},
+		{
+			name: "200 with null providers in JSON",
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				// Old server behavior - returns null instead of empty array
+				w.Write([]byte(`{"Providers":null}`))
+			},
+			testFunc: verifyEmptyProviders,
+		},
+		{
+			name: "200 with empty array in JSON",
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				// New server behavior - returns empty array
+				w.Write([]byte(`{"Providers":[]}`))
+			},
+			testFunc: verifyEmptyProviders,
+		},
+		{
+			name: "200 with empty NDJSON stream",
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/x-ndjson")
+				// Empty body - no NDJSON lines
+			},
+			testFunc: verifyEmptyProviders,
+		},
+		// FindPeers tests
+		{
+			name: "FindPeers: 404 Not Found (legacy server)",
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusNotFound)
+				w.Write([]byte("404 page not found"))
+			},
+			testFunc: verifyEmptyPeers,
+		},
+		{
+			name: "FindPeers: 200 with null peers in JSON",
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				// Old server behavior - returns null instead of empty array
+				w.Write([]byte(`{"Peers":null}`))
+			},
+			testFunc: verifyEmptyPeers,
+		},
+		// IPNS tests
+		{
+			name: "IPNS: 404 Not Found (legacy server)",
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusNotFound)
+				w.Write([]byte("404 page not found"))
+			},
+			testFunc: verifyIPNSNotFound,
+		},
+		{
+			name: "IPNS: 200 with text/plain (no record found)",
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+				w.Write([]byte("delegate error: routing: not found"))
+			},
+			testFunc: verifyIPNSNotFound,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			server := makeTestServer(tc.handler)
+			defer server.Close()
+			tc.testFunc(t, server.URL)
 		})
 	}
 }
