@@ -20,9 +20,9 @@ require (
 	github.com/ipfs/go-block-format v0.2.2
 	github.com/ipfs/go-cid v0.5.0
 	github.com/ipfs/go-cidutil v0.1.0
-	github.com/ipfs/go-datastore v0.8.3
+	github.com/ipfs/go-datastore v0.8.4
 	github.com/ipfs/go-detect-race v0.0.1
-	github.com/ipfs/go-dsqueue v0.0.4
+	github.com/ipfs/go-dsqueue v0.0.5
 	github.com/ipfs/go-ipfs-delay v0.0.1
 	github.com/ipfs/go-ipfs-redirects-file v0.1.2
 	github.com/ipfs/go-ipld-format v0.6.2

@@ -159,7 +159,7 @@ func New(ds datastore.Batching, opts ...Option) (System, error) {
 		log.Infof("removed %d cids from old provide queue", cleaned)
 	}
 
-	s.q = dsqueue.New(s.ds, "provide")
+	s.q = dsqueue.New(s.ds, "provide", dsqueue.WithDedupCacheSize(2048))
 
 	// This is after the options processing so we do not have to worry about leaking a context if there is an
 	// initialization error processing the options

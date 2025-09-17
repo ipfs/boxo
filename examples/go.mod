@@ -6,7 +6,7 @@ require (
 	github.com/ipfs/boxo v0.33.1
 	github.com/ipfs/go-block-format v0.2.2
 	github.com/ipfs/go-cid v0.5.0
-	github.com/ipfs/go-datastore v0.8.3
+	github.com/ipfs/go-datastore v0.8.4
 	github.com/ipld/go-car/v2 v2.15.0
 	github.com/ipld/go-ipld-prime v0.21.0
 	github.com/libp2p/go-libp2p v0.43.0
