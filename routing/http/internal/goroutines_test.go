@@ -72,7 +72,7 @@ func TestDoBatch(t *testing.T) {
 			var onceMut sync.Mutex
 			var errored bool
 
-			DoBatch(ctx, c.maxBatchSize, c.maxConcurrency, c.items, func(ctx context.Context, batch []int) error {
+			err := DoBatch(ctx, c.maxBatchSize, c.maxConcurrency, c.items, func(ctx context.Context, batch []int) error {
 				if c.shouldErrOnce {
 					onceMut.Lock()
 					if !errored {
@@ -89,6 +89,7 @@ func TestDoBatch(t *testing.T) {
 				return nil
 			})
 
+			require.NoError(t, err)
 			require.Equal(t, len(c.expBatches), len(batches), "expected equal len %v %v", c.expBatches, batches)
 			for _, expBatch := range c.expBatches {
 				requireContainsBatch(t, batches, expBatch)
