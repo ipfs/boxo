@@ -53,6 +53,10 @@ type Directory struct {
 	unixfsDir uio.Directory
 
 	prov routing.ContentProviding
+
+	// Maximum number of entries to cache before triggering auto-flush.
+	// Set to 0 to disable cache size limiting.
+	maxCacheSize int
 }
 
 // NewDirectory constructs a new MFS directory.
@@ -92,6 +96,7 @@ func NewDirectory(ctx context.Context, name string, node ipld.Node, parent paren
 		unixfsDir:    db,
 		prov:         prov,
 		entriesCache: make(map[string]FSNode),
+		maxCacheSize: DefaultMaxCacheSize,
 	}, nil
 }
 
@@ -131,6 +136,7 @@ func NewEmptyDirectory(ctx context.Context, name string, parent parent, dserv ip
 		unixfsDir:    db,
 		prov:         prov,
 		entriesCache: make(map[string]FSNode),
+		maxCacheSize: DefaultMaxCacheSize,
 	}, nil
 }
 
@@ -226,6 +232,8 @@ func (d *Directory) cacheNode(name string, nd ipld.Node) (FSNode, error) {
 			// inherited from the parent.
 			ndir.unixfsDir.SetMaxLinks(d.unixfsDir.GetMaxLinks())
 			ndir.unixfsDir.SetMaxHAMTFanout(d.unixfsDir.GetMaxHAMTFanout())
+			// Inherit cache size limit from parent
+			ndir.maxCacheSize = d.maxCacheSize
 
 			d.entriesCache[name] = ndir
 			// Check cache size after adding entry
@@ -396,6 +404,9 @@ func (d *Directory) MkdirWithOpts(name string, opts MkdirOpts) (*Directory, erro
 		return nil, err
 	}
 
+	// Inherit cache size limit from parent
+	dirobj.maxCacheSize = d.maxCacheSize
+
 	ndir, err := dirobj.GetNode()
 	if err != nil {
 		return nil, err
@@ -420,15 +431,25 @@ func (d *Directory) MkdirWithOpts(name string, opts MkdirOpts) (*Directory, erro
 // and triggers an auto-flush if needed to prevent unbounded growth.
 // Must be called with d.lock held.
 func (d *Directory) checkCacheSize() error {
-	if len(d.entriesCache) >= DefaultMaxCacheSize {
+	// Skip check if cache limiting is disabled (maxCacheSize == 0)
+	if d.maxCacheSize > 0 && len(d.entriesCache) >= d.maxCacheSize {
 		// Auto-flush to prevent unbounded cache growth
-		log.Debugf("mfs: auto-flushing directory cache (size: %d >= limit: %d)", len(d.entriesCache), DefaultMaxCacheSize)
+		log.Debugf("mfs: auto-flushing directory cache (size: %d >= limit: %d)", len(d.entriesCache), d.maxCacheSize)
 		err := d.cacheSync(true)
 		if err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// SetMaxCacheSize sets the maximum number of entries to cache before
+// triggering an auto-flush. Set to 0 to disable cache size limiting.
+// This method is thread-safe.
+func (d *Directory) SetMaxCacheSize(size int) {
+	d.lock.Lock()
+	defer d.lock.Unlock()
+	d.maxCacheSize = size
 }
 
 func (d *Directory) Unlink(name string) error {

@@ -170,6 +170,13 @@ func (kr *Root) GetDirectory() *Directory {
 	return kr.dir
 }
 
+// SetMaxCacheSize sets the maximum number of entries to cache in each
+// directory before triggering an auto-flush. Set to 0 to disable cache
+// size limiting. This setting is propagated to all directories in the tree.
+func (kr *Root) SetMaxCacheSize(size int) {
+	kr.dir.SetMaxCacheSize(size)
+}
+
 // Flush signals that an update has occurred since the last publish,
 // and updates the Root republisher.
 // TODO: We are definitely abusing the "flush" terminology here.
