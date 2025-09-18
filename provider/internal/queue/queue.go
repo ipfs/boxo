@@ -13,7 +13,7 @@ import (
 	query "github.com/ipfs/go-datastore/query"
 )
 
-// ClearDatastore clears any entried from the previous queue from the datastore.
+// ClearDatastore clears any entries from the previous queue from the datastore.
 func ClearDatastore(ds datastore.Batching) (int, error) {
 	const batchSize = 4096
 
