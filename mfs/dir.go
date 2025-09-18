@@ -23,6 +23,16 @@ var (
 	ErrDirExists         = errors.New("directory already has entry by that name")
 )
 
+const (
+	// DefaultMaxCacheSize is the default maximum number of entries
+	// that can be cached in a directory before auto-flush is triggered.
+	// This prevents unbounded memory growth when using --flush=false.
+	// The value matches HAMT shard size (256).
+	// TODO: make this configurable
+	// See https://github.com/ipfs/kubo/issues/10842
+	DefaultMaxCacheSize = 256
+)
+
 // TODO: There's too much functionality associated with this structure,
 // let's organize it (and if possible extract part of it elsewhere)
 // and document the main features of `Directory` here.
@@ -41,6 +51,10 @@ type Directory struct {
 	// UnixFS directory implementation used for creating,
 	// reading and editing directories.
 	unixfsDir uio.Directory
+
+	// Maximum number of entries to cache before triggering auto-flush.
+	// Set to 0 to disable cache size limiting.
+	maxCacheSize int
 
 	prov provider.MultihashProvider
 }
@@ -82,6 +96,7 @@ func NewDirectory(ctx context.Context, name string, node ipld.Node, parent paren
 		unixfsDir:    db,
 		prov:         prov,
 		entriesCache: make(map[string]FSNode),
+		maxCacheSize: DefaultMaxCacheSize,
 	}, nil
 }
 
@@ -121,6 +136,7 @@ func NewEmptyDirectory(ctx context.Context, name string, parent parent, dserv ip
 		unixfsDir:    db,
 		prov:         prov,
 		entriesCache: make(map[string]FSNode),
+		maxCacheSize: DefaultMaxCacheSize,
 	}, nil
 }
 
@@ -216,8 +232,14 @@ func (d *Directory) cacheNode(name string, nd ipld.Node) (FSNode, error) {
 			// inherited from the parent.
 			ndir.unixfsDir.SetMaxLinks(d.unixfsDir.GetMaxLinks())
 			ndir.unixfsDir.SetMaxHAMTFanout(d.unixfsDir.GetMaxHAMTFanout())
+			// Inherit cache size limit from parent
+			ndir.maxCacheSize = d.maxCacheSize
 
 			d.entriesCache[name] = ndir
+			// Check cache size after adding entry
+			if err := d.checkCacheSize(); err != nil {
+				return nil, err
+			}
 			return ndir, nil
 		case ft.TFile, ft.TRaw, ft.TSymlink:
 			nfi, err := NewFile(name, nd, d, d.dagService, d.prov)
@@ -225,6 +247,10 @@ func (d *Directory) cacheNode(name string, nd ipld.Node) (FSNode, error) {
 				return nil, err
 			}
 			d.entriesCache[name] = nfi
+			// Check cache size after adding entry
+			if err := d.checkCacheSize(); err != nil {
+				return nil, err
+			}
 			return nfi, nil
 		case ft.TMetadata:
 			return nil, ErrNotYetImplemented
@@ -237,6 +263,10 @@ func (d *Directory) cacheNode(name string, nd ipld.Node) (FSNode, error) {
 			return nil, err
 		}
 		d.entriesCache[name] = nfi
+		// Check cache size after adding entry
+		if err := d.checkCacheSize(); err != nil {
+			return nil, err
+		}
 		return nfi, nil
 	default:
 		return nil, errors.New("unrecognized node type in cache node")
@@ -374,6 +404,9 @@ func (d *Directory) MkdirWithOpts(name string, opts MkdirOpts) (*Directory, erro
 		return nil, err
 	}
 
+	// Inherit cache size limit from parent
+	dirobj.maxCacheSize = d.maxCacheSize
+
 	ndir, err := dirobj.GetNode()
 	if err != nil {
 		return nil, err
@@ -385,7 +418,38 @@ func (d *Directory) MkdirWithOpts(name string, opts MkdirOpts) (*Directory, erro
 	}
 
 	d.entriesCache[name] = dirobj
+
+	// Check cache size after adding new directory
+	if err := d.checkCacheSize(); err != nil {
+		return nil, err
+	}
+
 	return dirobj, nil
+}
+
+// checkCacheSize checks if the cache has exceeded the maximum size
+// and triggers an auto-flush if needed to prevent unbounded growth.
+// Must be called with d.lock held.
+func (d *Directory) checkCacheSize() error {
+	// Skip check if cache limiting is disabled (maxCacheSize == 0)
+	if d.maxCacheSize > 0 && len(d.entriesCache) >= d.maxCacheSize {
+		// Auto-flush to prevent unbounded cache growth
+		log.Debugf("mfs: auto-flushing directory cache (size: %d >= limit: %d)", len(d.entriesCache), d.maxCacheSize)
+		err := d.cacheSync(true)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// SetMaxCacheSize sets the maximum number of entries to cache before
+// triggering an auto-flush. Set to 0 to disable cache size limiting.
+// This method is thread-safe.
+func (d *Directory) SetMaxCacheSize(size int) {
+	d.lock.Lock()
+	defer d.lock.Unlock()
+	d.maxCacheSize = size
 }
 
 func (d *Directory) Unlink(name string) error {
