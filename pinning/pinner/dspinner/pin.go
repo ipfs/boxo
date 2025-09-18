@@ -763,9 +763,25 @@ func (p *pinner) checkIndirectPins(ctx context.Context, cids ...cid.Cid) ([]ipfs
 	pinned := make([]ipfspinner.Pinned, 0, len(cids))
 	toCheck := cid.NewSet()
 
-	// Check all CIDs for indirect pins, regardless of their direct pin status
-	// A CID can be both directly pinned AND indirectly pinned through a parent
+	// Filter out CIDs that are recursively pinned at the root level
+	// A CID pinned recursively at root is not indirect
+	// But a CID can be both directly pinned AND indirectly pinned through a parent
 	for _, c := range cids {
+		cidKey := c.KeyString()
+
+		// Check if recursively pinned
+		ids, err := p.cidRIndex.Search(ctx, cidKey)
+		if err != nil {
+			return nil, err
+		}
+		if len(ids) > 0 {
+			// This CID is recursively pinned at root level, not indirect
+			pinned = append(pinned, ipfspinner.Pinned{Key: c, Mode: ipfspinner.NotPinned})
+			continue
+		}
+
+		// Still check for indirect even if directly pinned
+		// A CID can be both direct and indirect
 		toCheck.Add(c)
 	}
 
