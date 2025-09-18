@@ -646,34 +646,8 @@ func (p *pinner) CheckIfPinnedWithType(ctx context.Context, mode ipfspinner.Mode
 
 		// Check for indirect pins
 		if toCheck.Len() > 0 {
-			var walkErr error
-			visited := cid.NewSet()
-			err := p.cidRIndex.ForEach(ctx, "", func(key, value string) bool {
-				var rk cid.Cid
-				rk, walkErr = cid.Cast([]byte(key))
-				if walkErr != nil {
-					return false
-				}
-				walkErr = merkledag.Walk(ctx, merkledag.GetLinksWithDAG(p.dserv), rk, func(c cid.Cid) bool {
-					if toCheck.Len() == 0 || !visited.Visit(c) {
-						return false
-					}
-					if toCheck.Has(c) {
-						pinned = append(pinned, ipfspinner.Pinned{Key: c, Mode: ipfspinner.Indirect, Via: rk})
-						toCheck.Remove(c)
-					}
-					return true
-				}, merkledag.Concurrent())
-				if walkErr != nil {
-					return false
-				}
-				return toCheck.Len() > 0
-			})
-			if err != nil {
+			if err := p.traverseIndirectPins(ctx, toCheck, &pinned); err != nil {
 				return nil, err
-			}
-			if walkErr != nil {
-				return nil, walkErr
 			}
 		}
 
@@ -741,6 +715,49 @@ func (p *pinner) checkPinsInIndex(ctx context.Context, mode ipfspinner.Mode, inc
 	return pinned, nil
 }
 
+// traverseIndirectPins is a helper that traverses all recursive pins to find indirect pins.
+// It modifies the pinned slice and toCheck set in place.
+func (p *pinner) traverseIndirectPins(ctx context.Context, toCheck *cid.Set, pinned *[]ipfspinner.Pinned) error {
+	var walkErr error
+	visited := cid.NewSet()
+	err := p.cidRIndex.ForEach(ctx, "", func(key, value string) bool {
+		// Check for context cancellation at the start of each recursive pin
+		select {
+		case <-ctx.Done():
+			walkErr = ctx.Err()
+			return false
+		default:
+		}
+
+		var rk cid.Cid
+		rk, walkErr = cid.Cast([]byte(key))
+		if walkErr != nil {
+			return false
+		}
+		walkErr = merkledag.Walk(ctx, merkledag.GetLinksWithDAG(p.dserv), rk, func(c cid.Cid) bool {
+			if toCheck.Len() == 0 || !visited.Visit(c) {
+				return false
+			}
+			if toCheck.Has(c) {
+				*pinned = append(*pinned, ipfspinner.Pinned{Key: c, Mode: ipfspinner.Indirect, Via: rk})
+				toCheck.Remove(c)
+			}
+			return true
+		}, merkledag.Concurrent())
+		if walkErr != nil {
+			return false
+		}
+		return toCheck.Len() > 0
+	})
+	if err != nil {
+		return err
+	}
+	if walkErr != nil {
+		return walkErr
+	}
+	return nil
+}
+
 // checkIndirectPins checks if the given cids are pinned indirectly
 func (p *pinner) checkIndirectPins(ctx context.Context, cids ...cid.Cid) ([]ipfspinner.Pinned, error) {
 	pinned := make([]ipfspinner.Pinned, 0, len(cids))
@@ -754,34 +771,8 @@ func (p *pinner) checkIndirectPins(ctx context.Context, cids ...cid.Cid) ([]ipfs
 
 	// Now check for indirect pins by traversing recursive pins
 	if toCheck.Len() > 0 {
-		var walkErr error
-		visited := cid.NewSet()
-		err := p.cidRIndex.ForEach(ctx, "", func(key, value string) bool {
-			var rk cid.Cid
-			rk, walkErr = cid.Cast([]byte(key))
-			if walkErr != nil {
-				return false
-			}
-			walkErr = merkledag.Walk(ctx, merkledag.GetLinksWithDAG(p.dserv), rk, func(c cid.Cid) bool {
-				if toCheck.Len() == 0 || !visited.Visit(c) {
-					return false
-				}
-				if toCheck.Has(c) {
-					pinned = append(pinned, ipfspinner.Pinned{Key: c, Mode: ipfspinner.Indirect, Via: rk})
-					toCheck.Remove(c)
-				}
-				return true
-			}, merkledag.Concurrent())
-			if walkErr != nil {
-				return false
-			}
-			return toCheck.Len() > 0
-		})
-		if err != nil {
+		if err := p.traverseIndirectPins(ctx, toCheck, &pinned); err != nil {
 			return nil, err
-		}
-		if walkErr != nil {
-			return nil, walkErr
 		}
 	}
 
