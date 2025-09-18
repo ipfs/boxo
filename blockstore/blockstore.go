@@ -9,6 +9,7 @@ import (
 	"sync/atomic"
 
 	dshelp "github.com/ipfs/boxo/datastore/dshelp"
+	"github.com/ipfs/boxo/provider"
 	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
 	ds "github.com/ipfs/go-datastore"
@@ -16,8 +17,6 @@ import (
 	dsq "github.com/ipfs/go-datastore/query"
 	ipld "github.com/ipfs/go-ipld-format"
 	logging "github.com/ipfs/go-log/v2"
-	routinghelpers "github.com/libp2p/go-libp2p-routing-helpers"
-	"github.com/libp2p/go-libp2p/core/routing"
 	"github.com/multiformats/go-multihash"
 )
 
@@ -140,8 +139,8 @@ func NoPrefix() Option {
 	}
 }
 
-// Provider allows performing a Provide operation for every block written.
-func Provider(provider routing.ContentProviding) Option {
+// Provider allows performing a StartProvide operation for every block written.
+func Provider(provider provider.MultihashProvider) Option {
 	return Option{
 		func(bs *blockstore) {
 			logger.Debug("providing-blockstore configured")
@@ -181,7 +180,7 @@ type blockstore struct {
 
 	writeThrough bool
 	noPrefix     bool
-	provider     routing.ContentProviding
+	provider     provider.MultihashProvider
 }
 
 func (bs *blockstore) Get(ctx context.Context, k cid.Cid) (blocks.Block, error) {
@@ -215,8 +214,8 @@ func (bs *blockstore) Put(ctx context.Context, block blocks.Block) error {
 
 	if bs.provider != nil {
 		logger.Debugf("blockstore: provide %s", block.Cid())
-		if err := bs.provider.Provide(ctx, block.Cid(), true); err != nil {
-			logger.Debugf("error providing %s: %s", block.Cid(), err)
+		if err := bs.provider.StartProviding(false, block.Cid().Hash()); err != nil {
+			logger.Warnf("blockstore: error while providing %s: %s", block.Cid(), err)
 		}
 	}
 	return nil
@@ -255,7 +254,11 @@ func (bs *blockstore) PutMany(ctx context.Context, blocks []blocks.Block) error 
 	for _, block := range blocks {
 		hashes = append(hashes, block.Cid().Hash())
 	}
-	doProvideManyHashes(ctx, bs.provider, hashes)
+	if bs.provider != nil {
+		if err := bs.provider.StartProviding(false, hashes...); err != nil {
+			logger.Warnf("blockstore: error while providing blocks: %s", err)
+		}
+	}
 	return nil
 }
 
@@ -362,24 +365,4 @@ func (bs *gclocker) PinLock(_ context.Context) Unlocker {
 
 func (bs *gclocker) GCRequested(_ context.Context) bool {
 	return atomic.LoadInt32(&bs.gcreq) > 0
-}
-
-func doProvideManyHashes(ctx context.Context, r routing.ContentProviding, keys []multihash.Multihash) {
-	if r == nil {
-		return
-	}
-	if many, ok := r.(routinghelpers.ProvideManyRouter); ok {
-		logger.Debugf("reprovider: provideMany (%d keys)", len(keys))
-		if err := many.ProvideMany(ctx, keys); err != nil {
-			logger.Debugf("error providing keys: %s", err)
-		}
-	}
-
-	for _, k := range keys {
-		logger.Debugf("reprovider: providing %s", k)
-		if err := r.Provide(ctx, cid.NewCidV1(cid.Raw, k), true); err != nil {
-			logger.Debugf("error providing %s: %s", k, err)
-			break
-		}
-	}
 }

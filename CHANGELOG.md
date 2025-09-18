@@ -55,10 +55,16 @@ The following emojis are used to highlight certain changes:
 
 ### Security
 
-- `verifcid`: Now enforces maximum size limit of 128 bytes for identity CIDs to prevent abuse.
+- `verifcid`: Now enforces maximum size limit of 128 bytes for identity CIDs to prevent abuse ([#1018](https://github.com/ipfs/boxo/pull/1018), [ipfs/specs#512](https://github.com/ipfs/specs/pull/512)).
   - 🛠 Attempts to read CIDs with identity multihash digests longer than `DefaultMaxIdentityDigestSize` will now produce `ErrDigestTooLarge` error.
   - Identity CIDs can inline data directly, and without a size limit, they could embed arbitrary amounts of data. Limiting the size also protects gateways from poorly written clients that might send absurdly big data to the gateway encoded as identity CIDs only to retrieve it back. Note that identity CIDs do not provide integrity verification, making them vulnerable to bit flips. They should only be used in controlled contexts like raw leaves of a larger DAG. The limit is explicitly defined as `DefaultMaxIdentityDigestSize` (128 bytes).
 
+
+## v0.35.0
+
+### Changed
+
+- `provider`: `Provide()` calls are replaced with `StartProviding()` to benefit from the Reprovide Sweep improvement. See [kubo#10834](https://github.com/ipfs/kubo/pull/10834) and [kad-dht#1095](https://github.com/libp2p/go-libp2p-kad-dht/pull/1095).
 
 ## [v0.34.0]
 
