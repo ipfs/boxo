@@ -763,9 +763,21 @@ func (p *pinner) checkIndirectPins(ctx context.Context, cids ...cid.Cid) ([]ipfs
 	pinned := make([]ipfspinner.Pinned, 0, len(cids))
 	toCheck := cid.NewSet()
 
-	// Filter out CIDs that are recursively pinned at the root level
-	// A CID pinned recursively at root is not indirect
-	// But a CID can be both directly pinned AND indirectly pinned through a parent
+	// Filter out CIDs that are recursively pinned at the root level.
+	// A recursively pinned CID is not considered indirect because recursive pins
+	// are comprehensive (include all children), making "recursive" take precedence
+	// over "indirect".
+	//
+	// However, we do NOT filter out direct pins here. Direct pins only pin a
+	// single block, not its children. Therefore, a CID can legitimately be both:
+	// - Directly pinned (explicitly pinned as a single block)
+	// - Indirectly pinned (referenced by another pinned object's DAG)
+	// This is why the asymmetry between recursive and direct pins is intentional.
+	//
+	// NOTE: While this behavior may feel arbitrary, we preserve it for compatibility
+	// as this is how 'ipfs pin ls' has behaved for nearly a decade. The test
+	// t0081-repo-pinning.sh in Kubo explicitly expects a CID to be both direct
+	// and indirect, guarding this established behavior.
 	for _, c := range cids {
 		cidKey := c.KeyString()
 
