@@ -56,7 +56,7 @@ type Directory struct {
 	// Set to 0 to disable cache size limiting.
 	maxCacheSize int
 
-  prov provider.MultihashProvider
+	prov provider.MultihashProvider
 }
 
 // NewDirectory constructs a new MFS directory.
