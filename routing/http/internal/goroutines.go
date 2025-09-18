@@ -26,7 +26,10 @@ func DoBatch[A any](ctx context.Context, maxBatchSize, maxConcurrency int, items
 			defer wg.Done()
 			for {
 				select {
-				case batch := <-batchChan:
+				case batch, ok := <-batchChan:
+					if !ok {
+						return
+					}
 					err := f(workerCtx, batch)
 					if err != nil {
 						select {
@@ -44,8 +47,11 @@ func DoBatch[A any](ctx context.Context, maxBatchSize, maxConcurrency int, items
 
 	// work sender
 	go func() {
-		defer close(errChan)
-		defer wg.Wait()
+		defer func() {
+			close(batchChan)
+			wg.Wait()
+			close(errChan)
+		}()
 		for _, batch := range batches {
 			select {
 			case batchChan <- batch:
@@ -53,7 +59,6 @@ func DoBatch[A any](ctx context.Context, maxBatchSize, maxConcurrency int, items
 				return
 			}
 		}
-		cancel()
 	}()
 
 	// receive any errors
