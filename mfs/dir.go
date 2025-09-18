@@ -23,6 +23,16 @@ var (
 	ErrDirExists         = errors.New("directory already has entry by that name")
 )
 
+const (
+	// DefaultMaxCacheSize is the default maximum number of entries
+	// that can be cached in a directory before auto-flush is triggered.
+	// This prevents unbounded memory growth when using --flush=false.
+	// The value matches HAMT shard size (256).
+	// TODO: make this configurable
+	// See https://github.com/ipfs/kubo/issues/10842
+	DefaultMaxCacheSize = 256
+)
+
 // TODO: There's too much functionality associated with this structure,
 // let's organize it (and if possible extract part of it elsewhere)
 // and document the main features of `Directory` here.
@@ -218,6 +228,10 @@ func (d *Directory) cacheNode(name string, nd ipld.Node) (FSNode, error) {
 			ndir.unixfsDir.SetMaxHAMTFanout(d.unixfsDir.GetMaxHAMTFanout())
 
 			d.entriesCache[name] = ndir
+			// Check cache size after adding entry
+			if err := d.checkCacheSize(); err != nil {
+				return nil, err
+			}
 			return ndir, nil
 		case ft.TFile, ft.TRaw, ft.TSymlink:
 			nfi, err := NewFile(name, nd, d, d.dagService, d.prov)
@@ -225,6 +239,10 @@ func (d *Directory) cacheNode(name string, nd ipld.Node) (FSNode, error) {
 				return nil, err
 			}
 			d.entriesCache[name] = nfi
+			// Check cache size after adding entry
+			if err := d.checkCacheSize(); err != nil {
+				return nil, err
+			}
 			return nfi, nil
 		case ft.TMetadata:
 			return nil, ErrNotYetImplemented
@@ -237,6 +255,10 @@ func (d *Directory) cacheNode(name string, nd ipld.Node) (FSNode, error) {
 			return nil, err
 		}
 		d.entriesCache[name] = nfi
+		// Check cache size after adding entry
+		if err := d.checkCacheSize(); err != nil {
+			return nil, err
+		}
 		return nfi, nil
 	default:
 		return nil, errors.New("unrecognized node type in cache node")
@@ -385,7 +407,28 @@ func (d *Directory) MkdirWithOpts(name string, opts MkdirOpts) (*Directory, erro
 	}
 
 	d.entriesCache[name] = dirobj
+
+	// Check cache size after adding new directory
+	if err := d.checkCacheSize(); err != nil {
+		return nil, err
+	}
+
 	return dirobj, nil
+}
+
+// checkCacheSize checks if the cache has exceeded the maximum size
+// and triggers an auto-flush if needed to prevent unbounded growth.
+// Must be called with d.lock held.
+func (d *Directory) checkCacheSize() error {
+	if len(d.entriesCache) >= DefaultMaxCacheSize {
+		// Auto-flush to prevent unbounded cache growth
+		log.Debugf("mfs: auto-flushing directory cache (size: %d >= limit: %d)", len(d.entriesCache), DefaultMaxCacheSize)
+		err := d.cacheSync(true)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (d *Directory) Unlink(name string) error {
