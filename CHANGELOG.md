@@ -16,6 +16,10 @@ The following emojis are used to highlight certain changes:
 
 ### Added
 
+- `pinning/pinner`: Added `CheckIfPinnedWithType` method to `Pinner` interface for efficient type-specific pin checks with optional name loading ([#1035](https://github.com/ipfs/boxo/pull/1035))
+  - Enables checking specific pin types (recursive, direct, indirect) without loading all pins
+  - Optional `includeNames` parameter controls whether pin names are loaded from datastore
+  - `CheckIfPinned` now delegates to `CheckIfPinnedWithType` for consistency
 - `gateway`: Enhanced error handling and UX for timeouts:
   - Added retrieval state tracking for timeout diagnostics. When retrieval timeouts occur, the error messages now include detailed information about which phase failed (path resolution, provider discovery, connecting, or data retrieval) and provider statistics including failed peer IDs [#1015](https://github.com/ipfs/boxo/pull/1015) [#1023](https://github.com/ipfs/boxo/pull/1023)
   - Added `Config.DiagnosticServiceURL` to configure a CID retrievability diagnostic service. When set, 504 Gateway Timeout errors show a "Check CID retrievability" button linking to the service with `?cid=<failed-cid>` [#1023](https://github.com/ipfs/boxo/pull/1023)
