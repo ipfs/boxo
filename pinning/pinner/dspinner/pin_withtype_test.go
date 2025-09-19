@@ -2,7 +2,9 @@ package dspinner
 
 import (
 	"context"
+	"fmt"
 	"testing"
+	"time"
 
 	bs "github.com/ipfs/boxo/blockservice"
 	blockstore "github.com/ipfs/boxo/blockstore"
@@ -154,5 +156,58 @@ func TestCheckIfPinnedWithType(t *testing.T) {
 		require.NoError(t, err)
 
 		require.Equal(t, pinned1, pinned2)
+	})
+
+	t.Run("Context cancellation during indirect check with many pins", func(t *testing.T) {
+		// Create many recursive pins to ensure we can hit the cancellation
+		nodes := make([]cid.Cid, 50)
+		for i := 0; i < 50; i++ {
+			node := mdag.NodeWithData([]byte(fmt.Sprintf("recursive node %d", i)))
+			err = dserv.Add(ctx, node)
+			require.NoError(t, err)
+			nodes[i] = node.Cid()
+
+			p.PinWithMode(ctx, nodes[i], ipfspin.Recursive, fmt.Sprintf("recursive-%d", i))
+		}
+		err = p.Flush(ctx)
+		require.NoError(t, err)
+
+		// Create a context that we can cancel
+		cancelCtx, cancel := context.WithCancel(ctx)
+
+		// Start checking in a goroutine
+		done := make(chan struct{})
+		var checkErr error
+		go func() {
+			defer close(done)
+			// Try to check for an indirect pin with many recursive pins to traverse
+			_, checkErr = p.CheckIfPinnedWithType(cancelCtx, ipfspin.Indirect, withoutNames, ck)
+		}()
+
+		// Cancel the context quickly
+		time.Sleep(1 * time.Millisecond)
+		cancel()
+
+		// Wait for the check to complete
+		<-done
+
+		// Should get a context cancellation error (or nil if it completed too fast)
+		// The important thing is that it doesn't hang
+		if checkErr != nil {
+			require.Equal(t, context.Canceled, checkErr)
+		}
+	})
+
+	t.Run("Context cancellation in checkIndirectPins", func(t *testing.T) {
+		// Create a context that we can cancel immediately
+		cancelCtx, cancel := context.WithCancel(ctx)
+		cancel() // Cancel immediately
+
+		// Try to check for indirect pins with cancelled context
+		_, err = p.CheckIfPinnedWithType(cancelCtx, ipfspin.Indirect, withoutNames, ck)
+
+		// Should get a context cancellation error
+		require.Error(t, err)
+		require.Equal(t, context.Canceled, err)
 	})
 }
