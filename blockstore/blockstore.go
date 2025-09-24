@@ -250,11 +250,12 @@ func (bs *blockstore) PutMany(ctx context.Context, blocks []blocks.Block) error 
 		return err
 	}
 
-	var hashes []multihash.Multihash
-	for _, block := range blocks {
-		hashes = append(hashes, block.Cid().Hash())
-	}
 	if bs.provider != nil {
+		var hashes []multihash.Multihash
+		for _, block := range blocks {
+			hashes = append(hashes, block.Cid().Hash())
+		}
+		logger.Debugf("blockstore: provide %d hashes", len(hashes))
 		if err := bs.provider.StartProviding(false, hashes...); err != nil {
 			logger.Warnf("blockstore: error while providing blocks: %s", err)
 		}
