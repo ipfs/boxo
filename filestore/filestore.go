@@ -259,7 +259,7 @@ func (f *Filestore) PutMany(ctx context.Context, bs []blocks.Block) error {
 			}
 			logger.Debugf("filestore: provide %d hashes", len(hashes))
 			if err := f.provider.StartProviding(false, hashes...); err != nil {
-				logger.Warnf("filestore: error while providing blocks: %s", err)
+				logger.Warnf("filestore: error while providing hashes: %s", err)
 			}
 		}
 	}
