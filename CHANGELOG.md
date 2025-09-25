@@ -58,7 +58,6 @@ The following emojis are used to highlight certain changes:
   - `DagModifier` now supports appending data to a `RawNode` by automatically converting it into a UnixFS file structure where the original `RawNode` becomes the first leaf block, fixing previously impossible append operations that would fail with "expected protobuf dag node" errors
 - `mfs`:
   - Files with identity CIDs now properly inherit full CID prefix from parent directories (version, codec, hash type, length), not just hash type ([#1018](https://github.com/ipfs/boxo/pull/1018))
-  - Fixed unbounded memory growth when using deferred flushing and user forgets to flush manually. Added `SetMaxCacheSize()` to limit directory cache growth. Default 256 entries, set to 0 to disable. ([#1035](https://github.com/ipfs/boxo/pull/1035))
 
 ### Security
 
