@@ -25,7 +25,7 @@ func newTestFilestore(t *testing.T, option ...Option) (string, *Filestore) {
 	fm.AllowFiles = true
 
 	bs := blockstore.NewBlockstore(mds)
-	fstore := NewFilestore(bs, fm)
+	fstore := NewFilestore(bs, fm, nil)
 	return testdir, fstore
 }
 
