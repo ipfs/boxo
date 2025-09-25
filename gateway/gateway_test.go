@@ -1377,3 +1377,101 @@ func TestBrowserErrorHTML(t *testing.T) {
 		require.Contains(t, string(body), "<!DOCTYPE html>")
 	})
 }
+
+func TestMaxRangeRequestFileSize(t *testing.T) {
+	backend, root := newMockBackend(t, "fixtures.car")
+
+	// Get a file path from the fixtures
+	p, err := path.Join(path.FromCid(root), "subdir", "fnord")
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	k, err := backend.resolvePathNoRootsReturned(ctx, p)
+	require.NoError(t, err)
+
+	t.Run("Range request exceeds file size limit returns 501", func(t *testing.T) {
+		// Create a test server with very small limit (smaller than "fnord" file which is 5 bytes)
+		ts := newTestServerWithConfig(t, backend, Config{
+			DeserializedResponses:   true,
+			MaxRangeRequestFileSize: 4, // 4 bytes limit - smaller than "fnord" (5 bytes)
+		})
+		defer ts.Close()
+
+		// Range request should fail with 501
+		req, err := http.NewRequest(http.MethodGet, ts.URL+k.String(), nil)
+		require.NoError(t, err)
+		req.Header.Set("Range", "bytes=0-4")
+
+		res := mustDoWithoutRedirect(t, req)
+		require.Equal(t, http.StatusNotImplemented, res.StatusCode)
+
+		body, err := io.ReadAll(res.Body)
+		require.NoError(t, err)
+		require.Contains(t, string(body), "range requests not supported for files larger than 4 bytes")
+		require.Contains(t, string(body), "switch to verifiable block requests (application/vnd.ipld.raw)")
+	})
+
+	t.Run("Range request within file size limit works", func(t *testing.T) {
+		// Create a test server with limit larger than the file
+		ts := newTestServerWithConfig(t, backend, Config{
+			DeserializedResponses:   true,
+			MaxRangeRequestFileSize: 1000, // 1KB limit - larger than "fnord" (5 bytes)
+		})
+		defer ts.Close()
+
+		// Range request should work
+		req, err := http.NewRequest(http.MethodGet, ts.URL+k.String(), nil)
+		require.NoError(t, err)
+		req.Header.Set("Range", "bytes=0-4")
+
+		res := mustDoWithoutRedirect(t, req)
+		require.Equal(t, http.StatusPartialContent, res.StatusCode)
+
+		body, err := io.ReadAll(res.Body)
+		require.NoError(t, err)
+		require.Equal(t, "fnord", string(body))
+	})
+
+	t.Run("Regular request works regardless of file size limit", func(t *testing.T) {
+		// Create a test server with very small limit
+		ts := newTestServerWithConfig(t, backend, Config{
+			DeserializedResponses:   true,
+			MaxRangeRequestFileSize: 1, // 1 byte limit - much smaller than any file
+		})
+		defer ts.Close()
+
+		// Regular request without Range header should work regardless of limit
+		req, err := http.NewRequest(http.MethodGet, ts.URL+k.String(), nil)
+		require.NoError(t, err)
+
+		res := mustDoWithoutRedirect(t, req)
+		require.Equal(t, http.StatusOK, res.StatusCode)
+
+		body, err := io.ReadAll(res.Body)
+		require.NoError(t, err)
+		require.Equal(t, "fnord", string(body))
+	})
+
+	t.Run("MaxRangeRequestFileSize disabled when set to 0", func(t *testing.T) {
+		// Create test server with limit disabled
+		ts := newTestServerWithConfig(t, backend, Config{
+			DeserializedResponses:   true,
+			MaxRangeRequestFileSize: 0, // Disabled
+		})
+		defer ts.Close()
+
+		// Range request should work regardless of file size
+		req, err := http.NewRequest(http.MethodGet, ts.URL+k.String(), nil)
+		require.NoError(t, err)
+		req.Header.Set("Range", "bytes=0-4")
+
+		res := mustDoWithoutRedirect(t, req)
+		require.Equal(t, http.StatusPartialContent, res.StatusCode)
+
+		body, err := io.ReadAll(res.Body)
+		require.NoError(t, err)
+		require.Equal(t, "fnord", string(body))
+	})
+}

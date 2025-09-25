@@ -126,6 +126,13 @@ type Config struct {
 	// button is not shown.
 	DiagnosticServiceURL string
 
+	// MaxRangeRequestFileSize is the maximum file size in bytes for which range
+	// requests are supported. When set to a value greater than 0, range requests
+	// for files larger than this limit will return 501 Not Implemented error.
+	// This provides protection against CDN/proxy issues with large files
+	// (e.g., Cloudflare's 5GB limit). A value of 0 disables this limit.
+	MaxRangeRequestFileSize int64
+
 	// MetricsRegistry is the Prometheus registry to use for metrics.
 	// If nil, prometheus.DefaultRegisterer will be used.
 	MetricsRegistry prometheus.Registerer
