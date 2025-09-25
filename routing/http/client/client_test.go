@@ -48,8 +48,8 @@ func (m *mockContentRouter) FindPeers(ctx context.Context, pid peer.ID, limit in
 	return args.Get(0).(iter.ResultIter[*types.PeerRecord]), args.Error(1)
 }
 
-func (m *mockContentRouter) GetClosestPeers(ctx context.Context, peerID, closerThan peer.ID, count int) (iter.ResultIter[*types.PeerRecord], error) {
-	args := m.Called(ctx, peerID, closerThan, count)
+func (m *mockContentRouter) GetClosestPeers(ctx context.Context, peerID peer.ID) (iter.ResultIter[*types.PeerRecord], error) {
+	args := m.Called(ctx, peerID)
 	return args.Get(0).(iter.ResultIter[*types.PeerRecord]), args.Error(1)
 }
 
@@ -902,12 +902,6 @@ func TestClient_GetClosestPeers(t *testing.T) {
 			name:           "returns no providers if the HTTP server returns a 404 response",
 			httpStatusCode: 404,
 			expResult:      nil,
-		},
-		{
-			name:                 "passes count and closerThan along",
-			expStreamingResponse: true,
-			routerResult:         peerRecords,
-			expResult:            peerRecords,
 		},
 	}
 	for _, c := range cases {

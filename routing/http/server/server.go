@@ -9,7 +9,6 @@ import (
 	"io"
 	"mime"
 	"net/http"
-	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -24,7 +23,6 @@ import (
 	jsontypes "github.com/ipfs/boxo/routing/http/types/json"
 	"github.com/ipfs/go-cid"
 	logging "github.com/ipfs/go-log/v2"
-	"github.com/libp2p/go-libp2p-kad-dht/amino"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/routing"
 	"github.com/multiformats/go-multiaddr"
@@ -44,7 +42,6 @@ const (
 	DefaultRecordsLimit          = 20
 	DefaultStreamingRecordsLimit = 0
 	DefaultRoutingTimeout        = 30 * time.Second
-	DefaultGetClosestPeersCount  = amino.DefaultBucketSize // 20 - Amino DHT bucket size
 )
 
 var logger = logging.Logger("routing/http/server")
@@ -90,15 +87,9 @@ type DelegatedRouter interface {
 	// It is guaranteed that the record matches the provided name.
 	PutIPNS(ctx context.Context, name ipns.Name, record *ipns.Record) error
 
-	// GetClosestPeers returns up to count peers closest to the given peerID in the DHT keyspace.
-	//
-	// If peerID is empty, implementations should use their own peer ID.
-	// If closerThan is specified, only peers closer to peerID than closerThan are returned.
-	// If count is 0, a sensible default of the routing system is used.
-	//
-	// Note: Amino DHT implementations are limited to returning at most 20 peers
-	// due to the DHT bucket size.
-	GetClosestPeers(ctx context.Context, peerID, closerThan peer.ID, count int) (iter.ResultIter[*types.PeerRecord], error)
+	// GetClosestPeers returns the DHT closest peers to the given peer ID.
+	// If empty, it will use the content router's peer ID (self). `closerThan` (optional) forces resulting records to be closer to `PeerID` than to `closerThan`. `count` specifies how many records to return ([1,100], with 20 as default when set to 0).
+	GetClosestPeers(ctx context.Context, peerID peer.ID) (iter.ResultIter[*types.PeerRecord], error)
 }
 
 // ContentRouter is deprecated, use DelegatedRouter instead.
@@ -619,30 +610,6 @@ func (s *server) getClosestPeers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	query := r.URL.Query()
-	closerThanStr := query.Get("closer-than")
-	var closerThanPid peer.ID
-	if closerThanStr != "" { // it is fine to omit. We will pass an empty peer.ID then.
-		closerThanPid, err = parsePeerID(closerThanStr)
-		if err != nil {
-			writeErr(w, "GetClosestPeers", http.StatusBadRequest, fmt.Errorf("unable to parse closer-than PeerID %q: %w", closerThanStr, err))
-			return
-		}
-	}
-
-	countStr := query.Get("count")
-	count, err := strconv.Atoi(countStr)
-	if err != nil {
-		count = 0
-	}
-	if count > 100 {
-		count = 100
-	}
-	// If limit is still 0, set THE default.
-	if count <= 0 {
-		count = DefaultGetClosestPeersCount
-	}
-
 	mediaType, err := s.detectResponseType(r)
 	if err != nil {
 		writeErr(w, "GetClosestPeers", http.StatusBadRequest, err)
@@ -661,7 +628,7 @@ func (s *server) getClosestPeers(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), s.routingTimeout)
 	defer cancel()
 
-	provIter, err := s.svc.GetClosestPeers(ctx, pid, closerThanPid, count)
+	provIter, err := s.svc.GetClosestPeers(ctx, pid)
 	if err != nil {
 		if errors.Is(err, routing.ErrNotFound) {
 			// handlerFunc takes care of setting the 404 and necessary headers

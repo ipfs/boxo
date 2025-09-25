@@ -11,7 +11,6 @@ import (
 	"net/http"
 	gourl "net/url"
 	"slices"
-	"strconv"
 	"strings"
 	"time"
 
@@ -641,7 +640,7 @@ func (c *Client) PutIPNS(ctx context.Context, name ipns.Name, record *ipns.Recor
 }
 
 // GetClosestPeers obtains the closest peers to the given peer ID.
-func (c *Client) GetClosestPeers(ctx context.Context, peerID, closerThan peer.ID, count int) (peers iter.ResultIter[*types.PeerRecord], err error) {
+func (c *Client) GetClosestPeers(ctx context.Context, peerID peer.ID) (peers iter.ResultIter[*types.PeerRecord], err error) {
 	m := newMeasurement("GetClosestPeers")
 
 	// Build the base URL path
@@ -649,16 +648,6 @@ func (c *Client) GetClosestPeers(ctx context.Context, peerID, closerThan peer.ID
 	if err != nil {
 		return nil, err
 	}
-
-	// Add query parameters
-	queryParams := make(gourl.Values)
-	if closerThan != "" {
-		queryParams.Set("closer-than", closerThan.String())
-	}
-	if count > 0 {
-		queryParams.Set("count", strconv.Itoa(count))
-	}
-	u += "?" + queryParams.Encode()
 
 	// Create the HTTP request
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
