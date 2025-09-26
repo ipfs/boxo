@@ -3,7 +3,7 @@ module github.com/ipfs/boxo/examples
 go 1.24.0
 
 require (
-	github.com/ipfs/boxo v0.34.0
+	github.com/ipfs/boxo v0.34.1-0.20250926121443-0a8bc14175c8
 	github.com/ipfs/go-block-format v0.2.3
 	github.com/ipfs/go-cid v0.5.0
 	github.com/ipfs/go-datastore v0.9.0
@@ -76,7 +76,7 @@ require (
 	github.com/libp2p/go-libp2p-kad-dht v0.34.0 // indirect
 	github.com/libp2p/go-libp2p-kbucket v0.7.0 // indirect
 	github.com/libp2p/go-libp2p-record v0.3.1 // indirect
-	github.com/libp2p/go-libp2p-routing-helpers v0.7.6-0.20250903125449-17ee6fbf872c // indirect
+	github.com/libp2p/go-libp2p-routing-helpers v0.7.6-0.20250925120012-fe2c8e446449 // indirect
 	github.com/libp2p/go-msgio v0.3.0 // indirect
 	github.com/libp2p/go-netroute v0.2.2 // indirect
 	github.com/libp2p/go-reuseport v0.4.0 // indirect
