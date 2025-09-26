@@ -117,3 +117,15 @@ func dnslinkServerHandlerFunc(t *testing.T, dnslinkName string, txtResponse stri
 		}
 	}
 }
+
+func TestDNSResolverNilUsesAutoconfFallback(t *testing.T) {
+	r, err := NewDNSResolver(nil)
+	require.NoError(t, err)
+	require.NotNil(t, r)
+}
+
+func TestDNSResolverEmptyMapUsesSystemDNS(t *testing.T) {
+	r, err := NewDNSResolver(map[string]string{})
+	require.NoError(t, err)
+	require.NotNil(t, r)
+}

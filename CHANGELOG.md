@@ -25,7 +25,6 @@ The following emojis are used to highlight certain changes:
   - Added `Config.DiagnosticServiceURL` to configure a CID retrievability diagnostic service. When set, 504 Gateway Timeout errors show a "Check CID retrievability" button linking to the service with `?cid=<failed-cid>` [#1023](https://github.com/ipfs/boxo/pull/1023)
   - Improved 504 error pages with "Retry" button, diagnostic service integration, and clear indication when timeout occurs on sub-resource vs root CID [#1023](https://github.com/ipfs/boxo/pull/1023)
 - `gateway`: Added `Config.MaxRangeRequestFileSize` to protect against CDN issues with large file range requests. When set to a non-zero value, range requests for files larger than this limit return HTTP 501 Not Implemented with a suggestion to use verifiable block requests (`application/vnd.ipld.raw`) instead. This provides protection against Cloudflare's issue where range requests for files over 5GiB are silently ignored, causing excess bandwidth consumption and billing
-- `autoconf`: Added `Client.ExpandDNSResolvers()` convenience method for expanding DNS resolver maps with autoconf data ([#771](https://github.com/ipfs/boxo/issues/771), [#772](https://github.com/ipfs/boxo/issues/772))
 
 ### Changed
 
@@ -43,16 +42,12 @@ The following emojis are used to highlight certain changes:
   - The default `MaximumAllowedCid` limit for incoming CIDs can be adjusted using `bitswap.MaxCidSize` or `server.MaxCidSize` options
 - 🛠 `bitswap/client`: The `RebroadcastDelay` option now takes a `time.Duration` value. This is a potentially BREAKING CHANGE. The time-varying functionality of `delay.Delay` was never used, so it was replaced with a fixed duration value. This also removes the `github.com/ipfs/go-ipfs-delay` dependency.
 - `filestore`: Support providing filestore-blocks. A new `provider.MultihashProvider` parameter has been added to `filestore.New()`. When used, the blocks handled by the Filestore's `FileManager` will be provided on write (Put and PutMany).
+- `gateway`: DNS resolver defaults moved to `autoconf.FallbackDNSResolvers`
+  - `NewDNSResolver(nil)` uses `autoconf.FallbackDNSResolvers`, preserving existing behavior for users who did not pass custom config
+  - Pass empty map `NewDNSResolver(map[string]string{})` to use only system DNS
+  - For custom or dynamic DNS resolvers, use `autoconf.ExpandDNSResolvers()` to merge network defaults with your own resolvers
 
 ### Removed
-
-- `gateway`: 🛠 Removed hardcoded `defaultResolvers` for `.eth` and `.crypto` TLDs from `gateway.NewDNSResolver` ([#771](https://github.com/ipfs/boxo/issues/771), [#772](https://github.com/ipfs/boxo/issues/772))
-  - This change removes implicit defaults that were difficult to discover, override, or disable, improving user agency and configuration transparency
-  - `NewDNSResolver(nil)` now uses system DNS only (no implicit DoH resolvers)
-  - Users needing DNS-over-HTTPS for non-ICANN TLDs should either:
-    - Pass explicit resolvers: `NewDNSResolver(map[string]string{"eth.": "https://dns.eth.limo/dns-query"})`
-    - Use `autoconf.ExpandDNSResolvers()` to merge network defaults with custom resolvers
-    - Use `autoconf.Client.ExpandDNSResolvers()` for convenience in long-running applications
 
 ### Fixed
 

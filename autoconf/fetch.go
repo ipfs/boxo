@@ -603,32 +603,3 @@ func calculateEffectiveRefreshInterval(userInterval time.Duration, cacheTTLSecon
 	serverTTL := time.Duration(cacheTTLSeconds) * time.Second
 	return min(serverTTL, userInterval)
 }
-
-// ExpandDNSResolvers expands DNS resolvers with "auto" placeholders using cached autoconf data.
-// This is a convenience method for applications that need to construct DNS resolvers.
-//
-// The customResolvers parameter is a map of domain patterns to DNS resolver URLs,
-// where values can be "auto" to use autoconf-provided resolvers. If nil or empty,
-// only autoconf resolvers will be returned.
-//
-// Returns a map ready to be passed to gateway.NewDNSResolver().
-//
-// Example:
-//
-//	client, _ := autoconf.NewClient()
-//
-//	// Apply all autoconf DNS resolvers
-//	resolvers := client.ExpandDNSResolvers(map[string]string{
-//	    ".": "auto",
-//	})
-//
-//	// Mix autoconf with custom resolvers
-//	resolvers = client.ExpandDNSResolvers(map[string]string{
-//	    "eth.": "auto",
-//	    "example.": "https://dns.example.com/dns-query",
-//	})
-//
-//	dnsResolver, _ := gateway.NewDNSResolver(resolvers)
-func (c *Client) ExpandDNSResolvers(customResolvers map[string]string) map[string]string {
-	return ExpandDNSResolvers(customResolvers, c.GetCached())
-}
