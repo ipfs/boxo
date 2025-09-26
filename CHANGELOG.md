@@ -24,6 +24,7 @@ The following emojis are used to highlight certain changes:
   - Added retrieval state tracking for timeout diagnostics. When retrieval timeouts occur, the error messages now include detailed information about which phase failed (path resolution, provider discovery, connecting, or data retrieval) and provider statistics including failed peer IDs [#1015](https://github.com/ipfs/boxo/pull/1015) [#1023](https://github.com/ipfs/boxo/pull/1023)
   - Added `Config.DiagnosticServiceURL` to configure a CID retrievability diagnostic service. When set, 504 Gateway Timeout errors show a "Check CID retrievability" button linking to the service with `?cid=<failed-cid>` [#1023](https://github.com/ipfs/boxo/pull/1023)
   - Improved 504 error pages with "Retry" button, diagnostic service integration, and clear indication when timeout occurs on sub-resource vs root CID [#1023](https://github.com/ipfs/boxo/pull/1023)
+- `gateway`: Added `Config.MaxRangeRequestFileSize` to protect against CDN issues with large file range requests. When set to a non-zero value, range requests for files larger than this limit return HTTP 501 Not Implemented with a suggestion to use verifiable block requests (`application/vnd.ipld.raw`) instead. This provides protection against Cloudflare's issue where range requests for files over 5GiB are silently ignored, causing excess bandwidth consumption and billing
 
 ### Changed
 
