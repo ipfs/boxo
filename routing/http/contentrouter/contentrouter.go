@@ -313,10 +313,9 @@ func (c *contentRouter) GetClosestPeers(ctx context.Context, pid peer.ID) (<-cha
 	if err != nil {
 		return nil, err
 	}
-	defer iter.Close()
-
 	infos := make(chan peer.AddrInfo)
 	go func() {
+		defer iter.Close()
 		defer close(infos)
 		for iter.Next() {
 			res := iter.Val()

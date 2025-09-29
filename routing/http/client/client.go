@@ -667,16 +667,21 @@ func (c *Client) GetClosestPeers(ctx context.Context, peerID peer.ID) (peers ite
 		return nil, err
 	}
 
+	var skipBodyClose bool
+	defer func() {
+		if !skipBodyClose {
+			resp.Body.Close()
+		}
+	}()
+
 	m.statusCode = resp.StatusCode
 	if resp.StatusCode == http.StatusNotFound {
-		resp.Body.Close()
 		m.record(ctx)
 		return iter.FromSlice[iter.Result[*types.PeerRecord]](nil), nil
 	}
 
 	if resp.StatusCode != http.StatusOK {
 		err := httpError(resp.StatusCode, resp.Body)
-		resp.Body.Close()
 		m.record(ctx)
 		return nil, err
 	}
@@ -684,20 +689,12 @@ func (c *Client) GetClosestPeers(ctx context.Context, peerID peer.ID) (peers ite
 	respContentType := resp.Header.Get("Content-Type")
 	mediaType, _, err := mime.ParseMediaType(respContentType)
 	if err != nil {
-		resp.Body.Close()
 		m.err = err
 		m.record(ctx)
 		return nil, fmt.Errorf("parsing Content-Type: %w", err)
 	}
 
 	m.mediaType = mediaType
-
-	var skipBodyClose bool
-	defer func() {
-		if !skipBodyClose {
-			resp.Body.Close()
-		}
-	}()
 
 	var it iter.ResultIter[*types.PeerRecord]
 	switch mediaType {
