@@ -16,6 +16,19 @@ The following emojis are used to highlight certain changes:
 
 ### Added
 
+### Changed
+
+### Removed
+
+### Fixed
+
+### Security
+
+
+## v0.35.0
+
+### Added
+
 - `pinning/pinner`: Added `CheckIfPinnedWithType` method to `Pinner` interface for efficient type-specific pin checks with optional name loading ([#1035](https://github.com/ipfs/boxo/pull/1035))
   - Enables checking specific pin types (recursive, direct, indirect) without loading all pins
   - Optional `includeNames` parameter controls whether pin names are loaded from datastore
@@ -42,8 +55,6 @@ The following emojis are used to highlight certain changes:
   - The default `MaximumAllowedCid` limit for incoming CIDs can be adjusted using `bitswap.MaxCidSize` or `server.MaxCidSize` options
 - 🛠 `bitswap/client`: The `RebroadcastDelay` option now takes a `time.Duration` value. This is a potentially BREAKING CHANGE. The time-varying functionality of `delay.Delay` was never used, so it was replaced with a fixed duration value. This also removes the `github.com/ipfs/go-ipfs-delay` dependency.
 - `filestore`: Support providing filestore-blocks. A new `provider.MultihashProvider` parameter has been added to `filestore.New()`. When used, the blocks handled by the Filestore's `FileManager` will be provided on write (Put and PutMany).
-
-### Removed
 
 ### Fixed
 
