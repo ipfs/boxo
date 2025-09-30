@@ -14,12 +14,12 @@ import (
 	"github.com/ipfs/boxo/ipld/merkledag/dagutils"
 	ipfspinner "github.com/ipfs/boxo/pinning/pinner"
 	"github.com/ipfs/boxo/pinning/pinner/dsindex"
+	"github.com/ipfs/boxo/provider"
 	"github.com/ipfs/go-cid"
 	ds "github.com/ipfs/go-datastore"
 	"github.com/ipfs/go-datastore/query"
 	ipld "github.com/ipfs/go-ipld-format"
 	logging "github.com/ipfs/go-log/v2"
-	"github.com/libp2p/go-libp2p/core/routing"
 	"github.com/polydawn/refmt/cbor"
 	"github.com/polydawn/refmt/obj/atlas"
 )
@@ -98,8 +98,8 @@ type pinner struct {
 	clean int64
 	dirty int64
 
-	rootsProvider  routing.ContentProviding
-	pinnedProvider routing.ContentProviding
+	rootsProvider  provider.MultihashProvider
+	pinnedProvider provider.MultihashProvider
 }
 
 var _ ipfspinner.Pinner = (*pinner)(nil)
@@ -136,7 +136,7 @@ type Option struct {
 
 // WithPinnedProvider sets a provider for all pinned CIDs to be provided
 // (directly or recursively).
-func WithPinnedProvider(prov routing.ContentProviding) Option {
+func WithPinnedProvider(prov provider.MultihashProvider) Option {
 	return Option{func(p *pinner) {
 		log.Debug("pinned-providing configured")
 		p.pinnedProvider = prov
@@ -145,7 +145,7 @@ func WithPinnedProvider(prov routing.ContentProviding) Option {
 
 // WithRootsProvider sets a provider for root CIDs and direct pins to be
 // provided.
-func WithRootsProvider(prov routing.ContentProviding) Option {
+func WithRootsProvider(prov provider.MultihashProvider) Option {
 	return Option{func(p *pinner) {
 		log.Debug("roots-providing configured")
 		p.rootsProvider = prov
@@ -296,8 +296,8 @@ func (p *pinner) doPinRecursive(ctx context.Context, c cid.Cid, fetch bool, name
 	// we would provide the roots twice.
 	if p.rootsProvider != nil && p.pinnedProvider == nil {
 		log.Debugf("pinner: provide root %s", c)
-		if err := p.rootsProvider.Provide(ctx, c, true); err != nil {
-			log.Debugf("error providing %s: %s", c, err)
+		if err := p.rootsProvider.StartProviding(false, c.Hash()); err != nil {
+			log.Warnf("pinner: error while providing %s: %s", c, err)
 		}
 	}
 	return nil
@@ -345,8 +345,8 @@ func (p *pinner) doPinDirect(ctx context.Context, c cid.Cid, name string) error 
 
 	if p.rootsProvider != nil {
 		log.Debugf("pinner: provide direct pin %s", c)
-		if err := p.rootsProvider.Provide(ctx, c, true); err != nil {
-			log.Debugf("error providing %s: %s", c, err)
+		if err := p.rootsProvider.StartProviding(false, c.Hash()); err != nil {
+			log.Warnf("pinner: error while providing %s: %s", c, err)
 		}
 	}
 
@@ -585,64 +585,223 @@ func (p *pinner) isPinnedWithType(ctx context.Context, c cid.Cid, mode ipfspinne
 //
 // TODO: If a CID is pinned by multiple pins, should they all be reported?
 func (p *pinner) CheckIfPinned(ctx context.Context, cids ...cid.Cid) ([]ipfspinner.Pinned, error) {
-	pinned := make([]ipfspinner.Pinned, 0, len(cids))
-	toCheck := cid.NewSet()
+	// Simply delegate to CheckIfPinnedWithType with Any mode and no names
+	return p.CheckIfPinnedWithType(ctx, ipfspinner.Any, false, cids...)
+}
 
+// loadPinName attempts to load the pin name if includeNames is true.
+// It logs errors but doesn't fail the operation if name loading fails.
+func (p *pinner) loadPinName(ctx context.Context, pin *ipfspinner.Pinned, pinID string, includeNames bool) {
+	if !includeNames {
+		return
+	}
+	pinData, err := p.loadPin(ctx, pinID)
+	if err != nil {
+		log.Errorf("failed to load pin %s: %v", pinID, err)
+		return
+	}
+	pin.Name = pinData.Name
+}
+
+// CheckIfPinnedWithType implements the Pinner interface, checking specific pin types.
+// This method is optimized to only check the requested pin type(s).
+func (p *pinner) CheckIfPinnedWithType(ctx context.Context, mode ipfspinner.Mode, includeNames bool, cids ...cid.Cid) ([]ipfspinner.Pinned, error) {
 	p.lock.RLock()
 	defer p.lock.RUnlock()
 
-	// First check for non-Indirect pins directly
-	for _, c := range cids {
-		cidKey := c.KeyString()
-		has, err := p.cidRIndex.HasAny(ctx, cidKey)
-		if err != nil {
-			return nil, err
-		}
-		if has {
-			pinned = append(pinned, ipfspinner.Pinned{Key: c, Mode: ipfspinner.Recursive})
-		} else {
-			has, err = p.cidDIndex.HasAny(ctx, cidKey)
+	switch mode {
+	case ipfspinner.Any:
+		// Check all pin types
+		pinned := make([]ipfspinner.Pinned, 0, len(cids))
+		toCheck := cid.NewSet()
+
+		// First check for non-Indirect pins directly
+		for _, c := range cids {
+			cidKey := c.KeyString()
+
+			// Check recursive pins
+			ids, err := p.cidRIndex.Search(ctx, cidKey)
 			if err != nil {
 				return nil, err
 			}
-			if has {
-				pinned = append(pinned, ipfspinner.Pinned{Key: c, Mode: ipfspinner.Direct})
+			if len(ids) > 0 {
+				pin := ipfspinner.Pinned{Key: c, Mode: ipfspinner.Recursive}
+				p.loadPinName(ctx, &pin, ids[0], includeNames)
+				pinned = append(pinned, pin)
 			} else {
-				toCheck.Add(c)
+				// Check direct pins
+				ids, err = p.cidDIndex.Search(ctx, cidKey)
+				if err != nil {
+					return nil, err
+				}
+				if len(ids) > 0 {
+					pin := ipfspinner.Pinned{Key: c, Mode: ipfspinner.Direct}
+					p.loadPinName(ctx, &pin, ids[0], includeNames)
+					pinned = append(pinned, pin)
+				} else {
+					toCheck.Add(c)
+				}
 			}
+		}
+
+		// Check for indirect pins
+		if toCheck.Len() > 0 {
+			if err := p.traverseIndirectPins(ctx, toCheck, &pinned); err != nil {
+				return nil, err
+			}
+		}
+
+		// Anything left in toCheck is not pinned
+		for _, k := range toCheck.Keys() {
+			pinned = append(pinned, ipfspinner.Pinned{Key: k, Mode: ipfspinner.NotPinned})
+		}
+		return pinned, nil
+
+	case ipfspinner.Recursive, ipfspinner.Direct:
+		// Check only the specific index
+		return p.checkPinsInIndex(ctx, mode, includeNames, cids...)
+
+	case ipfspinner.Indirect:
+		// Only check for indirect pins (expensive - requires traversal of all recursive pins' graphs)
+		return p.checkIndirectPins(ctx, cids...)
+
+	case ipfspinner.Internal:
+		// Internal pins are not exposed to users, return NotPinned
+		// Note: this is legacy behavior kept for backward-compatibility
+		pinned := make([]ipfspinner.Pinned, 0, len(cids))
+		for _, c := range cids {
+			pinned = append(pinned, ipfspinner.Pinned{Key: c, Mode: ipfspinner.NotPinned})
+		}
+		return pinned, nil
+
+	default:
+		// For unknown modes, return an error to maintain backward compatibility
+		return nil, fmt.Errorf(
+			"invalid Pin Mode '%d', must be one of {%d, %d, %d, %d, %d}",
+			mode, ipfspinner.Direct, ipfspinner.Indirect, ipfspinner.Recursive,
+			ipfspinner.Internal, ipfspinner.Any)
+	}
+}
+
+// checkPinsInIndex is a helper that checks for pins in a specific index based on mode (pin type).
+// It selects either the recursive or direct index depending on the mode parameter.
+func (p *pinner) checkPinsInIndex(ctx context.Context, mode ipfspinner.Mode, includeNames bool, cids ...cid.Cid) ([]ipfspinner.Pinned, error) {
+	pinned := make([]ipfspinner.Pinned, 0, len(cids))
+
+	// Select the appropriate index based on mode (pin type)
+	var index dsindex.Indexer
+	if mode == ipfspinner.Recursive {
+		index = p.cidRIndex
+	} else {
+		index = p.cidDIndex
+	}
+
+	for _, c := range cids {
+		cidKey := c.KeyString()
+		ids, err := index.Search(ctx, cidKey)
+		if err != nil {
+			return nil, err
+		}
+
+		if len(ids) > 0 {
+			pin := ipfspinner.Pinned{Key: c, Mode: mode}
+			p.loadPinName(ctx, &pin, ids[0], includeNames)
+			pinned = append(pinned, pin)
+		} else {
+			pinned = append(pinned, ipfspinner.Pinned{Key: c, Mode: ipfspinner.NotPinned})
 		}
 	}
 
-	var e error
+	return pinned, nil
+}
+
+// traverseIndirectPins is a helper that traverses all recursive pins to find indirect pins.
+// It modifies the pinned slice and toCheck set in place.
+func (p *pinner) traverseIndirectPins(ctx context.Context, toCheck *cid.Set, pinned *[]ipfspinner.Pinned) error {
+	var walkErr error
 	visited := cid.NewSet()
 	err := p.cidRIndex.ForEach(ctx, "", func(key, value string) bool {
+		// Check for context cancellation at the start of each recursive pin
+		select {
+		case <-ctx.Done():
+			walkErr = ctx.Err()
+			return false
+		default:
+		}
+
 		var rk cid.Cid
-		rk, e = cid.Cast([]byte(key))
-		if e != nil {
+		rk, walkErr = cid.Cast([]byte(key))
+		if walkErr != nil {
 			return false
 		}
-		e = merkledag.Walk(ctx, merkledag.GetLinksWithDAG(p.dserv), rk, func(c cid.Cid) bool {
+		walkErr = merkledag.Walk(ctx, merkledag.GetLinksWithDAG(p.dserv), rk, func(c cid.Cid) bool {
 			if toCheck.Len() == 0 || !visited.Visit(c) {
 				return false
 			}
-
 			if toCheck.Has(c) {
-				pinned = append(pinned, ipfspinner.Pinned{Key: c, Mode: ipfspinner.Indirect, Via: rk})
+				*pinned = append(*pinned, ipfspinner.Pinned{Key: c, Mode: ipfspinner.Indirect, Via: rk})
 				toCheck.Remove(c)
 			}
-
 			return true
 		}, merkledag.Concurrent())
-		if e != nil {
+		if walkErr != nil {
 			return false
 		}
 		return toCheck.Len() > 0
 	})
 	if err != nil {
-		return nil, err
+		return err
 	}
-	if e != nil {
-		return nil, e
+	if walkErr != nil {
+		return walkErr
+	}
+	return nil
+}
+
+// checkIndirectPins checks if the given cids are pinned indirectly
+func (p *pinner) checkIndirectPins(ctx context.Context, cids ...cid.Cid) ([]ipfspinner.Pinned, error) {
+	pinned := make([]ipfspinner.Pinned, 0, len(cids))
+	toCheck := cid.NewSet()
+
+	// Filter out CIDs that are recursively pinned at the root level.
+	// A recursively pinned CID is not considered indirect because recursive pins
+	// are comprehensive (include all children), making "recursive" take precedence
+	// over "indirect".
+	//
+	// However, we do NOT filter out direct pins here. Direct pins only pin a
+	// single block, not its children. Therefore, a CID can legitimately be both:
+	// - Directly pinned (explicitly pinned as a single block)
+	// - Indirectly pinned (referenced by another pinned object's DAG)
+	// This is why the asymmetry between recursive and direct pins is intentional.
+	//
+	// NOTE: While this behavior may feel arbitrary, we preserve it for compatibility
+	// as this is how 'ipfs pin ls' has behaved for nearly a decade. The test
+	// t0081-repo-pinning.sh in Kubo explicitly expects a CID to be both direct
+	// and indirect, guarding this established behavior.
+	for _, c := range cids {
+		cidKey := c.KeyString()
+
+		// Check if recursively pinned
+		ids, err := p.cidRIndex.Search(ctx, cidKey)
+		if err != nil {
+			return nil, err
+		}
+		if len(ids) > 0 {
+			// This CID is recursively pinned at root level, not indirect
+			pinned = append(pinned, ipfspinner.Pinned{Key: c, Mode: ipfspinner.NotPinned})
+			continue
+		}
+
+		// Still check for indirect even if directly pinned
+		// A CID can be both direct and indirect
+		toCheck.Add(c)
+	}
+
+	// Now check for indirect pins by traversing recursive pins
+	if toCheck.Len() > 0 {
+		if err := p.traverseIndirectPins(ctx, toCheck, &pinned); err != nil {
+			return nil, err
+		}
 	}
 
 	// Anything left in toCheck is not pinned

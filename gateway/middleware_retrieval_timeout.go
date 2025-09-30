@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"sync"
 	"time"
+
+	"github.com/ipfs/boxo/retrieval"
 )
 
 const truncationMessage = "\n\n[Gateway Error: Response truncated - unable to retrieve remaining data within timeout period]"
@@ -30,6 +32,10 @@ func withRetrievalTimeout(handler http.Handler, timeout time.Duration, c *Config
 	}
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Add retrieval.State to request context for tracking provider diagnostics
+		ctx, retrievalState := retrieval.ContextWithState(r.Context())
+		r = r.WithContext(ctx)
+
 		// Create channels for coordination
 		handlerDone := make(chan struct{})
 		timeoutChan := make(chan struct{})
@@ -66,10 +72,17 @@ func withRetrievalTimeout(handler http.Handler, timeout time.Duration, c *Config
 
 						metrics.recordTimeout(http.StatusGatewayTimeout, false)
 						message := "Unable to retrieve content within timeout period"
+
+						// Include diagnostic context if available
+						if retrievalState != nil {
+							message = fmt.Sprintf("%s: %s", message, retrievalState.Summary())
+						}
+
 						log.Debugw("sending 504 gateway timeout",
 							"path", tw.request.URL.Path,
 							"method", tw.request.Method,
-							"remoteAddr", tw.request.RemoteAddr)
+							"remoteAddr", tw.request.RemoteAddr,
+							"timeoutReason", message)
 
 						// Write error response directly to ResponseWriter (safe because handler uses tw.headers)
 						writeErrorResponse(tw.ResponseWriter, tw.request, tw.config, http.StatusGatewayTimeout, message)
@@ -185,6 +198,12 @@ func (tw *timeoutWriter) Write(p []byte) (int, error) {
 
 	// Reset timer on non-empty write
 	if len(p) > 0 {
+		// Set data retrieval phase on first data write
+		if tw.bytesWritten == 0 {
+			if retrievalState := retrieval.StateFromContext(tw.request.Context()); retrievalState != nil {
+				retrievalState.SetPhase(retrieval.PhaseDataRetrieval)
+			}
+		}
 		tw.timer.Reset(tw.timeout)
 		tw.bytesWritten += int64(len(p))
 	}

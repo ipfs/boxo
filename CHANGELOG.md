@@ -16,14 +16,62 @@ The following emojis are used to highlight certain changes:
 
 ### Added
 
+- `pinning/pinner`: Added `CheckIfPinnedWithType` method to `Pinner` interface for efficient type-specific pin checks with optional name loading ([#1035](https://github.com/ipfs/boxo/pull/1035))
+  - Enables checking specific pin types (recursive, direct, indirect) without loading all pins
+  - Optional `includeNames` parameter controls whether pin names are loaded from datastore
+  - `CheckIfPinned` now delegates to `CheckIfPinnedWithType` for consistency
+- `gateway`: Enhanced error handling and UX for timeouts:
+  - Added retrieval state tracking for timeout diagnostics. When retrieval timeouts occur, the error messages now include detailed information about which phase failed (path resolution, provider discovery, connecting, or data retrieval) and provider statistics including failed peer IDs [#1015](https://github.com/ipfs/boxo/pull/1015) [#1023](https://github.com/ipfs/boxo/pull/1023)
+  - Added `Config.DiagnosticServiceURL` to configure a CID retrievability diagnostic service. When set, 504 Gateway Timeout errors show a "Check CID retrievability" button linking to the service with `?cid=<failed-cid>` [#1023](https://github.com/ipfs/boxo/pull/1023)
+  - Improved 504 error pages with "Retry" button, diagnostic service integration, and clear indication when timeout occurs on sub-resource vs root CID [#1023](https://github.com/ipfs/boxo/pull/1023)
+- `gateway`: Added `Config.MaxRangeRequestFileSize` to protect against CDN issues with large file range requests. When set to a non-zero value, range requests for files larger than this limit return HTTP 501 Not Implemented with a suggestion to use verifiable block requests (`application/vnd.ipld.raw`) instead. This provides protection against Cloudflare's issue where range requests for files over 5GiB are silently ignored, causing excess bandwidth consumption and billing
+
 ### Changed
+
+- `routing/http`: ✨ Delegated Routing V1 HTTP endpoints now return 200 with empty results instead of 404 when no records are found, per [IPIP-513](https://github.com/ipfs/specs/pull/513) ([#1024](https://github.com/ipfs/boxo/issues/1024))
+  - Server endpoints (`/routing/v1/providers/{cid}`, `/routing/v1/peers/{peer-id}`, `/routing/v1/ipns/{name}`) return HTTP 200 with empty JSON arrays or appropriate content types for empty results
+  - Client maintains backward compatibility by treating both 200 with empty results and 404 as "no records found"
+  - IPNS endpoint distinguishes between valid records (Content-Type: `application/vnd.ipfs.ipns-record`) and no record found (any other content type)
+- `verifcid`: 🛠 Enhanced Allowlist interface with per-hash size limits ([#1018](https://github.com/ipfs/boxo/pull/1018))
+  - Expanded `Allowlist` interface with `MinDigestSize(code uint64)` and `MaxDigestSize(code uint64)` methods for per-hash function size validation
+  - Added public constants: `DefaultMinDigestSize` (20 bytes), `DefaultMaxDigestSize` (128 bytes for cryptographic hashes), and `DefaultMaxIdentityDigestSize` (128 bytes for identity CIDs)
+  - `DefaultAllowlist` implementation now uses these constants and supports different size limits per hash type
+  - Renamed errors for clarity: Added `ErrDigestTooSmall` and `ErrDigestTooLarge` as the new primary errors
+  - `ErrBelowMinimumHashLength` and `ErrAboveMaximumHashLength` remain as deprecated aliases pointing to the new errors
+- `bitswap`: Updated to use `verifcid.DefaultMaxDigestSize` for `MaximumHashLength` constant
+  - The default `MaximumAllowedCid` limit for incoming CIDs can be adjusted using `bitswap.MaxCidSize` or `server.MaxCidSize` options
+- 🛠 `bitswap/client`: The `RebroadcastDelay` option now takes a `time.Duration` value. This is a potentially BREAKING CHANGE. The time-varying functionality of `delay.Delay` was never used, so it was replaced with a fixed duration value. This also removes the `github.com/ipfs/go-ipfs-delay` dependency.
+- `filestore`: Support providing filestore-blocks. A new `provider.MultihashProvider` parameter has been added to `filestore.New()`. When used, the blocks handled by the Filestore's `FileManager` will be provided on write (Put and PutMany).
 
 ### Removed
 
 ### Fixed
 
+- `routing/http/client`:
+  - Fixed off-by-one error in `routing_http_client_length` metric - the metric now correctly reports 0 for empty results instead of 1
+  - Added metrics for IPNS operations (`GetIPNS` and `PutIPNS`) - these now report latency, status code, and result count (0 or 1 for GetIPNS)
+  - Added simple counter metrics to avoid confusing histogram bucket math:
+    - `routing_http_client_requests_total` - total requests including errors
+    - `routing_http_client_positive_responses_total` - requests that returned at least 1 result
+- `ipld/unixfs/mod`:
+  - `DagModifier` now correctly preserves raw node codec when modifying data under the chunker threshold, instead of incorrectly forcing everything to dag-pb
+  - `DagModifier` prevents creation of identity CIDs exceeding `verifcid.DefaultMaxIdentityDigestSize` limit when modifying data, automatically switching to proper cryptographic hash while preserving small identity CIDs
+  - `DagModifier` now supports appending data to a `RawNode` by automatically converting it into a UnixFS file structure where the original `RawNode` becomes the first leaf block, fixing previously impossible append operations that would fail with "expected protobuf dag node" errors
+- `mfs`:
+  - Files with identity CIDs now properly inherit full CID prefix from parent directories (version, codec, hash type, length), not just hash type ([#1018](https://github.com/ipfs/boxo/pull/1018))
+
 ### Security
 
+- `verifcid`: Now enforces maximum size limit of 128 bytes for identity CIDs to prevent abuse ([#1018](https://github.com/ipfs/boxo/pull/1018), [ipfs/specs#512](https://github.com/ipfs/specs/pull/512)).
+  - 🛠 Attempts to read CIDs with identity multihash digests longer than `DefaultMaxIdentityDigestSize` will now produce `ErrDigestTooLarge` error.
+  - Identity CIDs can inline data directly, and without a size limit, they could embed arbitrary amounts of data. Limiting the size also protects gateways from poorly written clients that might send absurdly big data to the gateway encoded as identity CIDs only to retrieve it back. Note that identity CIDs do not provide integrity verification, making them vulnerable to bit flips. They should only be used in controlled contexts like raw leaves of a larger DAG. The limit is explicitly defined as `DefaultMaxIdentityDigestSize` (128 bytes).
+
+
+## v0.35.0
+
+### Changed
+
+- `provider`: `Provide()` calls are replaced with `StartProviding()` to benefit from the Reprovide Sweep improvement. See [kubo#10834](https://github.com/ipfs/kubo/pull/10834) and [kad-dht#1095](https://github.com/libp2p/go-libp2p-kad-dht/pull/1095).
 
 ## [v0.34.0]
 

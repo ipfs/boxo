@@ -140,7 +140,7 @@ func (pm *PeerManager) ResponseReceived(p peer.ID, ks []cid.Cid) {
 // to discover seeds).
 // For each peer it filters out want-haves that have previously been sent to
 // the peer.
-func (pm *PeerManager) BroadcastWantHaves(ctx context.Context, wantHaves []cid.Cid) {
+func (pm *PeerManager) BroadcastWantHaves(wantHaves []cid.Cid) {
 	pm.pqLk.Lock()
 	defer pm.pqLk.Unlock()
 
@@ -149,7 +149,7 @@ func (pm *PeerManager) BroadcastWantHaves(ctx context.Context, wantHaves []cid.C
 
 // SendWants sends the given want-blocks and want-haves to the given peer.
 // It filters out wants that have previously been sent to the peer.
-func (pm *PeerManager) SendWants(ctx context.Context, p peer.ID, wantBlocks []cid.Cid, wantHaves []cid.Cid) bool {
+func (pm *PeerManager) SendWants(p peer.ID, wantBlocks []cid.Cid, wantHaves []cid.Cid) bool {
 	pm.pqLk.Lock()
 	defer pm.pqLk.Unlock()
 
@@ -162,7 +162,7 @@ func (pm *PeerManager) SendWants(ctx context.Context, p peer.ID, wantBlocks []ci
 
 // SendCancels sends cancels for the given keys to all peers who had previously
 // received a want for those keys.
-func (pm *PeerManager) SendCancels(ctx context.Context, cancelKs []cid.Cid) {
+func (pm *PeerManager) SendCancels(cancelKs []cid.Cid) {
 	pm.pqLk.Lock()
 	defer pm.pqLk.Unlock()
 
@@ -233,9 +233,9 @@ func (pm *PeerManager) UnregisterSession(ses uint64) {
 	pm.psLk.Lock()
 	defer pm.psLk.Unlock()
 
-	for p := range pm.peerSessions {
-		delete(pm.peerSessions[p], ses)
-		if len(pm.peerSessions[p]) == 0 {
+	for p, sesSet := range pm.peerSessions {
+		delete(sesSet, ses)
+		if len(sesSet) == 0 {
 			delete(pm.peerSessions, p)
 		}
 	}

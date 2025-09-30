@@ -6,7 +6,6 @@ import (
 	"github.com/ipfs/boxo/bitswap/client"
 	"github.com/ipfs/boxo/bitswap/server"
 	"github.com/ipfs/boxo/bitswap/tracer"
-	delay "github.com/ipfs/go-ipfs-delay"
 )
 
 type option func(*Bitswap)
@@ -33,7 +32,7 @@ func MaxQueuedWantlistEntriesPerPeer(count uint) Option {
 	return Option{server.MaxQueuedWantlistEntriesPerPeer(count)}
 }
 
-// MaxCidSize only affects the server.
+// MaxCidSize limits the size of incoming CIDs in requests (server only).
 // If it is 0 no limit is applied.
 func MaxCidSize(n uint) Option {
 	return Option{server.MaxCidSize(n)}
@@ -74,7 +73,7 @@ func ProviderSearchDelay(newProvSearchDelay time.Duration) Option {
 	return Option{client.ProviderSearchDelay(newProvSearchDelay)}
 }
 
-func RebroadcastDelay(newRebroadcastDelay delay.D) Option {
+func RebroadcastDelay(newRebroadcastDelay time.Duration) Option {
 	return Option{client.RebroadcastDelay(newRebroadcastDelay)}
 }
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -32,6 +33,9 @@ const (
 	//
 	// See the MaxConcurrentRequests field documentation for detailed tuning guidance.
 	DefaultMaxConcurrentRequests = 4096
+
+	// DefaultDiagnosticServiceURL is the default URL for CID diagnostic service
+	DefaultDiagnosticServiceURL = "https://check.ipfs.network"
 )
 
 // Config is the configuration used when creating a new gateway handler.
@@ -115,9 +119,39 @@ type Config struct {
 	// A value of 0 disables the limit entirely (use with caution).
 	MaxConcurrentRequests int
 
+	// DiagnosticServiceURL is the URL for a service that can be used to diagnose
+	// issues with CID retrievability. When the gateway returns a 504 Gateway Timeout
+	// error, an "Inspect retrievability of CID" button will be shown that links to
+	// this service with the CID as a query parameter. When set to empty string, the
+	// button is not shown.
+	DiagnosticServiceURL string
+
+	// MaxRangeRequestFileSize is the maximum file size in bytes for which range
+	// requests are supported. When set to a value greater than 0, range requests
+	// for files larger than this limit will return 501 Not Implemented error.
+	// This provides protection against CDN/proxy issues with large files
+	// (e.g., Cloudflare's 5GB limit). A value of 0 disables this limit.
+	MaxRangeRequestFileSize int64
+
 	// MetricsRegistry is the Prometheus registry to use for metrics.
 	// If nil, prometheus.DefaultRegisterer will be used.
 	MetricsRegistry prometheus.Registerer
+}
+
+// validateConfig validates and normalizes the Config, returning a modified copy.
+// Invalid values are logged and set to safe defaults.
+func validateConfig(c Config) Config {
+	// Validate DiagnosticServiceURL
+	if c.DiagnosticServiceURL != "" {
+		if _, err := url.Parse(c.DiagnosticServiceURL); err != nil {
+			log.Errorf("invalid DiagnosticServiceURL %q: %v, disabling diagnostic service", c.DiagnosticServiceURL, err)
+			c.DiagnosticServiceURL = ""
+		}
+	}
+
+	// Future validations can be added here
+
+	return c
 }
 
 // PublicGateway is the specification of an IPFS Public Gateway.

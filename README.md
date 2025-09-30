@@ -1,6 +1,6 @@
 <h1 align="center">
   <br>
-  <a href="#readme"><img src="https://github.com/ipfs/boxo/assets/157609/3c5e7391-fbc2-405b-9efc-920f4fd13b39" alt="Boxo logo" title="Boxo logo" width="200"></a>
+  <a href="https://github.com/ipfs/boxo/blob/main/docs/logo/"><img src="https://github.com/ipfs/boxo/assets/157609/3c5e7391-fbc2-405b-9efc-920f4fd13b39" alt="Boxo logo" title="Boxo logo" width="200"></a>
   <br>
   BOXO: IPFS SDK for GO
   <br>

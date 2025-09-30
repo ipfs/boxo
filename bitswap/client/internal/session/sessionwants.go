@@ -3,6 +3,7 @@ package session
 import (
 	"fmt"
 	"math/rand"
+	"slices"
 	"time"
 
 	cid "github.com/ipfs/go-cid"
@@ -117,14 +118,10 @@ func (sw *sessionWants) BlocksReceived(ks []cid.Cid) ([]cid.Cid, time.Duration) 
 	// If the live wants ordering array is a long way out of sync with the
 	// live wants map, clean up the ordering array
 	if len(sw.liveWantsOrder)-len(sw.liveWants) > liveWantsOrderGCLimit {
-		cleaned := sw.liveWantsOrder[:0]
-		for _, c := range sw.liveWantsOrder {
-			if _, ok := sw.liveWants[c]; ok {
-				cleaned = append(cleaned, c)
-			}
-		}
-		clear(sw.liveWantsOrder[len(cleaned):]) // GC cleared items
-		sw.liveWantsOrder = cleaned
+		sw.liveWantsOrder = slices.DeleteFunc(sw.liveWantsOrder, func(c cid.Cid) bool {
+			_, ok := sw.liveWants[c]
+			return !ok
+		})
 	}
 
 	return wanted, totalLatency
