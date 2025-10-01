@@ -25,7 +25,7 @@ The following emojis are used to highlight certain changes:
 ### Security
 
 
-## v0.35.0
+## [v0.35.0]
 
 ### Added
 
@@ -56,6 +56,9 @@ The following emojis are used to highlight certain changes:
 - 🛠 `bitswap/client`: The `RebroadcastDelay` option now takes a `time.Duration` value. This is a potentially BREAKING CHANGE. The time-varying functionality of `delay.Delay` was never used, so it was replaced with a fixed duration value. This also removes the `github.com/ipfs/go-ipfs-delay` dependency.
 - `filestore`: Support providing filestore-blocks. A new `provider.MultihashProvider` parameter has been added to `filestore.New()`. When used, the blocks handled by the Filestore's `FileManager` will be provided on write (Put and PutMany).
 
+### Removed
+- `provider`: `Provide()` calls are replaced with `StartProviding()` to benefit from the Reprovide Sweep improvement. See [kubo#10834](https://github.com/ipfs/kubo/pull/10834) and [kad-dht#1095](https://github.com/libp2p/go-libp2p-kad-dht/pull/1095).- `provider`: `Provide()` calls are replaced with `StartProviding()` to benefit from the Reprovide Sweep improvement. See [kubo#10834](https://github.com/ipfs/kubo/pull/10834) and [kad-dht#1095](https://github.com/libp2p/go-libp2p-kad-dht/pull/1095).
+
 ### Fixed
 
 - `routing/http/client`:
@@ -77,12 +80,6 @@ The following emojis are used to highlight certain changes:
   - 🛠 Attempts to read CIDs with identity multihash digests longer than `DefaultMaxIdentityDigestSize` will now produce `ErrDigestTooLarge` error.
   - Identity CIDs can inline data directly, and without a size limit, they could embed arbitrary amounts of data. Limiting the size also protects gateways from poorly written clients that might send absurdly big data to the gateway encoded as identity CIDs only to retrieve it back. Note that identity CIDs do not provide integrity verification, making them vulnerable to bit flips. They should only be used in controlled contexts like raw leaves of a larger DAG. The limit is explicitly defined as `DefaultMaxIdentityDigestSize` (128 bytes).
 
-
-## v0.35.0
-
-### Changed
-
-- `provider`: `Provide()` calls are replaced with `StartProviding()` to benefit from the Reprovide Sweep improvement. See [kubo#10834](https://github.com/ipfs/kubo/pull/10834) and [kad-dht#1095](https://github.com/libp2p/go-libp2p-kad-dht/pull/1095).
 
 ## [v0.34.0]
 
