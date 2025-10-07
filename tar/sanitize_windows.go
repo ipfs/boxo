@@ -34,12 +34,6 @@ func validatePathComponent(component string) error {
 			)
 		}
 	}
-	if component == ".." {
-		return fmt.Errorf(
-			`%s: path component cannot be ".."`,
-			invalidPathErr,
-		)
-	}
 	if strings.ContainsAny(component, reservedCharsStr) {
 		return fmt.Errorf(
 			`%s: path components cannot contain any of "%s": "%s"`,
