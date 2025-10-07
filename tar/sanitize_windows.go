@@ -55,19 +55,22 @@ func validatePathComponent(component string) error {
 	return nil
 }
 
-func validatePlatformPath(platformPath string) error {
-	// remove the volume name
-	p := platformPath[len(filepath.VolumeName(platformPath)):]
-
-	// convert to cleaned slash-path
-	p = filepath.ToSlash(p)
-	p = strings.Trim(p, "/")
-
-	// make sure all components of the path are valid
-	for _, e := range strings.Split(p, "/") {
-		if err := validatePathComponent(e); err != nil {
+func validatePlatformPath(nativePath string) error {
+	normalized := normalizeToGoPath(nativePath)
+	for component := range strings.SplitSeq(normalized, "/") {
+		if err := validatePathComponent(component); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+func normalizeToGoPath(nativePath string) string {
+	var (
+		volumeName     = filepath.VolumeName(nativePath)
+		relativeNative = nativePath[len(volumeName):]
+		goPath         = filepath.ToSlash(relativeNative)
+		relativeGo     = strings.Trim(goPath, "/")
+	)
+	return relativeGo
 }
