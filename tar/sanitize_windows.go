@@ -38,8 +38,9 @@ func validatePathComponent(c string) error {
 	}
 
 	// error on reserved names
+	normalized := strings.ToUpper(c)
 	for _, rn := range reservedNames {
-		if c == rn {
+		if normalized == rn {
 			return fmt.Errorf("invalid platform path: path component is a reserved name: %s", c)
 		}
 	}
