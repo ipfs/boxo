@@ -2,6 +2,7 @@ package tar
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 )
@@ -12,20 +13,10 @@ var reservedNames = [...]string{"CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM
 const reservedCharsStr = `<>:"\|?*` + "\x00" // NOTE: `/` is not included as it is our standard path separator
 
 func isNullDevice(path string) bool {
-	// This is a case insensitive comparison to NUL
-	if len(path) != 3 {
-		return false
-	}
-	if path[0]|0x20 != 'n' {
-		return false
-	}
-	if path[1]|0x20 != 'u' {
-		return false
-	}
-	if path[2]|0x20 != 'l' {
-		return false
-	}
-	return true
+	// "NUL" is standard but the device is case insensitive.
+	// Normalize to upper for the compare.
+	const nameLen = len(os.DevNull)
+	return len(path) == nameLen && strings.ToUpper(path) == os.DevNull
 }
 
 // validatePathComponent returns an error if the given path component is not allowed on the platform
