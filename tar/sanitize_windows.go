@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 )
 
@@ -20,31 +21,37 @@ func isNullDevice(path string) bool {
 }
 
 // validatePathComponent returns an error if the given path component is not allowed on the platform
-func validatePathComponent(c string) error {
-	// MSDN: Do not end a file or directory name with a space or a period
-	if strings.HasSuffix(c, ".") {
-		return fmt.Errorf("invalid platform path: path components cannot end with '.' : %q", c)
-	}
-	if strings.HasSuffix(c, " ") {
-		return fmt.Errorf("invalid platform path: path components cannot end with ' ' : %q", c)
-	}
-
-	if c == ".." {
-		return fmt.Errorf("invalid platform path: path component cannot be '..'")
-	}
-	// error on reserved characters
-	if strings.ContainsAny(c, reservedCharsStr) {
-		return fmt.Errorf("invalid platform path: path components cannot contain any of %s : %q", reservedCharsStr, c)
-	}
-
-	// error on reserved names
-	normalized := strings.ToUpper(c)
-	for _, rn := range reservedNames {
-		if normalized == rn {
-			return fmt.Errorf("invalid platform path: path component is a reserved name: %s", c)
+func validatePathComponent(component string) error {
+	const invalidPathErr = "invalid platform path"
+	for _, suffix := range []string{
+		".", // MSDN: Do not end a file or directory
+		" ", // name with a space or a period
+	} {
+		if strings.HasSuffix(component, suffix) {
+			return fmt.Errorf(
+				`%s: path components cannot end with '%s': "%s"`,
+				invalidPathErr, suffix, component,
+			)
 		}
 	}
-
+	if component == ".." {
+		return fmt.Errorf(
+			`%s: path component cannot be ".."`,
+			invalidPathErr,
+		)
+	}
+	if strings.ContainsAny(component, reservedCharsStr) {
+		return fmt.Errorf(
+			`%s: path components cannot contain any of "%s": "%s"`,
+			invalidPathErr, reservedCharsStr, component,
+		)
+	}
+	if slices.Contains(reservedNames[:], strings.ToUpper(component)) {
+		return fmt.Errorf(
+			`%s: path component is a reserved name: "%s"`,
+			invalidPathErr, component,
+		)
+	}
 	return nil
 }
 
