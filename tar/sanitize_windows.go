@@ -8,10 +8,16 @@ import (
 	"strings"
 )
 
-// https://msdn.microsoft.com/en-us/library/windows/desktop/aa365247(v=vs.85).aspx
-var reservedNames = [...]string{"CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9"}
+// NOTE: `/` is not included, it is already reserved as the standard path separator.
+const reservedRunes = `<>:"\|?*` + "\x00"
 
-const reservedCharsStr = `<>:"\|?*` + "\x00" // NOTE: `/` is not included as it is our standard path separator
+// https://msdn.microsoft.com/en-us/library/windows/desktop/aa365247(v=vs.85).aspx
+var reservedNames = [...]string{
+	"CON", "PRN", "AUX", "NUL", "COM1", "COM2",
+	"COM3", "COM4", "COM5", "COM6", "COM7", "COM8",
+	"COM9", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5",
+	"LPT6", "LPT7", "LPT8", "LPT9",
+}
 
 func isNullDevice(path string) bool {
 	// "NUL" is standard but the device is case insensitive.
@@ -20,12 +26,12 @@ func isNullDevice(path string) bool {
 	return len(path) == nameLen && strings.ToUpper(path) == os.DevNull
 }
 
-// validatePathComponent returns an error if the given path component is not allowed on the platform
+// validatePathComponent returns an error if the given path component is not allowed on the platform.
 func validatePathComponent(component string) error {
 	const invalidPathErr = "invalid platform path"
-	for _, suffix := range []string{
+	for _, suffix := range [...]string{
 		".", // MSDN: Do not end a file or directory
-		" ", // name with a space or a period
+		" ", // name with a space or a period.
 	} {
 		if strings.HasSuffix(component, suffix) {
 			return fmt.Errorf(
@@ -34,10 +40,10 @@ func validatePathComponent(component string) error {
 			)
 		}
 	}
-	if strings.ContainsAny(component, reservedCharsStr) {
+	if strings.ContainsAny(component, reservedRunes) {
 		return fmt.Errorf(
 			`%s: path components cannot contain any of "%s": "%s"`,
-			invalidPathErr, reservedCharsStr, component,
+			invalidPathErr, reservedRunes, component,
 		)
 	}
 	if slices.Contains(reservedNames[:], strings.ToUpper(component)) {
