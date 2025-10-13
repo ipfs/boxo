@@ -139,14 +139,11 @@ func readProviderResponses(ctx context.Context, iter iter.ResultIter[types.Recor
 
 			var addrs []multiaddr.Multiaddr
 			for _, a := range result.Addrs {
-				// Only include multiaddrs, skip URLs for peer.AddrInfo
-				if a.IsMultiaddr() {
-					addrs = append(addrs, a.Multiaddr())
+				// Try to convert to multiaddr for backward compatibility
+				if ma := a.ToMultiaddr(); ma != nil {
+					addrs = append(addrs, ma)
 				}
-				// TODO: if URL is https:// or http://, special-case it and convert
-				// to multiaddr (e.g., /dns4/example.com/tcp/443/tls/http) to ensure
-				// smooth transition during the period when existing software expects
-				// /ip.../http multiaddrs as a way of signaling HTTP retrieval is supported
+				// Note: Non-HTTP URLs are skipped as they can't be represented as multiaddrs
 			}
 
 			select {
@@ -174,14 +171,11 @@ func readProviderResponses(ctx context.Context, iter iter.ResultIter[types.Recor
 
 			var addrs []multiaddr.Multiaddr
 			for _, a := range result.Addrs {
-				// Only include multiaddrs, skip URLs for peer.AddrInfo
-				if a.IsMultiaddr() {
-					addrs = append(addrs, a.Multiaddr())
+				// Try to convert to multiaddr for backward compatibility
+				if ma := a.ToMultiaddr(); ma != nil {
+					addrs = append(addrs, ma)
 				}
-				// TODO: if URL is https:// or http://, special-case it and convert
-				// to multiaddr (e.g., /dns4/example.com/tcp/443/tls/http) to ensure
-				// smooth transition during the period when existing software expects
-				// /ip.../http multiaddrs as a way of signaling HTTP retrieval is supported
+				// Note: Non-HTTP URLs are skipped as they can't be represented as multiaddrs
 			}
 
 			select {
@@ -230,14 +224,11 @@ func (c *contentRouter) FindPeer(ctx context.Context, pid peer.ID) (peer.AddrInf
 
 		var addrs []multiaddr.Multiaddr
 		for _, a := range res.Val.Addrs {
-			// Only include multiaddrs, skip URLs for peer.AddrInfo
-			if a.IsMultiaddr() {
-				addrs = append(addrs, a.Multiaddr())
+			// Try to convert to multiaddr for backward compatibility
+			if ma := a.ToMultiaddr(); ma != nil {
+				addrs = append(addrs, ma)
 			}
-			// TODO: if URL is https:// or http://, special-case it and convert
-			// to multiaddr (e.g., /dns4/example.com/tcp/443/tls/http) to ensure
-			// smooth transition during the period when existing software expects
-			// /ip.../http multiaddrs as a way of signaling HTTP retrieval is supported
+			// Note: Non-HTTP URLs are skipped as they can't be represented as multiaddrs
 		}
 
 		// If there are no addresses there's nothing of value to return

@@ -3,6 +3,7 @@ package types
 import (
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/url"
 	"strings"
 
@@ -201,8 +202,90 @@ func (a *Address) HasProtocol(proto string) bool {
 	return false
 }
 
+// ToMultiaddr attempts to convert an HTTP(S) URL to a multiaddr for backward compatibility.
+// Returns nil if the address cannot be converted (e.g., non-HTTP schemes or invalid addresses).
+// This is a temporary compatibility layer for the transition period while existing software
+// expects multiaddrs with /http protocol to signal HTTP retrieval support.
+func (a *Address) ToMultiaddr() multiaddr.Multiaddr {
+	// If already a multiaddr, return it as-is
+	if a.IsMultiaddr() {
+		return a.multiaddr
+	}
+
+	// If not a URL, cannot convert
+	if !a.IsURL() || a.url == nil {
+		return nil
+	}
+
+	// Only convert http/https URLs
+	scheme := strings.ToLower(a.url.Scheme)
+	if scheme != "http" && scheme != "https" {
+		return nil
+	}
+
+	// Parse hostname and port
+	host := a.url.Hostname()
+	port := a.url.Port()
+
+	// Set default ports if not specified
+	if port == "" {
+		if scheme == "https" {
+			port = "443"
+		} else {
+			port = "80"
+		}
+	}
+
+	// Determine address type
+	var addrProto string
+	if ip := net.ParseIP(host); ip != nil {
+		// Use IP-specific protocols for IP addresses
+		if ip.To4() != nil {
+			addrProto = "ip4"
+		} else {
+			addrProto = "ip6"
+		}
+	} else {
+		// Use generic /dns for domain names (resolves to both IPv4 and IPv6)
+		addrProto = "dns"
+	}
+
+	// Build multiaddr string
+	var maStr string
+	if scheme == "https" {
+		// For HTTPS, use /https as this is what existing HTTP providers
+		// announce on IPNI, so we follow same convention for backward-compatibility
+		maStr = fmt.Sprintf("/%s/%s/tcp/%s/https", addrProto, host, port)
+	} else {
+		// For HTTP, use /http
+		maStr = fmt.Sprintf("/%s/%s/tcp/%s/http", addrProto, host, port)
+	}
+
+	// Create and return multiaddr
+	ma, err := multiaddr.NewMultiaddr(maStr)
+	if err != nil {
+		// Log the error for debugging but return nil
+		// This can happen with invalid hostnames or other edge cases
+		return nil
+	}
+	return ma
+}
+
 // Addresses is a slice of Address that can be marshaled/unmarshaled from/to JSON.
 type Addresses []Address
+
+// String returns a string representation of the addresses for printing.
+func (addrs Addresses) String() string {
+	if len(addrs) == 0 {
+		return "[]"
+	}
+
+	strs := make([]string, len(addrs))
+	for i, addr := range addrs {
+		strs[i] = addr.String()
+	}
+	return fmt.Sprintf("[%s]", strings.Join(strs, " "))
+}
 
 // MarshalJSON implements json.Marshaler for Addresses.
 func (addrs Addresses) MarshalJSON() ([]byte, error) {

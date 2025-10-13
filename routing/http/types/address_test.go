@@ -331,3 +331,114 @@ func TestPeerRecordWithMixedAddresses(t *testing.T) {
 	require.True(t, ok)
 	assert.Len(t, addrs, 4)
 }
+
+func TestAddressToMultiaddr(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string // Expected multiaddr string, empty if conversion not possible
+	}{
+		{
+			name:     "https URL with default port",
+			input:    "https://example.com",
+			expected: "/dns/example.com/tcp/443/https",
+		},
+		{
+			name:     "http URL with default port",
+			input:    "http://example.com",
+			expected: "/dns/example.com/tcp/80/http",
+		},
+		{
+			name:     "http URL with custom port",
+			input:    "http://example.com:8080",
+			expected: "/dns/example.com/tcp/8080/http",
+		},
+		{
+			name:     "https URL with custom port",
+			input:    "https://example.com:8443",
+			expected: "/dns/example.com/tcp/8443/https",
+		},
+		{
+			name:     "http URL with IPv4",
+			input:    "http://192.168.1.1:8080",
+			expected: "/ip4/192.168.1.1/tcp/8080/http",
+		},
+		{
+			name:     "https URL with IPv4",
+			input:    "https://192.168.1.1",
+			expected: "/ip4/192.168.1.1/tcp/443/https",
+		},
+		{
+			name:     "http URL with IPv6",
+			input:    "http://[::1]:8080",
+			expected: "/ip6/::1/tcp/8080/http",
+		},
+		{
+			name:     "https URL with IPv6",
+			input:    "https://[::1]",
+			expected: "/ip6/::1/tcp/443/https",
+		},
+		{
+			name:     "http URL with path - path portion ignored",
+			input:    "http://example.com/path/to/resource",
+			expected: "/dns/example.com/tcp/80/http",
+		},
+		{
+			name:     "https URL with query - path and query portions ignored",
+			input:    "https://example.com:8443/path?query=value",
+			expected: "/dns/example.com/tcp/8443/https",
+		},
+		{
+			name:     "non-HTTP scheme not converted",
+			input:    "ftp://example.com",
+			expected: "",
+		},
+		{
+			name:     "websocket scheme not converted",
+			input:    "ws://example.com",
+			expected: "",
+		},
+		{
+			name:     "existing multiaddr returned as-is",
+			input:    "/ip4/127.0.0.1/tcp/4001",
+			expected: "/ip4/127.0.0.1/tcp/4001",
+		},
+		{
+			name:     "existing http multiaddr returned as-is",
+			input:    "/dns/example.com/tcp/443/https",
+			expected: "/dns/example.com/tcp/443/https",
+		},
+		{
+			name:     "localhost http",
+			input:    "http://localhost:8080",
+			expected: "/dns/localhost/tcp/8080/http",
+		},
+		{
+			name:     "localhost https",
+			input:    "https://localhost",
+			expected: "/dns/localhost/tcp/443/https",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			addr, err := NewAddress(tt.input)
+			require.NoError(t, err)
+
+			ma := addr.ToMultiaddr()
+			if tt.expected == "" {
+				assert.Nil(t, ma, "Expected nil multiaddr for %s", tt.input)
+			} else {
+				require.NotNil(t, ma, "Expected non-nil multiaddr for %s", tt.input)
+				assert.Equal(t, tt.expected, ma.String())
+			}
+		})
+	}
+
+	// Test with invalid address
+	t.Run("invalid address returns nil", func(t *testing.T) {
+		addr := &Address{raw: "invalid"}
+		ma := addr.ToMultiaddr()
+		assert.Nil(t, ma)
+	})
+}
