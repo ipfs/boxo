@@ -16,6 +16,12 @@ The following emojis are used to highlight certain changes:
 
 ### Added
 
+- `routing/http`: ✨ Support for HTTP(S) URLs alongside multiaddrs in Delegated Routing API ([IPIP-518](https://github.com/ipfs/specs/pull/518))
+  - The `Addrs` field in the Peer schema now accepts both multiaddr strings (starting with `/`) and HTTP(S) URLs
+  - Addresses are parsed with defensive programming: unsupported addresses are skipped, and processing continues with remaining addresses
+  - Special protocol filtering logic: `tls` filter matches both `/tls` multiaddrs and `https://` URLs, `http` filter matches both multiaddrs and URLs with HTTP semantics
+  - Schema-agnostic implementation allows any URI scheme (not just http/https) for future extensibility
+
 ### Changed
 
 - upgrade to `go-libp2p` [v0.44.0](https://github.com/libp2p/go-libp2p/releases/tag/v0.44.0)

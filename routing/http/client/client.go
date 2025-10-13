@@ -72,7 +72,7 @@ type Client struct {
 	accepts    string
 
 	peerID   peer.ID
-	addrs    []types.Multiaddr
+	addrs    types.Addresses
 	identity crypto.PrivKey
 
 	// Called immediately after signing a provide request. It is used
@@ -182,8 +182,9 @@ func WithUserAgent(ua string) Option {
 func WithProviderInfo(peerID peer.ID, addrs []multiaddr.Multiaddr) Option {
 	return func(c *Client) error {
 		c.peerID = peerID
+		c.addrs = make(types.Addresses, 0, len(addrs))
 		for _, a := range addrs {
-			c.addrs = append(c.addrs, types.Multiaddr{Multiaddr: a})
+			c.addrs = append(c.addrs, *types.NewAddressFromMultiaddr(a))
 		}
 		return nil
 	}

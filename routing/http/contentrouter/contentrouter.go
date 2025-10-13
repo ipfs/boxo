@@ -139,7 +139,14 @@ func readProviderResponses(ctx context.Context, iter iter.ResultIter[types.Recor
 
 			var addrs []multiaddr.Multiaddr
 			for _, a := range result.Addrs {
-				addrs = append(addrs, a.Multiaddr)
+				// Only include multiaddrs, skip URLs for peer.AddrInfo
+				if a.IsMultiaddr() {
+					addrs = append(addrs, a.Multiaddr())
+				}
+				// TODO: if URL is https:// or http://, special-case it and convert
+				// to multiaddr (e.g., /dns4/example.com/tcp/443/tls/http) to ensure
+				// smooth transition during the period when existing software expects
+				// /ip.../http multiaddrs as a way of signaling HTTP retrieval is supported
 			}
 
 			select {
@@ -167,7 +174,14 @@ func readProviderResponses(ctx context.Context, iter iter.ResultIter[types.Recor
 
 			var addrs []multiaddr.Multiaddr
 			for _, a := range result.Addrs {
-				addrs = append(addrs, a.Multiaddr)
+				// Only include multiaddrs, skip URLs for peer.AddrInfo
+				if a.IsMultiaddr() {
+					addrs = append(addrs, a.Multiaddr())
+				}
+				// TODO: if URL is https:// or http://, special-case it and convert
+				// to multiaddr (e.g., /dns4/example.com/tcp/443/tls/http) to ensure
+				// smooth transition during the period when existing software expects
+				// /ip.../http multiaddrs as a way of signaling HTTP retrieval is supported
 			}
 
 			select {
@@ -216,7 +230,14 @@ func (c *contentRouter) FindPeer(ctx context.Context, pid peer.ID) (peer.AddrInf
 
 		var addrs []multiaddr.Multiaddr
 		for _, a := range res.Val.Addrs {
-			addrs = append(addrs, a.Multiaddr)
+			// Only include multiaddrs, skip URLs for peer.AddrInfo
+			if a.IsMultiaddr() {
+				addrs = append(addrs, a.Multiaddr())
+			}
+			// TODO: if URL is https:// or http://, special-case it and convert
+			// to multiaddr (e.g., /dns4/example.com/tcp/443/tls/http) to ensure
+			// smooth transition during the period when existing software expects
+			// /ip.../http multiaddrs as a way of signaling HTTP retrieval is supported
 		}
 
 		// If there are no addresses there's nothing of value to return

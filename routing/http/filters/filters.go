@@ -9,7 +9,6 @@ import (
 	"github.com/ipfs/boxo/routing/http/types"
 	"github.com/ipfs/boxo/routing/http/types/iter"
 	logging "github.com/ipfs/go-log/v2"
-	"github.com/multiformats/go-multiaddr"
 )
 
 var logger = logging.Logger("routing/http/filters")
@@ -159,15 +158,16 @@ func applyFilters(provider *types.PeerRecord, filterAddrs, filterProtocols []str
 	return provider
 }
 
-// applyAddrFilter filters a list of multiaddresses based on the provided filter query.
+// applyAddrFilter filters a list of addresses based on the provided filter query.
 //
 // Parameters:
-// - addrs: A slice of types.Multiaddr to be filtered.
+// - addrs: A slice of types.Address to be filtered.
 // - filterAddrsQuery: A slice of strings representing the filter criteria.
 //
 // The function supports both positive and negative filters:
-// - Positive filters (e.g., "tcp", "udp") include addresses that match the specified protocols.
+// - Positive filters (e.g., "tcp", "udp", "http") include addresses that match the specified protocols.
 // - Negative filters (e.g., "!tcp", "!udp") exclude addresses that match the specified protocols.
+// - "unknown" can be passed to include providers whose addresses are unknown or cannot be parsed.
 //
 // If no filters are provided, the original list of addresses is returned unchanged.
 // If only negative filters are provided, addresses not matching any negative filter are included.
@@ -175,58 +175,62 @@ func applyFilters(provider *types.PeerRecord, filterAddrs, filterProtocols []str
 // If both positive and negative filters are provided, the address must match at least one positive filter and no negative filters to be included.
 //
 // Returns:
-// A new slice of types.Multiaddr containing only the addresses that pass the filter criteria.
-func applyAddrFilter(addrs []types.Multiaddr, filterAddrsQuery []string) []types.Multiaddr {
+// A new slice of types.Address containing only the addresses that pass the filter criteria.
+func applyAddrFilter(addrs types.Addresses, filterAddrsQuery []string) types.Addresses {
 	if len(filterAddrsQuery) == 0 {
 		return addrs
 	}
 
-	var filteredAddrs []types.Multiaddr
-	var positiveFilters, negativeFilters []multiaddr.Protocol
+	var filteredAddrs types.Addresses
+	var positiveFilters, negativeFilters []string
+	var includeUnknown bool
 
 	// Separate positive and negative filters
 	for _, filter := range filterAddrsQuery {
-		if strings.HasPrefix(filter, "!") {
-			negativeFilters = append(negativeFilters, multiaddr.ProtocolWithName(filter[1:]))
+		if filter == "unknown" {
+			includeUnknown = true
+		} else if strings.HasPrefix(filter, "!") {
+			negativeFilters = append(negativeFilters, filter[1:])
 		} else {
-			positiveFilters = append(positiveFilters, multiaddr.ProtocolWithName(filter))
+			positiveFilters = append(positiveFilters, filter)
 		}
 	}
 
 	for _, addr := range addrs {
-		protocols := addr.Protocols()
+		// Handle unknown (unparseable) addresses
+		if !addr.IsValid() {
+			if includeUnknown {
+				filteredAddrs = append(filteredAddrs, addr)
+			}
+			continue
+		}
 
 		// Check negative filters
-		if containsAny(protocols, negativeFilters) {
+		shouldExclude := false
+		for _, filter := range negativeFilters {
+			if addr.HasProtocol(filter) {
+				shouldExclude = true
+				break
+			}
+		}
+		if shouldExclude {
 			continue
 		}
 
 		// If no positive filters or matches a positive filter, include the address
-		if len(positiveFilters) == 0 || containsAny(protocols, positiveFilters) {
+		if len(positiveFilters) == 0 {
 			filteredAddrs = append(filteredAddrs, addr)
+		} else {
+			for _, filter := range positiveFilters {
+				if addr.HasProtocol(filter) {
+					filteredAddrs = append(filteredAddrs, addr)
+					break
+				}
+			}
 		}
 	}
 
 	return filteredAddrs
-}
-
-// Helper function to check if protocols contain any of the filters
-func containsAny(protocols []multiaddr.Protocol, filters []multiaddr.Protocol) bool {
-	for _, filter := range filters {
-		if containsProtocol(protocols, filter) {
-			return true
-		}
-	}
-	return false
-}
-
-func containsProtocol(protos []multiaddr.Protocol, proto multiaddr.Protocol) bool {
-	for _, p := range protos {
-		if p.Code == proto.Code {
-			return true
-		}
-	}
-	return false
 }
 
 // protocolsAllowed returns true if the peerProtocols are allowed by the filter protocols.

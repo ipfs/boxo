@@ -124,20 +124,20 @@ func TestProviders(t *testing.T) {
 					Schema:    types.SchemaPeer,
 					ID:        &pid,
 					Protocols: []string{"transport-bitswap"},
-					Addrs: []types.Multiaddr{
-						{Multiaddr: addr1},
-						{Multiaddr: addr2},
-						{Multiaddr: addr3},
-						{Multiaddr: addr4},
-						{Multiaddr: addr5},
-						{Multiaddr: addr6},
+					Addrs: types.Addresses{
+						*types.NewAddressFromMultiaddr(addr1),
+						*types.NewAddressFromMultiaddr(addr2),
+						*types.NewAddressFromMultiaddr(addr3),
+						*types.NewAddressFromMultiaddr(addr4),
+						*types.NewAddressFromMultiaddr(addr5),
+						*types.NewAddressFromMultiaddr(addr6),
 					},
 				}},
 				{Val: &types.PeerRecord{
 					Schema:    types.SchemaPeer,
 					ID:        &pid2,
 					Protocols: []string{"transport-ipfs-gateway-http"},
-					Addrs:     []types.Multiaddr{},
+					Addrs:     types.Addresses{},
 				}},
 			},
 			)
@@ -388,13 +388,13 @@ func TestPeers(t *testing.T) {
 				Schema:    types.SchemaPeer,
 				ID:        &pid,
 				Protocols: []string{"transport-bitswap", "transport-foo"},
-				Addrs:     []types.Multiaddr{},
+				Addrs:     types.Addresses{},
 			}},
 			{Val: &types.PeerRecord{
 				Schema:    types.SchemaPeer,
 				ID:        &pid,
 				Protocols: []string{"transport-foo"},
-				Addrs:     []types.Multiaddr{},
+				Addrs:     types.Addresses{},
 			}},
 		})
 
@@ -433,19 +433,19 @@ func TestPeers(t *testing.T) {
 				Schema:    types.SchemaPeer,
 				ID:        &pid,
 				Protocols: []string{"transport-bitswap", "transport-foo"},
-				Addrs: []types.Multiaddr{
-					{Multiaddr: addr1},
-					{Multiaddr: addr2},
-					{Multiaddr: addr3},
-					{Multiaddr: addr4},
+				Addrs: types.Addresses{
+					*types.NewAddressFromMultiaddr(addr1),
+					*types.NewAddressFromMultiaddr(addr2),
+					*types.NewAddressFromMultiaddr(addr3),
+					*types.NewAddressFromMultiaddr(addr4),
 				},
 			}},
 			{Val: &types.PeerRecord{
 				Schema:    types.SchemaPeer,
 				ID:        &pid2,
 				Protocols: []string{"transport-foo"},
-				Addrs: []types.Multiaddr{
-					{Multiaddr: addr5},
+				Addrs: types.Addresses{
+					*types.NewAddressFromMultiaddr(addr5),
 				},
 			}},
 		})
@@ -485,19 +485,19 @@ func TestPeers(t *testing.T) {
 				Schema:    types.SchemaPeer,
 				ID:        &pid,
 				Protocols: []string{"transport-bitswap", "transport-foo"},
-				Addrs: []types.Multiaddr{
-					{Multiaddr: addr1},
-					{Multiaddr: addr2},
-					{Multiaddr: addr3},
-					{Multiaddr: addr4},
+				Addrs: types.Addresses{
+					*types.NewAddressFromMultiaddr(addr1),
+					*types.NewAddressFromMultiaddr(addr2),
+					*types.NewAddressFromMultiaddr(addr3),
+					*types.NewAddressFromMultiaddr(addr4),
 				},
 			}},
 			{Val: &types.PeerRecord{
 				Schema:    types.SchemaPeer,
 				ID:        &pid2,
 				Protocols: []string{"transport-foo"},
-				Addrs: []types.Multiaddr{
-					{Multiaddr: addr5},
+				Addrs: types.Addresses{
+					*types.NewAddressFromMultiaddr(addr5),
 				},
 			}},
 		})
@@ -556,13 +556,13 @@ func TestPeers(t *testing.T) {
 				Schema:    types.SchemaPeer,
 				ID:        &pid,
 				Protocols: []string{"transport-bitswap", "transport-foo"},
-				Addrs:     []types.Multiaddr{},
+				Addrs:     types.Addresses{},
 			}},
 			{Val: &types.PeerRecord{
 				Schema:    types.SchemaPeer,
 				ID:        &pid,
 				Protocols: []string{"transport-foo"},
-				Addrs:     []types.Multiaddr{},
+				Addrs:     types.Addresses{},
 			}},
 		})
 
@@ -616,13 +616,13 @@ func TestPeers(t *testing.T) {
 				Schema:    types.SchemaPeer,
 				ID:        &pid,
 				Protocols: []string{"transport-bitswap", "transport-foo"},
-				Addrs:     []types.Multiaddr{},
+				Addrs:     types.Addresses{},
 			}},
 			{Val: &types.PeerRecord{
 				Schema:    types.SchemaPeer,
 				ID:        &pid,
 				Protocols: []string{"transport-foo"},
-				Addrs:     []types.Multiaddr{},
+				Addrs:     types.Addresses{},
 			}},
 		}
 
