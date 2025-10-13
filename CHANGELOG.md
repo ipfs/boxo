@@ -21,6 +21,7 @@ The following emojis are used to highlight certain changes:
   - Addresses are parsed with defensive programming: unsupported addresses are skipped, and processing continues with remaining addresses
   - Special protocol filtering logic: `tls` filter matches both `/tls` multiaddrs and `https://` URLs, `http` filter matches both multiaddrs and URLs with HTTP semantics
   - Schema-agnostic implementation allows any URI scheme (not just http/https) for future extensibility
+  - Includes `ToMultiaddr()` method for backward compatibility during transition period: converts HTTP(S) URLs to multiaddrs using `/https` (matching IPNI convention) and `/dns` (for dual-stack support)
 
 ### Changed
 
