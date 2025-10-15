@@ -17,6 +17,7 @@ The following emojis are used to highlight certain changes:
 ### Added
 
 - new span for the `handleIncoming` bitswap client `getter` plus events when blocks are received.
+- mark opentelemetry spans, span attributes, and span events as being used by ProbeLab's analysis scripts
 
 ### Changed
 

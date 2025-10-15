@@ -98,7 +98,7 @@ func AsyncGetBlocks(ctx, sessctx context.Context, keys []cid.Cid, notif notifica
 // If the context is cancelled or the incoming channel closes, calls cfun with
 // any keys corresponding to blocks that were never received.
 func handleIncoming(ctx, sessctx context.Context, remaining *cid.Set, in <-chan blocks.Block, out chan blocks.Block, cfun func([]cid.Cid)) {
-	ctx, span := internal.StartSpan(ctx, "Getter.handleIncoming")
+	ctx, span := internal.StartSpan(ctx, "Getter.handleIncoming") // ProbeLab: don't delete/change span without notice
 	defer span.End()
 
 	// Clean up before exiting this function, and call the cancel function on
@@ -120,7 +120,7 @@ func handleIncoming(ctx, sessctx context.Context, remaining *cid.Set, in <-chan 
 				return
 			}
 
-			span.AddEvent("received block", trace.WithAttributes(attribute.String("cid", blk.Cid().String())))
+			span.AddEvent("received block", trace.WithAttributes(attribute.String("cid", blk.Cid().String()))) // ProbeLab: don't delete/change without notice
 
 			remaining.Remove(blk.Cid())
 			select {

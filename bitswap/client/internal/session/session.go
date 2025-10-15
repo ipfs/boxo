@@ -358,7 +358,7 @@ func (s *Session) run(ctx context.Context) {
 			}
 		case <-s.idleTick.C:
 			// The session hasn't received blocks for a while, broadcast
-			opCtx, span := internal.StartSpan(ctx, "Session.IdleBroadcast")
+			opCtx, span := internal.StartSpan(ctx, "Session.IdleBroadcast") // ProbeLab: don't delete/change span without notice
 			s.broadcast(opCtx, nil)
 			span.End()
 		case <-periodicSearchTimer.C:
