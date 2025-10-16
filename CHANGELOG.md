@@ -16,6 +16,22 @@ The following emojis are used to highlight certain changes:
 
 ### Added
 
+### Changed
+
+- upgrade to `go-libp2p` [v0.44.0](https://github.com/libp2p/go-libp2p/releases/tag/v0.44.0)
+- upgrade to `go-dsqueue` [v0.1.0](https://github.com/ipfs/go-dsqueue/releases/tag/v0.1.0) - Fixes batch reuse that could cause panic.
+
+### Removed
+
+### Fixed
+
+### Security
+
+
+## [v0.35.0]
+
+### Added
+
 - `pinning/pinner`: Added `CheckIfPinnedWithType` method to `Pinner` interface for efficient type-specific pin checks with optional name loading ([#1035](https://github.com/ipfs/boxo/pull/1035))
   - Enables checking specific pin types (recursive, direct, indirect) without loading all pins
   - Optional `includeNames` parameter controls whether pin names are loaded from datastore
@@ -44,6 +60,7 @@ The following emojis are used to highlight certain changes:
 - `filestore`: Support providing filestore-blocks. A new `provider.MultihashProvider` parameter has been added to `filestore.New()`. When used, the blocks handled by the Filestore's `FileManager` will be provided on write (Put and PutMany).
 
 ### Removed
+- `provider`: `Provide()` calls are replaced with `StartProviding()` to benefit from the Reprovide Sweep improvement. See [kubo#10834](https://github.com/ipfs/kubo/pull/10834) and [kad-dht#1095](https://github.com/libp2p/go-libp2p-kad-dht/pull/1095).- `provider`: `Provide()` calls are replaced with `StartProviding()` to benefit from the Reprovide Sweep improvement. See [kubo#10834](https://github.com/ipfs/kubo/pull/10834) and [kad-dht#1095](https://github.com/libp2p/go-libp2p-kad-dht/pull/1095).
 
 ### Fixed
 
@@ -66,12 +83,6 @@ The following emojis are used to highlight certain changes:
   - 🛠 Attempts to read CIDs with identity multihash digests longer than `DefaultMaxIdentityDigestSize` will now produce `ErrDigestTooLarge` error.
   - Identity CIDs can inline data directly, and without a size limit, they could embed arbitrary amounts of data. Limiting the size also protects gateways from poorly written clients that might send absurdly big data to the gateway encoded as identity CIDs only to retrieve it back. Note that identity CIDs do not provide integrity verification, making them vulnerable to bit flips. They should only be used in controlled contexts like raw leaves of a larger DAG. The limit is explicitly defined as `DefaultMaxIdentityDigestSize` (128 bytes).
 
-
-## v0.35.0
-
-### Changed
-
-- `provider`: `Provide()` calls are replaced with `StartProviding()` to benefit from the Reprovide Sweep improvement. See [kubo#10834](https://github.com/ipfs/kubo/pull/10834) and [kad-dht#1095](https://github.com/libp2p/go-libp2p-kad-dht/pull/1095).
 
 ## [v0.34.0]
 
