@@ -48,8 +48,8 @@ func (m *mockContentRouter) FindPeers(ctx context.Context, pid peer.ID, limit in
 	return args.Get(0).(iter.ResultIter[*types.PeerRecord]), args.Error(1)
 }
 
-func (m *mockContentRouter) GetClosestPeers(ctx context.Context, peerID peer.ID) (iter.ResultIter[*types.PeerRecord], error) {
-	args := m.Called(ctx, peerID)
+func (m *mockContentRouter) GetClosestPeers(ctx context.Context, key cid.Cid) (iter.ResultIter[*types.PeerRecord], error) {
+	args := m.Called(ctx, key)
 	return args.Get(0).(iter.ResultIter[*types.PeerRecord]), args.Error(1)
 }
 
@@ -850,7 +850,7 @@ func TestClient_GetClosestPeers(t *testing.T) {
 		{Val: &httpPeerRecord},
 	}
 
-	pid := *bitswapPeerRecord.ID
+	key := peer.ToCid(*bitswapPeerRecord.ID)
 
 	cases := []struct {
 		name                    string
@@ -956,9 +956,9 @@ func TestClient_GetClosestPeers(t *testing.T) {
 			}
 
 			routerResultIter := iter.FromSlice(c.routerResult)
-			router.On("GetClosestPeers", mock.Anything, pid).Return(routerResultIter, c.routerErr)
+			router.On("GetClosestPeers", mock.Anything, key).Return(routerResultIter, c.routerErr)
 
-			resultIter, err := client.GetClosestPeers(ctx, pid)
+			resultIter, err := client.GetClosestPeers(ctx, key)
 			c.expErrContains.errContains(t, err)
 
 			results := iter.ReadAll(resultIter)

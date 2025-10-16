@@ -51,7 +51,7 @@ const (
 	findProvidersPath   = "/routing/v1/providers/{cid}"
 	findPeersPath       = "/routing/v1/peers/{peer-id}"
 	getIPNSPath         = "/routing/v1/ipns/{cid}"
-	getClosestPeersPath = "/routing/v1/dht/closest/peers/{peer-id}"
+	getClosestPeersPath = "/routing/v1/dht/closest/peers/{cid}"
 )
 
 type FindProvidersAsyncResponse struct {
@@ -89,7 +89,7 @@ type DelegatedRouter interface {
 
 	// GetClosestPeers returns the DHT closest peers to the given peer ID.
 	// If empty, it will use the content router's peer ID (self). `closerThan` (optional) forces resulting records to be closer to `PeerID` than to `closerThan`. `count` specifies how many records to return ([1,100], with 20 as default when set to 0).
-	GetClosestPeers(ctx context.Context, peerID peer.ID) (iter.ResultIter[*types.PeerRecord], error)
+	GetClosestPeers(ctx context.Context, key cid.Cid) (iter.ResultIter[*types.PeerRecord], error)
 }
 
 // ContentRouter is deprecated, use DelegatedRouter instead.
@@ -603,10 +603,10 @@ func (s *server) PutIPNS(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) getClosestPeers(w http.ResponseWriter, r *http.Request) {
-	pidStr := mux.Vars(r)["peer-id"]
-	pid, err := parsePeerID(pidStr)
+	cStr := mux.Vars(r)["cid"]
+	c, err := cid.Decode(cStr)
 	if err != nil {
-		writeErr(w, "GetClosestPeers", http.StatusBadRequest, fmt.Errorf("unable to parse PeerID %q: %w", pidStr, err))
+		writeErr(w, "GetClosestPeers", http.StatusBadRequest, fmt.Errorf("unable to parse CID %q: %w", cStr, err))
 		return
 	}
 
@@ -628,7 +628,7 @@ func (s *server) getClosestPeers(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), s.routingTimeout)
 	defer cancel()
 
-	provIter, err := s.svc.GetClosestPeers(ctx, pid)
+	provIter, err := s.svc.GetClosestPeers(ctx, c)
 	if err != nil {
 		if errors.Is(err, routing.ErrNotFound) {
 			// handlerFunc takes care of setting the 404 and necessary headers

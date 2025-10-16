@@ -30,9 +30,9 @@ type Client interface {
 	FindPeers(ctx context.Context, pid peer.ID) (peers iter.ResultIter[*types.PeerRecord], err error)
 	GetIPNS(ctx context.Context, name ipns.Name) (*ipns.Record, error)
 	PutIPNS(ctx context.Context, name ipns.Name, record *ipns.Record) error
-	// GetClosestPeers returns the DHT closest peers to the given peer ID.
-	// If empty, it will use the content router's peer ID (self).
-	GetClosestPeers(ctx context.Context, peerID peer.ID) (iter.ResultIter[*types.PeerRecord], error)
+	// GetClosestPeers returns the DHT closest peers to the given Cid key.
+	// If empty, it should use the content router's peer ID (self).
+	GetClosestPeers(ctx context.Context, key cid.Cid) (iter.ResultIter[*types.PeerRecord], error)
 }
 
 type contentRouter struct {
@@ -308,8 +308,8 @@ func (c *contentRouter) SearchValue(ctx context.Context, key string, opts ...rou
 	return ch, nil
 }
 
-func (c *contentRouter) GetClosestPeers(ctx context.Context, pid peer.ID) (<-chan peer.AddrInfo, error) {
-	iter, err := c.client.GetClosestPeers(ctx, pid)
+func (c *contentRouter) GetClosestPeers(ctx context.Context, key cid.Cid) (<-chan peer.AddrInfo, error) {
+	iter, err := c.client.GetClosestPeers(ctx, key)
 	if err != nil {
 		return nil, err
 	}

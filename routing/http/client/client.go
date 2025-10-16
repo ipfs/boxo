@@ -640,11 +640,11 @@ func (c *Client) PutIPNS(ctx context.Context, name ipns.Name, record *ipns.Recor
 }
 
 // GetClosestPeers obtains the closest peers to the given peer ID.
-func (c *Client) GetClosestPeers(ctx context.Context, peerID peer.ID) (peers iter.ResultIter[*types.PeerRecord], err error) {
+func (c *Client) GetClosestPeers(ctx context.Context, key cid.Cid) (peers iter.ResultIter[*types.PeerRecord], err error) {
 	m := newMeasurement("GetClosestPeers")
 
 	// Build the base URL path
-	u, err := gourl.JoinPath(c.baseURL, "routing/v1/dht/closest/peers", peer.ToCid(peerID).String())
+	u, err := gourl.JoinPath(c.baseURL, "routing/v1/dht/closest/peers", key.String())
 	if err != nil {
 		return nil, err
 	}

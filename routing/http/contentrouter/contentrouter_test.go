@@ -53,8 +53,8 @@ func (m *mockClient) PutIPNS(ctx context.Context, name ipns.Name, record *ipns.R
 	return args.Error(0)
 }
 
-func (m *mockClient) GetClosestPeers(ctx context.Context, peerID peer.ID) (iter.ResultIter[*types.PeerRecord], error) {
-	args := m.Called(ctx, peerID)
+func (m *mockClient) GetClosestPeers(ctx context.Context, key cid.Cid) (iter.ResultIter[*types.PeerRecord], error) {
+	args := m.Called(ctx, key)
 	return args.Get(0).(iter.ResultIter[*types.PeerRecord]), args.Error(1)
 }
 
@@ -269,7 +269,7 @@ func TestGetClosestPeers(t *testing.T) {
 		client := &mockClient{}
 		crc := NewContentRoutingClient(client)
 
-		peerID := peer.ID("test-peer")
+		key := makeCID()
 
 		// Mock response with two peer records
 		peer1 := peer.ID("peer1")
@@ -293,9 +293,9 @@ func TestGetClosestPeers(t *testing.T) {
 
 		peerIter := iter.ToResultIter[*types.PeerRecord](iter.FromSlice([]*types.PeerRecord{peerRec1, peerRec2}))
 
-		client.On("GetClosestPeers", ctx, peerID).Return(peerIter, nil)
+		client.On("GetClosestPeers", ctx, key).Return(peerIter, nil)
 
-		infos, err := crc.GetClosestPeers(ctx, peerID)
+		infos, err := crc.GetClosestPeers(ctx, key)
 		require.NoError(t, err)
 
 		var actual []peer.AddrInfo
@@ -316,7 +316,7 @@ func TestGetClosestPeers(t *testing.T) {
 		client := &mockClient{}
 		crc := NewContentRoutingClient(client)
 
-		peerID := peer.ID("test-peer")
+		key := makeCID()
 
 		peer1 := peer.ID("peer1")
 		peerRec1 := &types.PeerRecord{
@@ -329,9 +329,9 @@ func TestGetClosestPeers(t *testing.T) {
 		// Mock response with an empty iterator
 		peerIter := iter.ToResultIter[*types.PeerRecord](iter.FromSlice([]*types.PeerRecord{peerRec1}))
 
-		client.On("GetClosestPeers", ctx, peerID).Return(peerIter, nil)
+		client.On("GetClosestPeers", ctx, key).Return(peerIter, nil)
 
-		infos, err := crc.GetClosestPeers(ctx, peerID)
+		infos, err := crc.GetClosestPeers(ctx, key)
 		require.NoError(t, err)
 
 		var actual []peer.AddrInfo
@@ -347,13 +347,13 @@ func TestGetClosestPeers(t *testing.T) {
 		client := &mockClient{}
 		crc := NewContentRoutingClient(client)
 
-		peerID := peer.ID("test-peer")
+		key := makeCID()
 
 		// Mock error response
 		peerIter := iter.ToResultIter[*types.PeerRecord](iter.FromSlice([]*types.PeerRecord{}))
-		client.On("GetClosestPeers", ctx, peerID).Return(peerIter, assert.AnError)
+		client.On("GetClosestPeers", ctx, key).Return(peerIter, assert.AnError)
 
-		infos, err := crc.GetClosestPeers(ctx, peerID)
+		infos, err := crc.GetClosestPeers(ctx, key)
 		require.ErrorIs(t, err, assert.AnError)
 		assert.Nil(t, infos)
 	})
