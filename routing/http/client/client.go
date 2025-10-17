@@ -639,7 +639,7 @@ func (c *Client) PutIPNS(ctx context.Context, name ipns.Name, record *ipns.Recor
 	return nil
 }
 
-// GetClosestPeers obtains the closest peers to the given peer ID.
+// GetClosestPeers obtains the closest peers to the given key (CID or Peer ID).
 func (c *Client) GetClosestPeers(ctx context.Context, key cid.Cid) (peers iter.ResultIter[*types.PeerRecord], err error) {
 	m := newMeasurement("GetClosestPeers")
 

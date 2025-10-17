@@ -30,8 +30,7 @@ type Client interface {
 	FindPeers(ctx context.Context, pid peer.ID) (peers iter.ResultIter[*types.PeerRecord], err error)
 	GetIPNS(ctx context.Context, name ipns.Name) (*ipns.Record, error)
 	PutIPNS(ctx context.Context, name ipns.Name, record *ipns.Record) error
-	// GetClosestPeers returns the DHT closest peers to the given Cid key.
-	// If empty, it should use the content router's peer ID (self).
+	// GetClosestPeers returns the DHT closest peers to the given key (CID or Peer ID).
 	GetClosestPeers(ctx context.Context, key cid.Cid) (iter.ResultIter[*types.PeerRecord], error)
 }
 

@@ -51,7 +51,7 @@ const (
 	findProvidersPath   = "/routing/v1/providers/{cid}"
 	findPeersPath       = "/routing/v1/peers/{peer-id}"
 	getIPNSPath         = "/routing/v1/ipns/{cid}"
-	getClosestPeersPath = "/routing/v1/dht/closest/peers/{cid}"
+	getClosestPeersPath = "/routing/v1/dht/closest/peers/{key}"
 )
 
 type FindProvidersAsyncResponse struct {
@@ -87,8 +87,7 @@ type DelegatedRouter interface {
 	// It is guaranteed that the record matches the provided name.
 	PutIPNS(ctx context.Context, name ipns.Name, record *ipns.Record) error
 
-	// GetClosestPeers returns the DHT closest peers to the given peer ID.
-	// If empty, it will use the content router's peer ID (self). `closerThan` (optional) forces resulting records to be closer to `PeerID` than to `closerThan`. `count` specifies how many records to return ([1,100], with 20 as default when set to 0).
+	// GetClosestPeers returns the DHT closest peers to the given key (CID or Peer ID).
 	GetClosestPeers(ctx context.Context, key cid.Cid) (iter.ResultIter[*types.PeerRecord], error)
 }
 
@@ -603,10 +602,10 @@ func (s *server) PutIPNS(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) getClosestPeers(w http.ResponseWriter, r *http.Request) {
-	cStr := mux.Vars(r)["cid"]
-	c, err := cid.Decode(cStr)
+	keyStr := mux.Vars(r)["key"]
+	c, err := parseKey(keyStr)
 	if err != nil {
-		writeErr(w, "GetClosestPeers", http.StatusBadRequest, fmt.Errorf("unable to parse CID %q: %w", cStr, err))
+		writeErr(w, "GetClosestPeers", http.StatusBadRequest, fmt.Errorf("unable to parse key %q: %w", keyStr, err))
 		return
 	}
 
@@ -692,6 +691,35 @@ func parsePeerID(pidStr string) (peer.ID, error) {
 		}
 	}
 	return pid, err
+}
+
+// parseKey parses a string that can be either a CID or a PeerID.
+// It accepts the following formats:
+//   - Arbitrary CIDs (e.g., bafkreidcd7frenco2m6ch7mny63wztgztv3q6fctaffgowkro6kljre5ei)
+//   - CIDv1 with libp2p-key codec (e.g., bafzaajaiaejca...)
+//   - Base58-encoded PeerIDs (e.g., 12D3KooW... or QmYyQ...)
+//
+// This function is used by endpoints that accept "key" path parameters, where
+// the key can represent either content (CID) or a peer (PeerID).
+//
+// Returns the key as a CID. PeerIDs are converted to CIDv1 with libp2p-key codec.
+// Note: only use where the multihash digest of the returned CID is relevant.
+func parseKey(keyStr string) (cid.Cid, error) {
+	// Try parsing as PeerID first using peer.Decode (not parsePeerID, which is too liberal)
+	// This handles legacy PeerID formats per:
+	// https://github.com/libp2p/specs/blob/master/peer-ids/peer-ids.md#string-representation
+	pid, pidErr := peer.Decode(keyStr)
+	if pidErr == nil {
+		return peer.ToCid(pid), nil
+	}
+
+	// Fall back to parsing as CID (handles arbitrary CIDs and CIDv1 libp2p-key format)
+	c, cidErr := cid.Decode(keyStr)
+	if cidErr == nil {
+		return c, nil
+	}
+
+	return cid.Cid{}, fmt.Errorf("unable to parse as CID or PeerID: %w", errors.Join(cidErr, pidErr))
 }
 
 func setCacheControl(w http.ResponseWriter, maxAge int, stale int) {
