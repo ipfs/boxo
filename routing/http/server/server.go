@@ -648,7 +648,7 @@ func (s *server) getClosestPeersJSON(w http.ResponseWriter, peersIter iter.Resul
 		return
 	}
 
-	writeJSONResult(w, "FindPeers", jsontypes.PeersResponse{
+	writeJSONResult(w, "GetClosestPeers", jsontypes.PeersResponse{
 		Peers: peers,
 	})
 }
