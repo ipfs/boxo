@@ -16,6 +16,8 @@ The following emojis are used to highlight certain changes:
 
 ### Added
 
+- `routing/http`: `GET /routing/v1/dht/closest/peers/{key}` per [IPIP-476](https://github.com/ipfs/specs/pull/476)
+
 ### Changed
 
 - upgrade to `go-libp2p` [v0.44.0](https://github.com/libp2p/go-libp2p/releases/tag/v0.44.0)
