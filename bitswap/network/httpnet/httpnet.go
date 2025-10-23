@@ -7,6 +7,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/url"
@@ -618,6 +619,26 @@ func (ht *Network) connectToURL(ctx context.Context, p peer.ID, u network.Parsed
 	if resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusNoContent || resp.StatusCode == http.StatusGone {
 		log.Debugf("connect/ping request to %s %s succeeded: %d", p, req.URL, resp.StatusCode)
 		return nil
+	}
+
+	if resp.StatusCode == http.StatusInternalServerError {
+		limReader := &io.LimitedReader{
+			R: resp.Body,
+			N: 512,
+		}
+
+		body, err := io.ReadAll(limReader)
+		if err != nil {
+			return err
+		}
+
+		bodyStr := string(body)
+		if strings.HasPrefix(bodyStr, "ipld: could not find node") ||
+			strings.HasPrefix(bodyStr, "peer does not have") ||
+			strings.HasPrefix(bodyStr, "failed to load root node") {
+			log.Debugf("connect/ping request to %s %s succeeded despite status code (known error): %d / %s", p, req.URL, resp.StatusCode, bodyStr)
+			return nil
+		}
 	}
 
 	log.Debugf("connect error: %d <- %q (%s)", resp.StatusCode, req.URL, p)
