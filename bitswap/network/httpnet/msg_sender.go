@@ -276,10 +276,13 @@ func (sender *httpMsgSender) tryURL(ctx context.Context, u *senderURL, entry bsm
 	statusCode := resp.StatusCode
 	// 1) Observed that some gateway implementation returns 500 instead of
 	// 404.
-	if statusCode == 500 &&
-		(string(body) == "ipld: could not find node" || strings.HasPrefix(string(body), "peer does not have")) {
-		log.Debugf("treating as 404: %q -> %d: %q", req.URL, resp.StatusCode, string(body))
-		statusCode = 404
+	if statusCode == 500 {
+		if strings.HasPrefix(string(body), "ipld: could not find node") ||
+			strings.HasPrefix(string(body), "peer does not have") ||
+			strings.HasPrefix(string(body), "getting pieces containing cid") {
+			log.Debugf("treating as 404: %q -> %d: %q", req.URL, resp.StatusCode, string(body))
+			statusCode = 404
+		}
 	}
 
 	// Calculate full response size with headers and everything.
