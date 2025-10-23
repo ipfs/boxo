@@ -297,6 +297,8 @@ func TestState(t *testing.T) {
 		rs.AddFoundProvider(peerID1)
 		rs.AddFoundProvider(peerID1)
 		rs.AddFoundProvider(peerID2)
+		rs.AddFoundProvider(peerID1) // Add peerID1 again
+		rs.AddFoundProvider(peerID2) // Add peerID2 again
 
 		foundProviders := rs.GetFoundProviders()
 		assert.Len(t, foundProviders, 2, "Should only contain 2 unique peer IDs")
