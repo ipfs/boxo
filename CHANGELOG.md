@@ -25,6 +25,8 @@ The following emojis are used to highlight certain changes:
 
 ### Fixed
 
+- `gateway`: Fixed duplicate peer IDs appearing in retrieval timeout error messages
+
 ### Security
 
 
