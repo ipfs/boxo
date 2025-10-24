@@ -26,6 +26,7 @@ The following emojis are used to highlight certain changes:
 ### Fixed
 
 - `gateway`: Fixed duplicate peer IDs appearing in retrieval timeout error messages
+- `bitswap/client`: fix tracing by using context to pass trace and retrieval state to session [#1059](https://github.com/ipfs/boxo/pull/1059)
 
 ### Security
 
