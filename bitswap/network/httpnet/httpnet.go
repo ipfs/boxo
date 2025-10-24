@@ -542,12 +542,16 @@ func (ht *Network) Connect(ctx context.Context, pi peer.AddrInfo) error {
 	supportsHead := true
 	for _, u := range urls {
 		// If head works we assume GET works too.
-		err := ht.connectToURL(ctx, pi.ID, u, "HEAD")
+		status, err := ht.connectToURL(ctx, pi.ID, u, "HEAD")
 		if err != nil {
 			errs = append(errs, fmt.Errorf("%s: %s", u.Multiaddress.String(), err))
 			// abort if context cancelled
 			if ctxErr := ctx.Err(); ctxErr != nil {
 				return errors.Join(errs...)
+			}
+
+			if status == http.StatusTooManyRequests {
+				continue // do not try GET, just move on.
 			}
 		} else {
 			workingAddrs = append(workingAddrs, u.Multiaddress)
@@ -557,7 +561,7 @@ func (ht *Network) Connect(ctx context.Context, pi peer.AddrInfo) error {
 		// HEAD did not work. Try GET.
 		supportsHead = false
 
-		err = ht.connectToURL(ctx, pi.ID, u, "GET")
+		_, err = ht.connectToURL(ctx, pi.ID, u, "GET")
 		if err != nil {
 			errs = append(errs, fmt.Errorf("%s: %s", u.Multiaddress.String(), err))
 			if ctxErr := ctx.Err(); ctxErr != nil {
@@ -591,17 +595,17 @@ func (ht *Network) Connect(ctx context.Context, pi peer.AddrInfo) error {
 	return nil
 }
 
-func (ht *Network) connectToURL(ctx context.Context, p peer.ID, u network.ParsedURL, method string) error {
+func (ht *Network) connectToURL(ctx context.Context, p peer.ID, u network.ParsedURL, method string) (int, error) {
 	req, err := buildRequest(ctx, u, method, pingCid, ht.userAgent)
 	if err != nil {
 		log.Debug(err)
-		return err
+		return 0, err
 	}
 
 	log.Debugf("connect/ping request to %s %s %q", p, method, req.URL)
 	resp, err := ht.client.Do(req)
 	if err != nil {
-		return err
+		return 0, err
 	}
 
 	// For HTTP, the address can only be a LAN IP as otherwise it would have
@@ -611,14 +615,14 @@ func (ht *Network) connectToURL(ctx context.Context, p peer.ID, u network.Parsed
 	if u.URL.Scheme == "https" && resp.Proto != http2proto {
 		err = fmt.Errorf("%s://%q is not using HTTP/2 (%s)", req.URL.Scheme, req.URL.Host, resp.Proto)
 		log.Warn(err)
-		return err
+		return resp.StatusCode, err
 	}
 
 	// probe success.
 	// FIXME: Storacha returns 410 for our probe.
 	if resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusNoContent || resp.StatusCode == http.StatusGone {
 		log.Debugf("connect/ping request to %s %s succeeded: %d", p, req.URL, resp.StatusCode)
-		return nil
+		return resp.StatusCode, nil
 	}
 
 	if resp.StatusCode == http.StatusInternalServerError {
@@ -629,22 +633,23 @@ func (ht *Network) connectToURL(ctx context.Context, p peer.ID, u network.Parsed
 
 		body, err := io.ReadAll(limReader)
 		if err != nil {
-			return err
+			return resp.StatusCode, err
 		}
 
+		// The endpoint understand ipld.
 		bodyStr := string(body)
 		if strings.HasPrefix(bodyStr, "ipld: could not find node") ||
 			strings.HasPrefix(bodyStr, "peer does not have") ||
 			strings.HasPrefix(bodyStr, "failed to load root node") {
 			log.Debugf("connect/ping request to %s %s succeeded despite status code (known error): %d / %s", p, req.URL, resp.StatusCode, bodyStr)
-			return nil
+			return resp.StatusCode, nil
 		}
 	}
 
 	log.Debugf("connect error: %d <- %q (%s)", resp.StatusCode, req.URL, p)
 	// We made a proper request and got a 5xx back.
 	// We cannot consider this a working connection.
-	return errors.New("response status code is not 200")
+	return resp.StatusCode, errors.New("response status code is not 200")
 }
 
 // DisconnectFrom marks this peer as Disconnected in the connection event
