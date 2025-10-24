@@ -278,7 +278,7 @@ func (sender *httpMsgSender) tryURL(ctx context.Context, u *senderURL, entry bsm
 	statusCode := resp.StatusCode
 	// 1) Observed that some gateway implementation returns 500 instead of
 	// 404.
-	if statusCode == 500 {
+	if statusCode != 200 {
 		if strings.HasPrefix(string(body), "ipld: could not find node") ||
 			strings.HasPrefix(string(body), "peer does not have") ||
 			strings.HasPrefix(string(body), "getting pieces containing cid") {
@@ -372,7 +372,7 @@ func (sender *httpMsgSender) tryURL(ctx context.Context, u *senderURL, entry bsm
 		// It is always better if endpoints keep these errors for
 		// server issues, and simply return 404 when they cannot find
 		// the content but everything else is fine.
-		err := fmt.Errorf("%q -> %d: %q", req.URL, statusCode, string(body))
+		err := fmt.Errorf("%s %q -> %d: %q", req.Method, req.URL, statusCode, string(body))
 		log.Warn(err)
 		retryAfter := resp.Header.Get("Retry-After")
 		cooldownUntil, ok := parseRetryAfter(retryAfter)
