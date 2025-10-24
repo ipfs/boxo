@@ -636,7 +636,7 @@ func (ht *Network) connectToURL(ctx context.Context, p peer.ID, u network.Parsed
 			return resp.StatusCode, err
 		}
 
-		// The endpoint understand ipld.
+		// The endpoint understands ipld.
 		bodyStr := string(body)
 		if strings.HasPrefix(bodyStr, "ipld: could not find node") ||
 			strings.HasPrefix(bodyStr, "peer does not have") ||
