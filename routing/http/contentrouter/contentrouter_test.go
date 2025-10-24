@@ -189,7 +189,7 @@ func TestFindPeer(t *testing.T) {
 		{
 			Schema:    types.SchemaPeer,
 			ID:        &p1,
-			Addrs:     []types.Multiaddr{{Multiaddr: multiaddr.StringCast("/ip4/1.2.3.4/tcp/1234")}},
+			Addrs:     types.Addresses{*types.NewAddressFromMultiaddr(multiaddr.StringCast("/ip4/1.2.3.4/tcp/1234"))},
 			Protocols: []string{"transport-bitswap"},
 		},
 	}

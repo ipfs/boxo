@@ -14,7 +14,7 @@ var _ Record = &PeerRecord{}
 type PeerRecord struct {
 	Schema    string
 	ID        *peer.ID
-	Addrs     []Multiaddr
+	Addrs     Addresses
 	Protocols []string
 
 	// Extra contains extra fields that were included in the original JSON raw
@@ -31,7 +31,7 @@ func (pr *PeerRecord) UnmarshalJSON(b []byte) error {
 	v := struct {
 		Schema    string
 		ID        *peer.ID
-		Addrs     []Multiaddr
+		Addrs     Addresses
 		Protocols []string
 	}{}
 	err := json.Unmarshal(b, &v)
