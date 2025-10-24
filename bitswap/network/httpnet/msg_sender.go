@@ -180,13 +180,6 @@ func (err senderError) Error() string {
 // processed. tryURL returns an error so that it can be decided what to do next:
 // i.e. retry, or move to next item in wantlist, or abort completely.
 func (sender *httpMsgSender) tryURL(ctx context.Context, u *senderURL, entry bsmsg.Entry) (blocks.Block, *senderError) {
-	if dl := u.cooldown.Load().(time.Time); !dl.IsZero() {
-		return nil, &senderError{
-			Type: typeRetryLater,
-			Err:  fmt.Errorf("%q is in cooldown period", u.URL),
-		}
-	}
-
 	var method string
 
 	switch entry.WantType {
@@ -196,6 +189,15 @@ func (sender *httpMsgSender) tryURL(ctx context.Context, u *senderURL, entry bsm
 		method = http.MethodHead
 	default:
 		panic("unknown bitswap entry type")
+	}
+
+	if dl := u.cooldown.Load().(time.Time); !dl.IsZero() {
+		err := fmt.Errorf("cooldown (%s): %s %q ", dl, method, u.URL)
+		log.Debug(err)
+		return nil, &senderError{
+			Type: typeRetryLater,
+			Err:  err,
+		}
 	}
 
 	// We do not abort ongoing requests.  This is known to cause "http2:
