@@ -64,6 +64,10 @@ The following emojis are used to highlight certain changes:
   - The default `MaximumAllowedCid` limit for incoming CIDs can be adjusted using `bitswap.MaxCidSize` or `server.MaxCidSize` options
 - 🛠 `bitswap/client`: The `RebroadcastDelay` option now takes a `time.Duration` value. This is a potentially BREAKING CHANGE. The time-varying functionality of `delay.Delay` was never used, so it was replaced with a fixed duration value. This also removes the `github.com/ipfs/go-ipfs-delay` dependency.
 - `filestore`: Support providing filestore-blocks. A new `provider.MultihashProvider` parameter has been added to `filestore.New()`. When used, the blocks handled by the Filestore's `FileManager` will be provided on write (Put and PutMany).
+- `gateway`: DNS resolver defaults moved to `autoconf.FallbackDNSResolvers`
+  - `NewDNSResolver(nil)` uses `autoconf.FallbackDNSResolvers`, preserving existing behavior for users who did not pass custom config
+  - Pass empty map `NewDNSResolver(map[string]string{})` to use only system DNS
+  - For custom or dynamic DNS resolvers, use `autoconf.ExpandDNSResolvers()` to merge network defaults with your own resolvers
 
 ### Removed
 - `provider`: `Provide()` calls are replaced with `StartProviding()` to benefit from the Reprovide Sweep improvement. See [kubo#10834](https://github.com/ipfs/kubo/pull/10834) and [kad-dht#1095](https://github.com/libp2p/go-libp2p-kad-dht/pull/1095).- `provider`: `Provide()` calls are replaced with `StartProviding()` to benefit from the Reprovide Sweep improvement. See [kubo#10834](https://github.com/ipfs/kubo/pull/10834) and [kad-dht#1095](https://github.com/libp2p/go-libp2p-kad-dht/pull/1095).
