@@ -5,9 +5,15 @@ import (
 )
 
 func TestValidatePlatformPath(t *testing.T) {
-	// Expect error if path contains null
-	if err := validatePlatformPath("foo\x00bar"); err == nil {
-		t.Fatal("expected error")
+	for _, name := range append(
+		invalidFileNames(),
+		"foo\x00bar", // Expect error if path contains null
+	) {
+		t.Run(name, func(t *testing.T) {
+			if err := validatePlatformPath(name); err == nil {
+				t.Fatal("expected error")
+			}
+		})
 	}
 
 	// No specification for a path component containing a "." component
