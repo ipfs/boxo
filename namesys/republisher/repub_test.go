@@ -92,9 +92,9 @@ func TestRepublish(t *testing.T) {
 	// Retry in case the record expires before we can fetch it. This can
 	// happen when running the test on a slow machine.
 	var expiration time.Time
-	timeout := time.Second
+	timeout := 2 * time.Second
 	for {
-		expiration = time.Now().Add(time.Second)
+		expiration = time.Now().Add(2 * time.Second)
 		err := rp.Publish(ctx, publisher.privKey, p, namesys.PublishWithEOL(expiration))
 		require.NoError(t, err)
 
