@@ -180,13 +180,6 @@ func (err senderError) Error() string {
 // processed. tryURL returns an error so that it can be decided what to do next:
 // i.e. retry, or move to next item in wantlist, or abort completely.
 func (sender *httpMsgSender) tryURL(ctx context.Context, u *senderURL, entry bsmsg.Entry) (blocks.Block, *senderError) {
-	if dl := u.cooldown.Load().(time.Time); !dl.IsZero() {
-		return nil, &senderError{
-			Type: typeRetryLater,
-			Err:  fmt.Errorf("%q is in cooldown period", u.URL),
-		}
-	}
-
 	var method string
 
 	switch entry.WantType {
@@ -196,6 +189,15 @@ func (sender *httpMsgSender) tryURL(ctx context.Context, u *senderURL, entry bsm
 		method = http.MethodHead
 	default:
 		panic("unknown bitswap entry type")
+	}
+
+	if dl := u.cooldown.Load().(time.Time); !dl.IsZero() {
+		err := fmt.Errorf("cooldown (%s): %s %q ", dl, method, u.URL)
+		log.Debug(err)
+		return nil, &senderError{
+			Type: typeRetryLater,
+			Err:  err,
+		}
 	}
 
 	// We do not abort ongoing requests.  This is known to cause "http2:
@@ -276,10 +278,13 @@ func (sender *httpMsgSender) tryURL(ctx context.Context, u *senderURL, entry bsm
 	statusCode := resp.StatusCode
 	// 1) Observed that some gateway implementation returns 500 instead of
 	// 404.
-	if statusCode == 500 &&
-		(string(body) == "ipld: could not find node" || strings.HasPrefix(string(body), "peer does not have")) {
-		log.Debugf("treating as 404: %q -> %d: %q", req.URL, resp.StatusCode, string(body))
-		statusCode = 404
+	if statusCode != 200 {
+		if strings.HasPrefix(string(body), "ipld: could not find node") ||
+			strings.HasPrefix(string(body), "peer does not have") ||
+			strings.HasPrefix(string(body), "getting pieces containing cid") {
+			log.Debugf("treating as 404: %q -> %d: %q", req.URL, resp.StatusCode, string(body))
+			statusCode = 404
+		}
 	}
 
 	// Calculate full response size with headers and everything.
@@ -367,7 +372,7 @@ func (sender *httpMsgSender) tryURL(ctx context.Context, u *senderURL, entry bsm
 		// It is always better if endpoints keep these errors for
 		// server issues, and simply return 404 when they cannot find
 		// the content but everything else is fine.
-		err := fmt.Errorf("%q -> %d: %q", req.URL, statusCode, string(body))
+		err := fmt.Errorf("%s %q -> %d: %q", req.Method, req.URL, statusCode, string(body))
 		log.Warn(err)
 		retryAfter := resp.Header.Get("Retry-After")
 		cooldownUntil, ok := parseRetryAfter(retryAfter)
