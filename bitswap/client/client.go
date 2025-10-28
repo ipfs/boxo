@@ -24,7 +24,6 @@ import (
 	"github.com/ipfs/boxo/bitswap/tracer"
 	blockstore "github.com/ipfs/boxo/blockstore"
 	exchange "github.com/ipfs/boxo/exchange"
-	"github.com/ipfs/boxo/retrieval"
 	rpqm "github.com/ipfs/boxo/routing/providerquerymanager"
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
@@ -446,13 +445,10 @@ func (bs *Client) GetBlocks(ctx context.Context, keys []cid.Cid) (<-chan blocks.
 	ctx, span := internal.StartSpan(ctx, "GetBlocks", trace.WithAttributes(attribute.Int("NumKeys", len(keys))))
 	defer span.End()
 
-	// Temporary session closed indepentendly of cancellation ctx.
-	sessCtx, cancelSession := context.WithCancel(context.Background())
+	// Create a session context for the goroutine created here to use to close
+	// the session after reading all blocks.
+	sessCtx, cancelSession := context.WithCancel(ctx)
 
-	// Preserve retrieval.State from the original request context if present
-	if retrievalState := retrieval.StateFromContext(ctx); retrievalState != nil {
-		sessCtx = context.WithValue(sessCtx, retrieval.ContextKey, retrievalState)
-	}
 	session := bs.sm.NewSession(sessCtx, bs.provSearchDelay, bs.rebroadcastDelay)
 
 	blocksChan, err := session.GetBlocks(ctx, keys)
@@ -461,6 +457,10 @@ func (bs *Client) GetBlocks(ctx context.Context, keys []cid.Cid) (<-chan blocks.
 		return nil, err
 	}
 
+	// The purpose of creating this goroutine to read the blocks from one
+	// channel and then put them on another channel, instead of simply
+	// returning the first channel, is to ensure that the session created here
+	// is closed after reading the blocks.
 	out := make(chan blocks.Block)
 	go func() {
 		defer func() {
