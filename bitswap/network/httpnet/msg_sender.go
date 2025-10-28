@@ -401,6 +401,19 @@ func (sender *httpMsgSender) tryURL(ctx context.Context, u *senderURL, entry bsm
 	}
 }
 
+// isKnownNotFoundError checks if the response body contains a known IPLD-specific
+// error message that indicates the content was not found. Some gateway implementations
+// return 500 (Internal Server Error) with these error messages instead of the more
+// appropriate 404 (Not Found).
+//
+// Following IPFS's robustness principle of "be strict about the outcomes, be tolerant
+// about the methods" (https://specs.ipfs.tech/architecture/principles/#robustness),
+// we recognize these error patterns to enable interoperability with gateways that
+// understand IPLD and bitswap semantics but return non-standard status codes.
+//
+// The strictness comes from verifying the error message proves the server understands
+// IPLD requests (not just any 500 error). The tolerance allows us to work with more
+// gateway implementations without requiring them to change their error codes first.
 func isKnownNotFoundError(body string) bool {
 	return strings.HasPrefix(body, "ipld: could not find node") ||
 		strings.HasPrefix(body, "peer does not have") ||
