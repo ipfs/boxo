@@ -595,6 +595,7 @@ func (ht *Network) Connect(ctx context.Context, pi peer.AddrInfo) error {
 	return nil
 }
 
+// connectToURL perform a pingCid request  against the given URL using the given method. An error is returned if we interprete that the server does not understand the request (not a valid IPFS gateway that we can use for HTTP requests).  That happens if the client.Do fails, if the remote endpoint does not support HTTP/2, or if the remote endpoint errors in a way that suggests it is not a gateway. Some requests are considered successful even if they return an http error code if we can assume that the server has understood the request. The response status code is returned in any case.
 func (ht *Network) connectToURL(ctx context.Context, p peer.ID, u network.ParsedURL, method string) (int, error) {
 	req, err := buildRequest(ctx, u, method, pingCid, ht.userAgent)
 	if err != nil {
@@ -607,6 +608,7 @@ func (ht *Network) connectToURL(ctx context.Context, p peer.ID, u network.Parsed
 	if err != nil {
 		return 0, err
 	}
+	defer resp.Body.Close()
 
 	// For HTTP, the address can only be a LAN IP as otherwise it would have
 	// been filtered out before.
@@ -637,11 +639,8 @@ func (ht *Network) connectToURL(ctx context.Context, p peer.ID, u network.Parsed
 		}
 
 		// The endpoint understands ipld.
-		bodyStr := string(body)
-		if strings.HasPrefix(bodyStr, "ipld: could not find node") ||
-			strings.HasPrefix(bodyStr, "peer does not have") ||
-			strings.HasPrefix(bodyStr, "failed to load root node") {
-			log.Debugf("connect/ping request to %s %s succeeded despite status code (known error): %d / %s", p, req.URL, resp.StatusCode, bodyStr)
+		if isKnownNotFoundError(string(body)) {
+			log.Debugf("connect/ping request to %s %s succeeded despite status code (known error): %d / %s", p, req.URL, resp.StatusCode, string(body))
 			return resp.StatusCode, nil
 		}
 	}
@@ -649,7 +648,7 @@ func (ht *Network) connectToURL(ctx context.Context, p peer.ID, u network.Parsed
 	log.Debugf("connect error: %d <- %q (%s)", resp.StatusCode, req.URL, p)
 	// We made a proper request and got a 5xx back.
 	// We cannot consider this a working connection.
-	return resp.StatusCode, errors.New("response status code is not 200")
+	return resp.StatusCode, errors.New("testCid request not understood by the server")
 }
 
 // DisconnectFrom marks this peer as Disconnected in the connection event

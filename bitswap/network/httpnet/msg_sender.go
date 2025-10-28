@@ -278,13 +278,9 @@ func (sender *httpMsgSender) tryURL(ctx context.Context, u *senderURL, entry bsm
 	statusCode := resp.StatusCode
 	// 1) Observed that some gateway implementation returns 500 instead of
 	// 404.
-	if statusCode != 200 {
-		if strings.HasPrefix(string(body), "ipld: could not find node") ||
-			strings.HasPrefix(string(body), "peer does not have") ||
-			strings.HasPrefix(string(body), "getting pieces containing cid") {
-			log.Debugf("treating as 404: %q -> %d: %q", req.URL, resp.StatusCode, string(body))
-			statusCode = 404
-		}
+	if statusCode != 200 && isKnownNotFoundError(string(body)) {
+		statusCode = 404
+		log.Debugf("treating as 404: %q -> %d: %q", req.URL, resp.StatusCode, string(body))
 	}
 
 	// Calculate full response size with headers and everything.
@@ -403,6 +399,13 @@ func (sender *httpMsgSender) tryURL(ctx context.Context, u *senderURL, entry bsm
 			Err:  err,
 		}
 	}
+}
+
+func isKnownNotFoundError(body string) bool {
+	return strings.HasPrefix(body, "ipld: could not find node") ||
+		strings.HasPrefix(body, "peer does not have") ||
+		strings.HasPrefix(body, "getting pieces containing cid") ||
+		strings.HasPrefix(body, "failed to load root node")
 }
 
 // SendMsg performs an http request for the wanted cids per the msg's
