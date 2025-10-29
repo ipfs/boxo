@@ -9,7 +9,7 @@ require (
 	github.com/ipfs/go-datastore v0.9.0
 	github.com/ipld/go-car/v2 v2.16.0
 	github.com/ipld/go-ipld-prime v0.21.0
-	github.com/libp2p/go-libp2p v0.44.0
+	github.com/libp2p/go-libp2p v0.43.0
 	github.com/multiformats/go-multiaddr v0.16.1
 	github.com/multiformats/go-multicodec v0.10.0
 	github.com/prometheus/client_golang v1.23.2
