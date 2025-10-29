@@ -337,9 +337,9 @@ func (sender *httpMsgSender) tryURL(ctx context.Context, u *senderURL, entry bsm
 			return nil, nil
 		}
 		// GET
-		b, err := blocks.NewBlockWithCid(body, entry.Cid)
+		b, err := bsmsg.NewWantlistBlock(body, entry.Cid, entry.Cid.Prefix())
 		if err != nil {
-			log.Error("block received for cid %s does not match!", entry.Cid)
+			log.Debugf("error making wantlist block for %s: %s", entry.Cid, err)
 			// avoid entertaining servers that send us wrong data
 			// too much.
 			return nil, &senderError{
