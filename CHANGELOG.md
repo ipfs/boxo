@@ -30,6 +30,10 @@ The following emojis are used to highlight certain changes:
 - `gateway`: Fixed duplicate peer IDs appearing in retrieval timeout error messages
 - `bitswap/client`: fix tracing by using context to pass trace and retrieval state to session [#1059](https://github.com/ipfs/boxo/pull/1059)
   - `bitswap/client`: propagate trace state when calling GetBlocks [#1060](https://github.com/ipfs/boxo/pull/1060)
+- `bitswap/network/httpnet`: improved error detection on HTTP and block fetches:
+  - Do not attempt to GET a test CID if the endpoint returns 429 to the test HEAD request.
+  - Unify error parsing and handling of http statues and content.
+
 
 ### Security
 
