@@ -16,14 +16,25 @@ The following emojis are used to highlight certain changes:
 
 ### Added
 
+### Changed
+
+### Removed
+
+### Fixed
+
+### Security
+
+
+## [v0.35.1]
+
+### Added
+
 - new span for the `handleIncoming` bitswap client `getter` plus events when blocks are received.
 - mark opentelemetry spans, span attributes, and span events as being used by ProbeLab's analysis scripts
 
 ### Changed
 
 - upgrade to `go-dsqueue` [v0.1.0](https://github.com/ipfs/go-dsqueue/releases/tag/v0.1.0) - Fixes batch reuse that could cause panic.
-
-### Removed
 
 ### Fixed
 
@@ -33,9 +44,6 @@ The following emojis are used to highlight certain changes:
 - `bitswap/network/httpnet`: improved error detection on HTTP and block fetches:
   - Do not attempt to GET a test CID if the endpoint returns 429 to the test HEAD request.
   - Unify error parsing and handling of http statues and content.
-
-
-### Security
 
 
 ## [v0.35.0]
