@@ -139,7 +139,11 @@ func readProviderResponses(ctx context.Context, iter iter.ResultIter[types.Recor
 
 			var addrs []multiaddr.Multiaddr
 			for _, a := range result.Addrs {
-				addrs = append(addrs, a.Multiaddr)
+				// Try to convert to multiaddr for backward compatibility
+				if ma := a.ToMultiaddr(); ma != nil {
+					addrs = append(addrs, ma)
+				}
+				// Note: Non-HTTP URLs are skipped as they can't be represented as multiaddrs
 			}
 
 			select {
@@ -167,7 +171,11 @@ func readProviderResponses(ctx context.Context, iter iter.ResultIter[types.Recor
 
 			var addrs []multiaddr.Multiaddr
 			for _, a := range result.Addrs {
-				addrs = append(addrs, a.Multiaddr)
+				// Try to convert to multiaddr for backward compatibility
+				if ma := a.ToMultiaddr(); ma != nil {
+					addrs = append(addrs, ma)
+				}
+				// Note: Non-HTTP URLs are skipped as they can't be represented as multiaddrs
 			}
 
 			select {
@@ -216,7 +224,11 @@ func (c *contentRouter) FindPeer(ctx context.Context, pid peer.ID) (peer.AddrInf
 
 		var addrs []multiaddr.Multiaddr
 		for _, a := range res.Val.Addrs {
-			addrs = append(addrs, a.Multiaddr)
+			// Try to convert to multiaddr for backward compatibility
+			if ma := a.ToMultiaddr(); ma != nil {
+				addrs = append(addrs, ma)
+			}
+			// Note: Non-HTTP URLs are skipped as they can't be represented as multiaddrs
 		}
 
 		// If there are no addresses there's nothing of value to return
