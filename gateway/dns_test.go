@@ -41,7 +41,7 @@ func TestAddNewDNSResolver(t *testing.T) {
 	require.Equal(t, dnslinkValue, res[0])
 }
 
-func TestOverrideDNSDefaults(t *testing.T) {
+func TestCustomDNSResolver(t *testing.T) {
 	ctx := context.Background()
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -50,7 +50,7 @@ func TestOverrideDNSDefaults(t *testing.T) {
 	require.NoError(t, err)
 	defer l.Close()
 
-	dnslinkName := "dnslink-test.eth"
+	dnslinkName := "dnslink-test.foo"
 	dnslinkValue := "dnslink=/ipfs/bafkqaaa"
 
 	go func() {
@@ -59,7 +59,7 @@ func TestOverrideDNSDefaults(t *testing.T) {
 
 	listenAddr := l.Addr().(*net.TCPAddr)
 	r, err := NewDNSResolver(map[string]string{
-		"eth.": fmt.Sprintf("http://%s:%d", listenAddr.IP, listenAddr.Port),
+		"foo.": fmt.Sprintf("http://%s:%d", listenAddr.IP, listenAddr.Port),
 	})
 	require.NoError(t, err)
 
@@ -116,4 +116,16 @@ func dnslinkServerHandlerFunc(t *testing.T, dnslinkName string, txtResponse stri
 			return
 		}
 	}
+}
+
+func TestDNSResolverNilUsesAutoconfFallback(t *testing.T) {
+	r, err := NewDNSResolver(nil)
+	require.NoError(t, err)
+	require.NotNil(t, r)
+}
+
+func TestDNSResolverEmptyMapUsesSystemDNS(t *testing.T) {
+	r, err := NewDNSResolver(map[string]string{})
+	require.NoError(t, err)
+	require.NotNil(t, r)
 }
