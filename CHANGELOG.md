@@ -18,13 +18,20 @@ The following emojis are used to highlight certain changes:
 
 ### Changed
 
-- upgrade to `go-libp2p` [v0.45.0](https://github.com/libp2p/go-libp2p/releases/tag/v0.45.0)
-
 ### Removed
 
 ### Fixed
 
 ### Security
+
+
+## [v0.35.2]
+
+### Changed
+
+- upgrade to `go-libp2p` [v0.45.0](https://github.com/libp2p/go-libp2p/releases/tag/v0.45.0)
+- upgrade to `go-log/v2` [v2.9.0](https://github.com/ipfs/go-log/releases/tag/v2.9.0)
+  - Applications using go-log (>=2.9)+go-libp2p(>=0.45) may need to initialize their application to bridge slog-based libraries to into go-log. See documentation for go-log [release](https://github.com/ipfs/go-log/releases/tag/v2.9.0) and [slog integration](https://github.com/ipfs/go-log/blob/master/README.md#slog-integration).
 
 
 ## [v0.35.1]
