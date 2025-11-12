@@ -40,13 +40,17 @@ type contentRouter struct {
 	maxProvideBatchSize   int
 }
 
+type DHTRouter interface {
+	GetClosestPeers(context.Context, cid.Cid) (<-chan peer.AddrInfo, error)
+}
+
 var (
 	_ routing.ContentRouting           = (*contentRouter)(nil)
 	_ routing.PeerRouting              = (*contentRouter)(nil)
 	_ routing.ValueStore               = (*contentRouter)(nil)
 	_ routinghelpers.ProvideManyRouter = (*contentRouter)(nil)
 	_ routinghelpers.ReadyAbleRouter   = (*contentRouter)(nil)
-	_ routinghelpers.DHTRouter         = (*contentRouter)(nil)
+	_ DHTRouter                        = (*contentRouter)(nil)
 )
 
 type option func(c *contentRouter)
