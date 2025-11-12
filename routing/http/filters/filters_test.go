@@ -74,21 +74,21 @@ func TestApplyAddrFilter(t *testing.T) {
 	addr7, _ := multiaddr.NewMultiaddr("/dns4/ny5.bootstrap.libp2p.io/tcp/443/wss/p2p/QmcZf59bWwK5XFi76CZX8cbJ4BhTzzA3gU1ZjYZcYW3dwt")
 	addr8, _ := multiaddr.NewMultiaddr("/ip4/127.0.0.1/udp/4001/quic-v1/webtransport/certhash/uEiAMrMcVWFNiqtSeRXZTwHTac4p9WcGh5hg8kVBzTC1JTA/certhash/uEiA4dfvbbbnBIYalhp1OpW1Bk-nuWIKSy21ol6vPea67Cw/p2p/QmcZf59bWwK5XFi76CZX8cbJ4BhTzzA3gU1ZjYZcYW3dwt")
 
-	addrs := []types.Multiaddr{
-		{Multiaddr: addr1},
-		{Multiaddr: addr2},
-		{Multiaddr: addr3},
-		{Multiaddr: addr4},
-		{Multiaddr: addr5},
-		{Multiaddr: addr6},
-		{Multiaddr: addr7},
-		{Multiaddr: addr8},
+	addrs := types.Addresses{
+		*types.NewAddressFromMultiaddr(addr1),
+		*types.NewAddressFromMultiaddr(addr2),
+		*types.NewAddressFromMultiaddr(addr3),
+		*types.NewAddressFromMultiaddr(addr4),
+		*types.NewAddressFromMultiaddr(addr5),
+		*types.NewAddressFromMultiaddr(addr6),
+		*types.NewAddressFromMultiaddr(addr7),
+		*types.NewAddressFromMultiaddr(addr8),
 	}
 
 	testCases := []struct {
 		name          string
 		filterAddrs   []string
-		expectedAddrs []types.Multiaddr
+		expectedAddrs types.Addresses
 	}{
 		{
 			name:          "No filter",
@@ -98,52 +98,52 @@ func TestApplyAddrFilter(t *testing.T) {
 		{
 			name:          "Filter TCP",
 			filterAddrs:   []string{"tcp"},
-			expectedAddrs: []types.Multiaddr{{Multiaddr: addr1}, {Multiaddr: addr3}, {Multiaddr: addr4}, {Multiaddr: addr7}},
+			expectedAddrs: types.Addresses{*types.NewAddressFromMultiaddr(addr1), *types.NewAddressFromMultiaddr(addr3), *types.NewAddressFromMultiaddr(addr4), *types.NewAddressFromMultiaddr(addr7)},
 		},
 		{
 			name:          "Filter UDP",
 			filterAddrs:   []string{"udp"},
-			expectedAddrs: []types.Multiaddr{{Multiaddr: addr2}, {Multiaddr: addr5}, {Multiaddr: addr6}, {Multiaddr: addr8}},
+			expectedAddrs: types.Addresses{*types.NewAddressFromMultiaddr(addr2), *types.NewAddressFromMultiaddr(addr5), *types.NewAddressFromMultiaddr(addr6), *types.NewAddressFromMultiaddr(addr8)},
 		},
 		{
 			name:          "Filter WebSocket",
 			filterAddrs:   []string{"ws"},
-			expectedAddrs: []types.Multiaddr{{Multiaddr: addr3}},
+			expectedAddrs: types.Addresses{*types.NewAddressFromMultiaddr(addr3)},
 		},
 		{
 			name:          "Exclude TCP",
 			filterAddrs:   []string{"!tcp"},
-			expectedAddrs: []types.Multiaddr{{Multiaddr: addr2}, {Multiaddr: addr5}, {Multiaddr: addr6}, {Multiaddr: addr8}},
+			expectedAddrs: types.Addresses{*types.NewAddressFromMultiaddr(addr2), *types.NewAddressFromMultiaddr(addr5), *types.NewAddressFromMultiaddr(addr6), *types.NewAddressFromMultiaddr(addr8)},
 		},
 		{
 			name:          "Filter TCP addresses that don't have WebSocket and p2p-circuit",
 			filterAddrs:   []string{"tcp", "!ws", "!wss", "!p2p-circuit"},
-			expectedAddrs: []types.Multiaddr{{Multiaddr: addr1}},
+			expectedAddrs: types.Addresses{*types.NewAddressFromMultiaddr(addr1)},
 		},
 		{
 			name:          "Include WebTransport and exclude p2p-circuit",
 			filterAddrs:   []string{"webtransport", "!p2p-circuit"},
-			expectedAddrs: []types.Multiaddr{{Multiaddr: addr8}},
+			expectedAddrs: types.Addresses{*types.NewAddressFromMultiaddr(addr8)},
 		},
 		{
 			name:          "empty for unknown protocol nae",
 			filterAddrs:   []string{"fakeproto"},
-			expectedAddrs: []types.Multiaddr{},
+			expectedAddrs: types.Addresses{},
 		},
 		{
 			name:          "Include WebTransport but ignore unknown protocol name",
 			filterAddrs:   []string{"webtransport", "fakeproto"},
-			expectedAddrs: []types.Multiaddr{{Multiaddr: addr6}, {Multiaddr: addr8}},
+			expectedAddrs: types.Addresses{*types.NewAddressFromMultiaddr(addr6), *types.NewAddressFromMultiaddr(addr8)},
 		},
 		{
 			name:          "Multiple filters",
 			filterAddrs:   []string{"tcp", "ws"},
-			expectedAddrs: []types.Multiaddr{{Multiaddr: addr1}, {Multiaddr: addr3}, {Multiaddr: addr4}, {Multiaddr: addr7}},
+			expectedAddrs: types.Addresses{*types.NewAddressFromMultiaddr(addr1), *types.NewAddressFromMultiaddr(addr3), *types.NewAddressFromMultiaddr(addr4), *types.NewAddressFromMultiaddr(addr7)},
 		},
 		{
 			name:          "Multiple negative filters",
 			filterAddrs:   []string{"!tcp", "!ws"},
-			expectedAddrs: []types.Multiaddr{{Multiaddr: addr2}, {Multiaddr: addr5}, {Multiaddr: addr6}, {Multiaddr: addr8}},
+			expectedAddrs: types.Addresses{*types.NewAddressFromMultiaddr(addr2), *types.NewAddressFromMultiaddr(addr5), *types.NewAddressFromMultiaddr(addr6), *types.NewAddressFromMultiaddr(addr8)},
 		},
 	}
 
@@ -156,24 +156,24 @@ func TestApplyAddrFilter(t *testing.T) {
 			for _, expectedAddr := range tc.expectedAddrs {
 				found := false
 				for _, resultAddr := range result {
-					if expectedAddr.Multiaddr.Equal(resultAddr.Multiaddr) {
+					if expectedAddr.IsMultiaddr() && resultAddr.IsMultiaddr() && expectedAddr.Multiaddr().Equal(resultAddr.Multiaddr()) {
 						found = true
 						break
 					}
 				}
-				assert.True(t, found, "Expected address not found in test %s result: %s", tc.name, expectedAddr.Multiaddr)
+				assert.True(t, found, "Expected address not found in test %s result: %s", tc.name, expectedAddr.String())
 			}
 
 			// Check that each result address is in the expected list
 			for _, resultAddr := range result {
 				found := false
 				for _, expectedAddr := range tc.expectedAddrs {
-					if resultAddr.Multiaddr.Equal(expectedAddr.Multiaddr) {
+					if resultAddr.IsMultiaddr() && expectedAddr.IsMultiaddr() && resultAddr.Multiaddr().Equal(expectedAddr.Multiaddr()) {
 						found = true
 						break
 					}
 				}
-				assert.True(t, found, "Unexpected address found in test %s result: %s", tc.name, resultAddr.Multiaddr)
+				assert.True(t, found, "Unexpected address found in test %s result: %s", tc.name, resultAddr.String())
 			}
 		})
 	}
@@ -271,9 +271,9 @@ func TestApplyFilters(t *testing.T) {
 			name: "No filters",
 			provider: &types.PeerRecord{
 				ID: &pid,
-				Addrs: []types.Multiaddr{
-					mustMultiaddr(t, "/ip4/102.101.1.1/udp/4001/quic-v1/webtransport/p2p/12D3KooWEjsGPUQJ4Ej3d1Jcg4VckWhFbhc6mkGunMm1faeSzZMu/p2p-circuit"),
-					mustMultiaddr(t, "/ip4/8.8.8.8/udp/4001/quic-v1/webtransport"),
+				Addrs: types.Addresses{
+					mustAddress(t, "/ip4/102.101.1.1/udp/4001/quic-v1/webtransport/p2p/12D3KooWEjsGPUQJ4Ej3d1Jcg4VckWhFbhc6mkGunMm1faeSzZMu/p2p-circuit"),
+					mustAddress(t, "/ip4/8.8.8.8/udp/4001/quic-v1/webtransport"),
 				},
 				Protocols: []string{"transport-ipfs-gateway-http"},
 			},
@@ -281,9 +281,9 @@ func TestApplyFilters(t *testing.T) {
 			filterProtocols: []string{},
 			expected: &types.PeerRecord{
 				ID: &pid,
-				Addrs: []types.Multiaddr{
-					mustMultiaddr(t, "/ip4/102.101.1.1/udp/4001/quic-v1/webtransport/p2p/12D3KooWEjsGPUQJ4Ej3d1Jcg4VckWhFbhc6mkGunMm1faeSzZMu/p2p-circuit"),
-					mustMultiaddr(t, "/ip4/8.8.8.8/udp/4001/quic-v1/webtransport"),
+				Addrs: types.Addresses{
+					mustAddress(t, "/ip4/102.101.1.1/udp/4001/quic-v1/webtransport/p2p/12D3KooWEjsGPUQJ4Ej3d1Jcg4VckWhFbhc6mkGunMm1faeSzZMu/p2p-circuit"),
+					mustAddress(t, "/ip4/8.8.8.8/udp/4001/quic-v1/webtransport"),
 				},
 				Protocols: []string{"transport-ipfs-gateway-http"},
 			},
@@ -292,13 +292,13 @@ func TestApplyFilters(t *testing.T) {
 			name: "Protocol filter",
 			provider: &types.PeerRecord{
 				ID: &pid,
-				Addrs: []types.Multiaddr{
-					mustMultiaddr(t, "/ip4/127.0.0.1/tcp/4001"),
-					mustMultiaddr(t, "/ip4/127.0.0.1/udp/4001/quic-v1"),
-					mustMultiaddr(t, "/ip4/127.0.0.1/tcp/4001/ws"),
-					mustMultiaddr(t, "/ip4/102.101.1.1/tcp/4001/p2p/12D3KooWEjsGPUQJ4Ej3d1Jcg4VckWhFbhc6mkGunMm1faeSzZMu/p2p-circuit"),
-					mustMultiaddr(t, "/ip4/102.101.1.1/udp/4001/quic-v1/webtransport/p2p/12D3KooWEjsGPUQJ4Ej3d1Jcg4VckWhFbhc6mkGunMm1faeSzZMu/p2p-circuit"),
-					mustMultiaddr(t, "/ip4/8.8.8.8/udp/4001/quic-v1/webtransport"),
+				Addrs: types.Addresses{
+					mustAddress(t, "/ip4/127.0.0.1/tcp/4001"),
+					mustAddress(t, "/ip4/127.0.0.1/udp/4001/quic-v1"),
+					mustAddress(t, "/ip4/127.0.0.1/tcp/4001/ws"),
+					mustAddress(t, "/ip4/102.101.1.1/tcp/4001/p2p/12D3KooWEjsGPUQJ4Ej3d1Jcg4VckWhFbhc6mkGunMm1faeSzZMu/p2p-circuit"),
+					mustAddress(t, "/ip4/102.101.1.1/udp/4001/quic-v1/webtransport/p2p/12D3KooWEjsGPUQJ4Ej3d1Jcg4VckWhFbhc6mkGunMm1faeSzZMu/p2p-circuit"),
+					mustAddress(t, "/ip4/8.8.8.8/udp/4001/quic-v1/webtransport"),
 				},
 				Protocols: []string{"transport-ipfs-gateway-http"},
 			},
@@ -306,13 +306,13 @@ func TestApplyFilters(t *testing.T) {
 			filterProtocols: []string{"transport-ipfs-gateway-http", "transport-bitswap"},
 			expected: &types.PeerRecord{
 				ID: &pid,
-				Addrs: []types.Multiaddr{
-					mustMultiaddr(t, "/ip4/127.0.0.1/tcp/4001"),
-					mustMultiaddr(t, "/ip4/127.0.0.1/udp/4001/quic-v1"),
-					mustMultiaddr(t, "/ip4/127.0.0.1/tcp/4001/ws"),
-					mustMultiaddr(t, "/ip4/102.101.1.1/tcp/4001/p2p/12D3KooWEjsGPUQJ4Ej3d1Jcg4VckWhFbhc6mkGunMm1faeSzZMu/p2p-circuit"),
-					mustMultiaddr(t, "/ip4/102.101.1.1/udp/4001/quic-v1/webtransport/p2p/12D3KooWEjsGPUQJ4Ej3d1Jcg4VckWhFbhc6mkGunMm1faeSzZMu/p2p-circuit"),
-					mustMultiaddr(t, "/ip4/8.8.8.8/udp/4001/quic-v1/webtransport"),
+				Addrs: types.Addresses{
+					mustAddress(t, "/ip4/127.0.0.1/tcp/4001"),
+					mustAddress(t, "/ip4/127.0.0.1/udp/4001/quic-v1"),
+					mustAddress(t, "/ip4/127.0.0.1/tcp/4001/ws"),
+					mustAddress(t, "/ip4/102.101.1.1/tcp/4001/p2p/12D3KooWEjsGPUQJ4Ej3d1Jcg4VckWhFbhc6mkGunMm1faeSzZMu/p2p-circuit"),
+					mustAddress(t, "/ip4/102.101.1.1/udp/4001/quic-v1/webtransport/p2p/12D3KooWEjsGPUQJ4Ej3d1Jcg4VckWhFbhc6mkGunMm1faeSzZMu/p2p-circuit"),
+					mustAddress(t, "/ip4/8.8.8.8/udp/4001/quic-v1/webtransport"),
 				},
 				Protocols: []string{"transport-ipfs-gateway-http"},
 			},
@@ -321,14 +321,14 @@ func TestApplyFilters(t *testing.T) {
 			name: "Address filter",
 			provider: &types.PeerRecord{
 				ID: &pid,
-				Addrs: []types.Multiaddr{
-					mustMultiaddr(t, "/ip4/127.0.0.1/tcp/4001"),
-					mustMultiaddr(t, "/ip4/127.0.0.1/udp/4001/quic-v1"),
-					mustMultiaddr(t, "/ip4/127.0.0.1/tcp/4001/ws"),
-					mustMultiaddr(t, "/ip4/127.0.0.1/udp/4001/webrtc-direct/certhash/uEiCZqN653gMqxrWNmYuNg7Emwb-wvtsuzGE3XD6rypViZA"),
-					mustMultiaddr(t, "/ip4/102.101.1.1/tcp/4001/p2p/12D3KooWEjsGPUQJ4Ej3d1Jcg4VckWhFbhc6mkGunMm1faeSzZMu/p2p-circuit"),
-					mustMultiaddr(t, "/ip4/102.101.1.1/udp/4001/quic-v1/webtransport/p2p/12D3KooWEjsGPUQJ4Ej3d1Jcg4VckWhFbhc6mkGunMm1faeSzZMu/p2p-circuit"),
-					mustMultiaddr(t, "/ip4/8.8.8.8/udp/4001/quic-v1/webtransport"),
+				Addrs: types.Addresses{
+					mustAddress(t, "/ip4/127.0.0.1/tcp/4001"),
+					mustAddress(t, "/ip4/127.0.0.1/udp/4001/quic-v1"),
+					mustAddress(t, "/ip4/127.0.0.1/tcp/4001/ws"),
+					mustAddress(t, "/ip4/127.0.0.1/udp/4001/webrtc-direct/certhash/uEiCZqN653gMqxrWNmYuNg7Emwb-wvtsuzGE3XD6rypViZA"),
+					mustAddress(t, "/ip4/102.101.1.1/tcp/4001/p2p/12D3KooWEjsGPUQJ4Ej3d1Jcg4VckWhFbhc6mkGunMm1faeSzZMu/p2p-circuit"),
+					mustAddress(t, "/ip4/102.101.1.1/udp/4001/quic-v1/webtransport/p2p/12D3KooWEjsGPUQJ4Ej3d1Jcg4VckWhFbhc6mkGunMm1faeSzZMu/p2p-circuit"),
+					mustAddress(t, "/ip4/8.8.8.8/udp/4001/quic-v1/webtransport"),
 				},
 				Protocols: []string{"transport-ipfs-gateway-http"},
 			},
@@ -336,9 +336,9 @@ func TestApplyFilters(t *testing.T) {
 			filterProtocols: []string{"transport-ipfs-gateway-http", "transport-bitswap"},
 			expected: &types.PeerRecord{
 				ID: &pid,
-				Addrs: []types.Multiaddr{
-					mustMultiaddr(t, "/ip4/127.0.0.1/udp/4001/webrtc-direct/certhash/uEiCZqN653gMqxrWNmYuNg7Emwb-wvtsuzGE3XD6rypViZA"),
-					mustMultiaddr(t, "/ip4/8.8.8.8/udp/4001/quic-v1/webtransport"),
+				Addrs: types.Addresses{
+					mustAddress(t, "/ip4/127.0.0.1/udp/4001/webrtc-direct/certhash/uEiCZqN653gMqxrWNmYuNg7Emwb-wvtsuzGE3XD6rypViZA"),
+					mustAddress(t, "/ip4/8.8.8.8/udp/4001/quic-v1/webtransport"),
 				},
 				Protocols: []string{"transport-ipfs-gateway-http"},
 			},
@@ -347,16 +347,16 @@ func TestApplyFilters(t *testing.T) {
 			name: "Unknown protocol filter",
 			provider: &types.PeerRecord{
 				ID: &pid,
-				Addrs: []types.Multiaddr{
-					mustMultiaddr(t, "/ip4/8.8.8.8/udp/4001/quic-v1/webtransport"),
+				Addrs: types.Addresses{
+					mustAddress(t, "/ip4/8.8.8.8/udp/4001/quic-v1/webtransport"),
 				},
 			},
 			filterAddrs:     []string{},
 			filterProtocols: []string{"unknown"},
 			expected: &types.PeerRecord{
 				ID: &pid,
-				Addrs: []types.Multiaddr{
-					mustMultiaddr(t, "/ip4/8.8.8.8/udp/4001/quic-v1/webtransport"),
+				Addrs: types.Addresses{
+					mustAddress(t, "/ip4/8.8.8.8/udp/4001/quic-v1/webtransport"),
 				},
 			},
 		},
@@ -370,10 +370,10 @@ func TestApplyFilters(t *testing.T) {
 	}
 }
 
-func mustMultiaddr(t *testing.T, s string) types.Multiaddr {
+func mustAddress(t *testing.T, s string) types.Address {
 	addr, err := multiaddr.NewMultiaddr(s)
 	if err != nil {
 		t.Fatalf("Failed to create multiaddr: %v", err)
 	}
-	return types.Multiaddr{Multiaddr: addr}
+	return *types.NewAddressFromMultiaddr(addr)
 }

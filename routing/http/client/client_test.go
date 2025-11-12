@@ -146,18 +146,21 @@ func makeCID() cid.Cid {
 	return c
 }
 
-func drAddrsToAddrs(drmas []types.Multiaddr) (addrs []multiaddr.Multiaddr) {
-	for _, a := range drmas {
-		addrs = append(addrs, a.Multiaddr)
+func drAddrsToAddrs(draddrs types.Addresses) (addrs []multiaddr.Multiaddr) {
+	for _, a := range draddrs {
+		if a.IsMultiaddr() {
+			addrs = append(addrs, a.Multiaddr())
+		}
 	}
 	return
 }
 
-func addrsToDRAddrs(addrs []multiaddr.Multiaddr) (drmas []types.Multiaddr) {
+func addrsToDRAddrs(addrs []multiaddr.Multiaddr) types.Addresses {
+	draddrs := make(types.Addresses, 0, len(addrs))
 	for _, a := range addrs {
-		drmas = append(drmas, types.Multiaddr{Multiaddr: a})
+		draddrs = append(draddrs, *types.NewAddressFromMultiaddr(a))
 	}
-	return
+	return draddrs
 }
 
 func makePeerRecord(protocols []string) types.PeerRecord {
