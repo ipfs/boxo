@@ -18,14 +18,41 @@ The following emojis are used to highlight certain changes:
 
 ### Changed
 
-- upgrade to `go-libp2p` [v0.44.0](https://github.com/libp2p/go-libp2p/releases/tag/v0.44.0)
-- upgrade to `go-dsqueue` [v0.1.0](https://github.com/ipfs/go-dsqueue/releases/tag/v0.1.0) - Fixes batch reuse that could cause panic.
-
 ### Removed
 
 ### Fixed
 
 ### Security
+
+
+## [v0.35.2]
+
+### Changed
+
+- upgrade to `go-libp2p` [v0.45.0](https://github.com/libp2p/go-libp2p/releases/tag/v0.45.0)
+- upgrade to `go-log/v2` [v2.9.0](https://github.com/ipfs/go-log/releases/tag/v2.9.0)
+  - Applications using go-log (>=2.9)+go-libp2p(>=0.45) may need to initialize their application to bridge slog-based libraries to into go-log. See documentation for go-log [release](https://github.com/ipfs/go-log/releases/tag/v2.9.0) and [slog integration](https://github.com/ipfs/go-log/blob/master/README.md#slog-integration).
+
+
+## [v0.35.1]
+
+### Added
+
+- new span for the `handleIncoming` bitswap client `getter` plus events when blocks are received.
+- mark opentelemetry spans, span attributes, and span events as being used by ProbeLab's analysis scripts
+
+### Changed
+
+- upgrade to `go-dsqueue` [v0.1.0](https://github.com/ipfs/go-dsqueue/releases/tag/v0.1.0) - Fixes batch reuse that could cause panic.
+
+### Fixed
+
+- `gateway`: Fixed duplicate peer IDs appearing in retrieval timeout error messages
+- `bitswap/client`: fix tracing by using context to pass trace and retrieval state to session [#1059](https://github.com/ipfs/boxo/pull/1059)
+  - `bitswap/client`: propagate trace state when calling GetBlocks [#1060](https://github.com/ipfs/boxo/pull/1060)
+- `bitswap/network/httpnet`: improved error detection on HTTP and block fetches:
+  - Do not attempt to GET a test CID if the endpoint returns 429 to the test HEAD request.
+  - Unify error parsing and handling of http statues and content.
 
 
 ## [v0.35.0]
