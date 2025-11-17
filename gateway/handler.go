@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"mime"
 	"net/http"
 	"net/textproto"
@@ -41,6 +42,21 @@ var (
 	onlyASCII = regexp.MustCompile("[[:^ascii:]]")
 	noModtime = time.Unix(0, 0) // disables Last-Modified header if passed as modtime
 )
+
+// fallbackRequestTimeout defines the hard per-request timeout for the gateway handler.
+// It defaults to 1h, but can be overridden via the BOXO_GATEWAY_REQUEST_TIMEOUT env var,
+// which accepts Go duration strings (e.g., "90m", "2h", "5400s").
+var fallbackRequestTimeout = time.Hour
+
+func init() {
+	if v := os.Getenv("BOXO_GATEWAY_REQUEST_TIMEOUT"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil && d > 0 {
+			fallbackRequestTimeout = d
+		} else {
+			log.Warnw("invalid BOXO_GATEWAY_REQUEST_TIMEOUT, using default 1h", "value", v, "error", err)
+		}
+	}
+}
 
 // handler is a HTTP handler that serves IPFS objects (accessible by default at /ipfs/<path>)
 // (it serves requests like GET /ipfs/QmVRzPKPzNtSrEzBFm2UZfxmPAgnaLke4DMcerbsGGSaFe/link)
@@ -159,7 +175,7 @@ func (i *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	defer panicHandler(w)
 
 	// the hour is a hard fallback, we don't expect it to happen, but just in case
-	ctx, cancel := context.WithTimeout(r.Context(), time.Hour)
+	ctx, cancel := context.WithTimeout(r.Context(), fallbackRequestTimeout)
 	defer cancel()
 
 	if withCtxWrap, ok := i.backend.(WithContextHint); ok {
