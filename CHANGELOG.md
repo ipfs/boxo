@@ -17,6 +17,7 @@ The following emojis are used to highlight certain changes:
 ### Added
 
 - `gateway`: Added a configurable fallback timeout for the gateway handler, defaulting to 1 hour, overridable via the BOXO_GATEWAY_REQUEST_TIMEOUT environment variable.
+- `routing/http`: `GET /routing/v1/dht/closest/peers/{key}` per [IPIP-476](https://github.com/ipfs/specs/pull/476)
 
 ### Changed
 
