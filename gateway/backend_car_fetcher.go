@@ -66,15 +66,33 @@ func (ps *remoteCarFetcher) Fetch(ctx context.Context, path path.ImmutablePath, 
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		errData, err := io.ReadAll(resp.Body)
+		defer resp.Body.Close() // Ensure body is closed and drained
+
+		// Limit error message reading to prevent memory exhaustion
+		// 512 bytes is enough for one sentence of error description
+		const maxErrorSize = 512
+		limitedReader := io.LimitReader(resp.Body, maxErrorSize)
+		errData, err := io.ReadAll(limitedReader)
+		var errMsg string
 		if err != nil {
-			err = fmt.Errorf("could not read error message: %w", err)
+			errMsg = fmt.Sprintf("could not read error message: %v", err)
 		} else {
-			err = fmt.Errorf("%q", string(errData))
+			errMsg = string(errData)
+			// Add ellipsis if we hit the limit
+			if len(errData) == maxErrorSize {
+				errMsg = errMsg + "..."
+			}
 		}
-		return fmt.Errorf("http error from car gateway: %s: %w", resp.Status, err)
+
+		// Wrap with appropriate status code for proper handling downstream
+		return NewErrorStatusCode(
+			fmt.Errorf("car gateway responded with %s: %q", resp.Status, errMsg),
+			resp.StatusCode,
+		)
 	}
 
+	// For successful responses, callback is responsible for reading
+	// and closing the body
 	err = cb(path, resp.Body)
 	if err != nil {
 		resp.Body.Close()

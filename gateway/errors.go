@@ -248,6 +248,8 @@ func webError(w http.ResponseWriter, r *http.Request, c *Config, err error, defa
 	case errors.Is(err, &cid.ErrInvalidCid{}):
 		code = http.StatusBadRequest
 	case isErrContentBlocked(err):
+		// HTTP 410 Gone indicates the content has been permanently removed
+		// due to content filtering/blocking policies
 		code = http.StatusGone
 	case isErrNotFound(err):
 		code = http.StatusNotFound
@@ -273,6 +275,12 @@ func webError(w http.ResponseWriter, r *http.Request, c *Config, err error, defa
 // isErrNotFound returns true for IPLD errors that should return 4xx errors (e.g. the path doesn't exist, the data is
 // the wrong type, etc.), rather than issues with just finding and retrieving the data.
 func isErrNotFound(err error) bool {
+	// Check for ErrorStatusCode with 404
+	var statusErr *ErrorStatusCode
+	if errors.As(err, &statusErr) && statusErr.StatusCode == http.StatusNotFound {
+		return true
+	}
+
 	if errors.Is(err, &resolver.ErrNoLink{}) || errors.Is(err, schema.ErrNoSuchField{}) {
 		return true
 	}
@@ -301,9 +309,29 @@ func isErrNotFound(err error) bool {
 	}
 }
 
-// isErrContentBlocked returns true for content filtering system errors
+// isErrContentBlocked returns true for content filtering system errors.
+//
+// This function detects errors from nopfs (https://github.com/ipfs-shipyard/nopfs),
+// the content blocking system used by IPFS implementations.
+// When content is blocked, nopfs returns a StatusError with a specific message format.
+// We detect these errors by checking for the characteristic error message rather than
+// using type assertions to avoid pulling nopfs as a direct dependency.
+//
+// The blocking system returns HTTP 410 Gone for blocked content, indicating the content
+// has been intentionally made unavailable due to content filtering policies.
+//
+// TODO: When nopfs becomes a direct dependency, replace this string matching with proper
+// type assertion or errors.Is() for more robust error detection.
 func isErrContentBlocked(err error) bool {
-	// TODO: we match error message to avoid pulling nopfs as a dependency
+	// Check for ErrorStatusCode with 410
+	var statusErr *ErrorStatusCode
+	if errors.As(err, &statusErr) && statusErr.StatusCode == http.StatusGone {
+		return true
+	}
+
+	// The nopfs StatusError.Error() returns messages in the format:
+	// - "{cid} is blocked and cannot be provided" for blocked CIDs
+	// - "{path} is blocked and cannot be provided" for blocked paths
 	// Ref. https://github.com/ipfs-shipyard/nopfs/blob/cde3b5ba964c13e977f4a95f3bd8ca7d7710fbda/status.go#L87-L89
 	return strings.Contains(err.Error(), "blocked and cannot be provided")
 }
