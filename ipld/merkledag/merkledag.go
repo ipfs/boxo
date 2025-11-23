@@ -132,6 +132,20 @@ func GetLinksDirect(serv format.NodeGetter) GetLinks {
 	}
 }
 
+// GetLinksDirectWithProgressTracker creates a function as GetLinksDirect, but
+// updates the ProgressTracker with the block size of the retrieved node.
+func GetLinksDirectWithProgressTracker(serv format.NodeGetter, tracker *ProgressTracker) GetLinks {
+	return func(ctx context.Context, c cid.Cid) ([]*format.Link, error) {
+		nd, err := serv.Get(ctx, c)
+		if err != nil {
+			return nil, err
+		}
+		// We don't use Size() as it returns cumulative size including linked nodes.
+		tracker.Update(uint64(len(nd.RawData())))
+		return nd.Links(), nil
+	}
+}
+
 type sesGetter struct {
 	bs      *bserv.Session
 	decoder *legacy.Decoder
@@ -208,20 +222,13 @@ func FetchGraphWithDepthLimit(ctx context.Context, root cid.Cid, depthLim int, s
 	// We default to Concurrent() walk.
 	opts = append([]WalkOption{Concurrent()}, opts...)
 
-	// If we have a ProgressTracker, we wrap the visit function to handle it.
+	// If we have a ProgressTracker, we wrap the get links function to handle it.
 	v, _ := ctx.Value(progressContextKey).(*ProgressTracker)
 	if v == nil {
 		return WalkDepth(ctx, GetLinksDirect(ng), root, visit, opts...)
 	}
 
-	visitProgress := func(c cid.Cid, depth int) bool {
-		if visit(c, depth) {
-			v.Increment()
-			return true
-		}
-		return false
-	}
-	return WalkDepth(ctx, GetLinksDirect(ng), root, visitProgress, opts...)
+	return WalkDepth(ctx, GetLinksDirectWithProgressTracker(ng, v), root, visit, opts...)
 }
 
 // GetMany gets many nodes from the DAG at once.
@@ -457,10 +464,18 @@ func sequentialWalkDepth(ctx context.Context, getLinks GetLinks, root cid.Cid, d
 	return nil
 }
 
+// ProgressStat represents the progress of a fetch operation.
+type ProgressStat struct {
+	// Total is the total number of nodes fetched.
+	Total int
+	// TotalSize is the total size of the nodes fetched.
+	TotalSize uint64
+}
+
 // ProgressTracker is used to show progress when fetching nodes.
 type ProgressTracker struct {
-	Total int
-	lk    sync.Mutex
+	stat ProgressStat
+	lk   sync.Mutex
 }
 
 // DeriveContext returns a new context with value "progress" derived from the
@@ -469,18 +484,26 @@ func (p *ProgressTracker) DeriveContext(ctx context.Context) context.Context {
 	return context.WithValue(ctx, progressContextKey, p)
 }
 
-// Increment adds one to the total progress.
-func (p *ProgressTracker) Increment() {
+// Update adds one to the total and updates the total size.
+func (p *ProgressTracker) Update(size uint64) {
 	p.lk.Lock()
 	defer p.lk.Unlock()
-	p.Total++
+	p.stat.Total++
+	p.stat.TotalSize += size
 }
 
 // Value returns the current progress.
 func (p *ProgressTracker) Value() int {
 	p.lk.Lock()
 	defer p.lk.Unlock()
-	return p.Total
+	return p.stat.Total
+}
+
+// ProgressStat returns the current progress stat.
+func (p *ProgressTracker) ProgressStat() ProgressStat {
+	p.lk.Lock()
+	defer p.lk.Unlock()
+	return p.stat
 }
 
 func parallelWalkDepth(ctx context.Context, getLinks GetLinks, root cid.Cid, visit func(cid.Cid, int) bool, options *walkOptions) error {

@@ -1161,7 +1161,7 @@ func TestProgressIndicatorNoChildren(t *testing.T) {
 func testProgressIndicator(t *testing.T, depth int) {
 	ds := dstest.Mock()
 
-	top, numChildren := mkDag(ds, depth)
+	top, numChildren, totalSize := mkDag(ds, depth)
 
 	v := new(ProgressTracker)
 	ctx := v.DeriveContext(context.Background())
@@ -1175,9 +1175,19 @@ func testProgressIndicator(t *testing.T, depth int) {
 		t.Errorf("wrong number of children reported in progress indicator, expected %d, got %d",
 			numChildren+1, v.Value())
 	}
+
+	if v.ProgressStat().Total != numChildren+1 {
+		t.Errorf("wrong number of children reported in progress stat indicator, expected %d, got %d",
+			numChildren+1, v.ProgressStat().Total)
+	}
+
+	if v.ProgressStat().TotalSize != totalSize {
+		t.Errorf("wrong total size reported in progress stat indicator, expected %d, got %d",
+			totalSize, v.ProgressStat().TotalSize)
+	}
 }
 
-func mkDag(ds ipld.DAGService, depth int) (cid.Cid, int) {
+func mkDag(ds ipld.DAGService, depth int) (cid.Cid, int, uint64) {
 	ctx := context.Background()
 
 	totalChildren := 0
@@ -1213,7 +1223,12 @@ func mkDag(ds ipld.DAGService, depth int) (cid.Cid, int) {
 		panic(err)
 	}
 
-	return nd.Cid(), totalChildren
+	totalSize, err := nd.Size()
+	if err != nil {
+		panic(err)
+	}
+
+	return nd.Cid(), totalChildren, totalSize
 }
 
 func mkNodeWithChildren(getChild func() *ProtoNode, width int) *ProtoNode {
