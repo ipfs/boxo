@@ -17,6 +17,7 @@ The following emojis are used to highlight certain changes:
 ### Added
 
 - `routing/http`: `GET /routing/v1/dht/closest/peers/{key}` per [IPIP-476](https://github.com/ipfs/specs/pull/476)
+- `ipld/merkledag`: Added fetched node size reporting to the progress tracker. See [kubo#8915](https://github.com/ipfs/kubo/issues/8915)
 
 ### Changed
 
