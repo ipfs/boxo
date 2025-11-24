@@ -1176,14 +1176,14 @@ func testProgressIndicator(t *testing.T, depth int) {
 			numChildren+1, v.Value())
 	}
 
-	if v.ProgressStat().Total != numChildren+1 {
+	if v.ProgressStat().Nodes != numChildren+1 {
 		t.Errorf("wrong number of children reported in progress stat indicator, expected %d, got %d",
-			numChildren+1, v.ProgressStat().Total)
+			numChildren+1, v.ProgressStat().Nodes)
 	}
 
-	if v.ProgressStat().TotalSize != totalSize {
-		t.Errorf("wrong total size reported in progress stat indicator, expected %d, got %d",
-			totalSize, v.ProgressStat().TotalSize)
+	if v.ProgressStat().Bytes != totalSize {
+		t.Errorf("wrong bytes reported in progress stat indicator, expected %d, got %d",
+			totalSize, v.ProgressStat().Bytes)
 	}
 }
 

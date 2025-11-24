@@ -133,7 +133,7 @@ func GetLinksDirect(serv format.NodeGetter) GetLinks {
 }
 
 // GetLinksDirectWithProgressTracker creates a function as GetLinksDirect, but
-// updates the ProgressTracker with the block size of the retrieved node.
+// updates the ProgressTracker with the raw block data size of the retrieved node.
 func GetLinksDirectWithProgressTracker(serv format.NodeGetter, tracker *ProgressTracker) GetLinks {
 	return func(ctx context.Context, c cid.Cid) ([]*format.Link, error) {
 		nd, err := serv.Get(ctx, c)
@@ -466,10 +466,10 @@ func sequentialWalkDepth(ctx context.Context, getLinks GetLinks, root cid.Cid, d
 
 // ProgressStat represents the progress of a fetch operation.
 type ProgressStat struct {
-	// Total is the total number of nodes fetched.
-	Total int
-	// TotalSize is the total size of the nodes fetched.
-	TotalSize uint64
+	// Nodes is the total number of nodes fetched.
+	Nodes int
+	// Bytes is the total bytes of raw block data.
+	Bytes uint64
 }
 
 // ProgressTracker is used to show progress when fetching nodes.
@@ -484,19 +484,19 @@ func (p *ProgressTracker) DeriveContext(ctx context.Context) context.Context {
 	return context.WithValue(ctx, progressContextKey, p)
 }
 
-// Update adds one to the total and updates the total size.
-func (p *ProgressTracker) Update(size uint64) {
+// Update adds one to the total nodes and updates the total bytes.
+func (p *ProgressTracker) Update(bytes uint64) {
 	p.lk.Lock()
 	defer p.lk.Unlock()
-	p.stat.Total++
-	p.stat.TotalSize += size
+	p.stat.Nodes++
+	p.stat.Bytes += bytes
 }
 
 // Value returns the current progress.
 func (p *ProgressTracker) Value() int {
 	p.lk.Lock()
 	defer p.lk.Unlock()
-	return p.stat.Total
+	return p.stat.Nodes
 }
 
 // ProgressStat returns the current progress stat.
