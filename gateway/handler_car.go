@@ -142,20 +142,20 @@ func buildCarParams(r *http.Request, contentTypeParams map[string]string) (CarPa
 		params.Scope = DagScopeAll
 	}
 
-	// application/vnd.ipld.car content type parameters from Accept header
+	// application/vnd.ipld.car content type parameters from Accept header and URL query
 
-	// Get CAR version, duplicates and order from the query parameters and override
-	// with parameters from Accept header if they exist, since they have priority.
-	versionStr := queryParams.Get(carVersionKey)
-	duplicatesStr := queryParams.Get(carDuplicatesKey)
-	orderStr := queryParams.Get(carOrderKey)
-	if v, ok := contentTypeParams["version"]; ok {
+	// Get CAR version, duplicates and order from Accept header first,
+	// then override with URL query parameters if they exist (IPIP-523).
+	versionStr := contentTypeParams["version"]
+	duplicatesStr := contentTypeParams["dups"]
+	orderStr := contentTypeParams["order"]
+	if v := queryParams.Get(carVersionKey); v != "" {
 		versionStr = v
 	}
-	if v, ok := contentTypeParams["order"]; ok {
+	if v := queryParams.Get(carOrderKey); v != "" {
 		orderStr = v
 	}
-	if v, ok := contentTypeParams["dups"]; ok {
+	if v := queryParams.Get(carDuplicatesKey); v != "" {
 		duplicatesStr = v
 	}
 
@@ -164,7 +164,7 @@ func buildCarParams(r *http.Request, contentTypeParams map[string]string) (CarPa
 	case "": // noop, client does not care about version
 	case "1": // noop, we support this
 	default:
-		return CarParams{}, errors.New("unsupported application/vnd.ipld.car version: only version=1 is supported")
+		return CarParams{}, fmt.Errorf("unsupported CAR version %q: only version=1 is supported", versionStr)
 	}
 
 	// optional order from IPIP-412
