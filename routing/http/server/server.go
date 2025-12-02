@@ -71,9 +71,8 @@ type DelegatedRouter interface {
 	// Limit indicates the maximum amount of results to return; 0 means unbounded.
 	FindProviders(ctx context.Context, cid cid.Cid, limit int) (iter.ResultIter[types.Record], error)
 
-	// Deprecated: protocol-agnostic provide is being worked on in [IPIP-378]:
-	//
-	// [IPIP-378]: https://github.com/ipfs/specs/pull/378
+	// ProvideBitswap tells a delegated router to advertise the CIDs in the
+	// request as content that is available over bitswap.
 	ProvideBitswap(ctx context.Context, req *BitswapWriteProvideRequest) (time.Duration, error)
 
 	// FindPeers searches for peers who have the provided [peer.ID].
@@ -95,9 +94,8 @@ type DelegatedRouter interface {
 // Deprecated: use DelegatedRouter. ContentRouter will be removed in a future version.
 type ContentRouter = DelegatedRouter
 
-// Deprecated: protocol-agnostic provide is being worked on in [IPIP-378]:
-//
-// [IPIP-378]: https://github.com/ipfs/specs/pull/378
+// BitswapWriteProvideRequest is a request for a delegated router to advertise
+// CIDs of content that is retrievable over bitswap.
 type BitswapWriteProvideRequest struct {
 	Keys        []cid.Cid
 	Timestamp   time.Time
@@ -106,9 +104,7 @@ type BitswapWriteProvideRequest struct {
 	Addrs       []multiaddr.Multiaddr
 }
 
-// Deprecated: protocol-agnostic provide is being worked on in [IPIP-378]:
-//
-// [IPIP-378]: https://github.com/ipfs/specs/pull/378
+// WriteProvideRequest is a wrapper for any protocol-specific provide requests.
 type WriteProvideRequest struct {
 	Protocol string
 	Schema   string
