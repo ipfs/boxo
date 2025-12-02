@@ -718,13 +718,10 @@ func customResponseFormat(r *http.Request) (mediaType string, params map[string]
 		}
 	}
 
-	// If both ?format and Accept are present with conflicting values, return error (IPIP-523).
-	if formatMediaType != "" && acceptMediaType != "" && formatMediaType != acceptMediaType {
-		return "", nil, fmt.Errorf("ambiguous request: ?format=%q (%s) vs Accept: %q", formatParam, formatMediaType, acceptMediaType)
-	}
-
-	// ?format takes precedence (IPIP-523), but use Accept params if available for the same type.
+	// ?format takes precedence (IPIP-523), even when Accept header specifies a different format.
+	// This ensures deterministic HTTP caching and allows browsers to use ?format reliably.
 	if formatMediaType != "" {
+		// Use Accept params only if Accept matches ?format (e.g., for CAR version/order params)
 		if acceptMediaType == formatMediaType {
 			return formatMediaType, acceptParams, nil
 		}

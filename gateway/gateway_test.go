@@ -577,14 +577,15 @@ func TestHeaders(t *testing.T) {
 		// IPIP-523: Test that matching ?format and Accept work together (Accept params are used)
 		runTest("Matching ?format=car and Accept: application/vnd.ipld.car;version=1;order=dfs;dups=n", contentPath+"?format=car", "application/vnd.ipld.car;version=1;order=dfs;dups=n", "", "")
 
-		// IPIP-523: Test that conflicting ?format and Accept returns error
-		t.Run("Conflicting ?format and Accept returns error", func(t *testing.T) {
+		// IPIP-523: Test that conflicting ?format and Accept uses ?format (URL wins)
+		t.Run("Conflicting ?format and Accept uses ?format from URL", func(t *testing.T) {
 			t.Parallel()
 			req := mustNewRequest(t, http.MethodGet, ts.URL+contentPath+"?format=raw", nil)
 			req.Header.Set("Accept", "application/vnd.ipld.car")
 			resp := mustDoWithoutRedirect(t, req)
 			defer resp.Body.Close()
-			require.Equal(t, http.StatusBadRequest, resp.StatusCode)
+			require.Equal(t, http.StatusOK, resp.StatusCode)
+			require.Equal(t, rawResponseFormat, resp.Header.Get("Content-Type"))
 		})
 
 		// IPIP-523: Browser Accept header with wildcards should not interfere with ?format
