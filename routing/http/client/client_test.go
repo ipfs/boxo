@@ -36,8 +36,6 @@ func (m *mockContentRouter) FindProviders(ctx context.Context, key cid.Cid, limi
 	return args.Get(0).(iter.ResultIter[types.Record]), args.Error(1)
 }
 
-//nolint:staticcheck
-//lint:ignore SA1019 // ignore staticcheck
 func (m *mockContentRouter) ProvideBitswap(ctx context.Context, req *server.BitswapWriteProvideRequest) (time.Duration, error) {
 	args := m.Called(ctx, req)
 	return args.Get(0).(time.Duration), args.Error(1)
@@ -503,8 +501,6 @@ func TestClient_Provide(t *testing.T) {
 				}
 			}
 
-			//nolint:staticcheck
-			//lint:ignore SA1019 // ignore staticcheck
 			expectedProvReq := &server.BitswapWriteProvideRequest{
 				Keys:        c.cids,
 				Timestamp:   clock.Now().Truncate(time.Millisecond),
