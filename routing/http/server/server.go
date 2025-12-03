@@ -71,9 +71,9 @@ type DelegatedRouter interface {
 	// Limit indicates the maximum amount of results to return; 0 means unbounded.
 	FindProviders(ctx context.Context, cid cid.Cid, limit int) (iter.ResultIter[types.Record], error)
 
-	// Deprecated: protocol-agnostic provide is being worked on in [IPIP-378]:
+	// Deprecated: historic API from [IPIP-526], may be removed in a future version.
 	//
-	// [IPIP-378]: https://github.com/ipfs/specs/pull/378
+	// [IPIP-526]: https://specs.ipfs.tech/ipips/ipip-0526/
 	ProvideBitswap(ctx context.Context, req *BitswapWriteProvideRequest) (time.Duration, error)
 
 	// FindPeers searches for peers who have the provided [peer.ID].
@@ -95,9 +95,9 @@ type DelegatedRouter interface {
 // Deprecated: use DelegatedRouter. ContentRouter will be removed in a future version.
 type ContentRouter = DelegatedRouter
 
-// Deprecated: protocol-agnostic provide is being worked on in [IPIP-378]:
+// Deprecated: historic API from [IPIP-526], may be removed in a future version.
 //
-// [IPIP-378]: https://github.com/ipfs/specs/pull/378
+// [IPIP-526]: https://specs.ipfs.tech/ipips/ipip-0526/
 type BitswapWriteProvideRequest struct {
 	Keys        []cid.Cid
 	Timestamp   time.Time
@@ -106,9 +106,9 @@ type BitswapWriteProvideRequest struct {
 	Addrs       []multiaddr.Multiaddr
 }
 
-// Deprecated: protocol-agnostic provide is being worked on in [IPIP-378]:
+// Deprecated: historic API from [IPIP-526], may be removed in a future version.
 //
-// [IPIP-378]: https://github.com/ipfs/specs/pull/378
+// [IPIP-526]: https://specs.ipfs.tech/ipips/ipip-0526/
 type WriteProvideRequest struct {
 	Protocol string
 	Schema   string
