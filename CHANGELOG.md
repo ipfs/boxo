@@ -22,6 +22,8 @@ The following emojis are used to highlight certain changes:
 
 ### Changed
 
+- `gateway`: 🛠 Codec conversions (e.g., dag-pb to dag-json, dag-json to dag-cbor) are no longer performed by default per [IPIP-0524](https://github.com/ipfs/specs/pull/524). Requesting a format that differs from the block's codec now returns HTTP 406 Not Acceptable. Clients should fetch raw blocks (`?format=raw`) and convert in userland. Set `Config.AllowCodecConversion` to `true` to restore the old behavior.
+
 ### Removed
 
 ### Fixed

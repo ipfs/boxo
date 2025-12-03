@@ -148,7 +148,20 @@ func (i *handler) renderCodec(ctx context.Context, w http.ResponseWriter, r *htt
 		return false
 	}
 
-	// This handles DAG-* conversions and validations.
+	// IPIP-0524: Check if codec conversion is allowed
+	if !i.config.AllowCodecConversion && toCodec != cidCodec {
+		// Conversion not allowed and codecs don't match - return 406
+		err := fmt.Errorf("format %q requested but block has codec %q: codec conversion is not supported", rq.responseFormat, cidCodec.String())
+		i.webError(w, r, err, http.StatusNotAcceptable)
+		return false
+	}
+
+	// If codecs match, serve raw (no conversion needed)
+	if toCodec == cidCodec {
+		return i.serveCodecRaw(ctx, w, r, blockSize, blockData, rq.contentPath, modtime, rq.begin)
+	}
+
+	// AllowCodecConversion is true - perform DAG-* conversion
 	return i.serveCodecConverted(ctx, w, r, blockCid, blockData, rq.contentPath, toCodec, modtime, rq.begin)
 }
 
