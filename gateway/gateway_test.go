@@ -521,6 +521,7 @@ func TestHeaders(t *testing.T) {
 				},
 			},
 			DeserializedResponses: true,
+			AllowCodecConversion:  true, // Test tests various format conversions
 		})
 
 		runTest := func(name, path, accept, host, expectedContentLocationHdr string) {
@@ -1073,7 +1074,8 @@ func TestDeserializedResponses(t *testing.T) {
 		backend, root := newMockBackend(t, "fixtures.car")
 
 		ts := newTestServerWithConfig(t, backend, Config{
-			NoDNSLink: false,
+			NoDNSLink:            false,
+			AllowCodecConversion: true, // Test expects codec conversions to work
 			PublicGateways: map[string]*PublicGateway{
 				"trustless.com": {
 					Paths: []string{"/ipfs", "/ipns"},
@@ -1152,7 +1154,8 @@ func TestDeserializedResponses(t *testing.T) {
 		backend.namesys["/ipns/trusted.com"] = newMockNamesysItem(path.FromCid(root), 0)
 
 		ts := newTestServerWithConfig(t, backend, Config{
-			NoDNSLink: false,
+			NoDNSLink:            false,
+			AllowCodecConversion: true, // Test expects codec conversions to work
 			PublicGateways: map[string]*PublicGateway{
 				"trustless.com": {
 					Paths: []string{"/ipfs", "/ipns"},
@@ -1183,6 +1186,58 @@ func TestDeserializedResponses(t *testing.T) {
 		doRequest(t, "/", "trusted.com", http.StatusOK)
 		doRequest(t, "/empty-dir/", "trusted.com", http.StatusOK)
 		doRequest(t, "/?format=ipns-record", "trusted.com", http.StatusBadRequest)
+	})
+}
+
+func TestAllowCodecConversion(t *testing.T) {
+	t.Parallel()
+
+	// Use dag-cbor fixture
+	backend, dagCborRoot := newMockBackend(t, "path_gateway_dag/dag-cbor-traversal.car")
+
+	t.Run("AllowCodecConversion=false returns 406 for codec mismatch", func(t *testing.T) {
+		t.Parallel()
+
+		ts := newTestServerWithConfig(t, backend, Config{
+			DeserializedResponses: true,
+			AllowCodecConversion:  false, // IPIP-0524 behavior
+		})
+
+		// Request dag-json for a dag-cbor block - should return 406
+		req := mustNewRequest(t, http.MethodGet, ts.URL+"/ipfs/"+dagCborRoot.String()+"?format=dag-json", nil)
+		res := mustDoWithoutRedirect(t, req)
+		defer res.Body.Close()
+		assert.Equal(t, http.StatusNotAcceptable, res.StatusCode)
+	})
+
+	t.Run("AllowCodecConversion=false allows matching codec", func(t *testing.T) {
+		t.Parallel()
+
+		ts := newTestServerWithConfig(t, backend, Config{
+			DeserializedResponses: true,
+			AllowCodecConversion:  false, // IPIP-0524 behavior
+		})
+
+		// Request dag-cbor for a dag-cbor block - should return 200
+		req := mustNewRequest(t, http.MethodGet, ts.URL+"/ipfs/"+dagCborRoot.String()+"?format=dag-cbor", nil)
+		res := mustDoWithoutRedirect(t, req)
+		defer res.Body.Close()
+		assert.Equal(t, http.StatusOK, res.StatusCode)
+	})
+
+	t.Run("AllowCodecConversion=true allows codec conversion", func(t *testing.T) {
+		t.Parallel()
+
+		ts := newTestServerWithConfig(t, backend, Config{
+			DeserializedResponses: true,
+			AllowCodecConversion:  true, // Legacy behavior
+		})
+
+		// Request dag-json for a dag-cbor block - should return 200 with conversion
+		req := mustNewRequest(t, http.MethodGet, ts.URL+"/ipfs/"+dagCborRoot.String()+"?format=dag-json", nil)
+		res := mustDoWithoutRedirect(t, req)
+		defer res.Body.Close()
+		assert.Equal(t, http.StatusOK, res.StatusCode)
 	})
 }
 
