@@ -188,6 +188,8 @@ func (bs *Bitswap) ReceiveError(err error) {
 }
 
 func (bs *Bitswap) ReceiveMessage(ctx context.Context, p peer.ID, incoming message.BitSwapMessage) {
+	ctx = context.WithValue(ctx, peerIDContextKey{}, p)
+
 	if bs.tracer != nil {
 		bs.tracer.MessageReceived(p, incoming)
 	}
@@ -196,4 +198,16 @@ func (bs *Bitswap) ReceiveMessage(ctx context.Context, p peer.ID, incoming messa
 	if bs.Server != nil {
 		bs.Server.ReceiveMessage(ctx, p, incoming)
 	}
+}
+
+type peerIDContextKey struct{}
+
+// PeerIDFromContext extracts the peer ID from the context.
+// It can be useful to access the remote peer ID in the blockstore used by Bitswap.
+func PeerIDFromContext(ctx context.Context) peer.ID {
+	p, ok := ctx.Value(peerIDContextKey{}).(peer.ID)
+	if !ok {
+		return ""
+	}
+	return p
 }

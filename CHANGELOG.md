@@ -19,6 +19,7 @@ The following emojis are used to highlight certain changes:
 - `routing/http`: `GET /routing/v1/dht/closest/peers/{key}` per [IPIP-476](https://github.com/ipfs/specs/pull/476)
 - upgrade to `go-libp2p-kad-dht` [v0.36.0](https://github.com/libp2p/go-libp2p-kad-dht/releases/tag/v0.36.0)
 - `ipld/merkledag`: Added fetched node size reporting to the progress tracker. See [kubo#8915](https://github.com/ipfs/kubo/issues/8915)
+- `bitswap`: Added a way to extract the peer ID of the requesting peer from context in the underlying Bitswap components.
 
 ### Changed
 
