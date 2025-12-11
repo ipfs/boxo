@@ -339,9 +339,9 @@ func (c *Client) FindProviders(ctx context.Context, key cid.Cid) (providers iter
 	return &measuringIter[iter.Result[types.Record]]{Iter: it, ctx: ctx, m: m}, nil
 }
 
-// Deprecated: protocol-agnostic provide is being worked on in [IPIP-378]:
+// Deprecated: historic API from [IPIP-526], may be removed in a future version.
 //
-// [IPIP-378]: https://github.com/ipfs/specs/pull/378
+// [IPIP-526]: https://specs.ipfs.tech/ipips/ipip-0526/
 func (c *Client) ProvideBitswap(ctx context.Context, keys []cid.Cid, ttl time.Duration) (time.Duration, error) {
 	if c.identity == nil {
 		return 0, errors.New("cannot provide Bitswap records without an identity")
