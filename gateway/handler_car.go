@@ -164,7 +164,7 @@ func buildCarParams(r *http.Request, contentTypeParams map[string]string) (CarPa
 	case "": // noop, client does not care about version
 	case "1": // noop, we support this
 	default:
-		return CarParams{}, fmt.Errorf("unsupported CAR version %q: only version=1 is supported", versionStr)
+		return CarParams{}, errors.New("unsupported application/vnd.ipld.car version: only version=1 is supported")
 	}
 
 	// optional order from IPIP-412
