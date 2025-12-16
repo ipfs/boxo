@@ -303,7 +303,10 @@ func (bsnet *impl) msgToStream(ctx context.Context, s network.Stream, msg bsmsg.
 	defer bsnet.metrics.RequestsInFlight.Dec()
 
 	wl := len(msg.Wantlist())
-	log.Debugf("sending message to %s. Wantlist: %d items", s.Conn().RemotePeer(), wl)
+	lb := len(msg.Blocks())
+	lh := len(msg.Haves())
+	ldh := len(msg.DontHaves())
+	log.Debugf("sending message to %s. Wantlist: %d. Blocks: %d. Haves: %d. DontHaves: %d", s.Conn().RemotePeer(), wl, lb, lh, ldh)
 
 	// Older Bitswap versions use a slightly different wire format so we need
 	// to convert the message to the appropriate format depending on the remote
@@ -475,10 +478,11 @@ func (bsnet *impl) handleNewStream(s network.Stream) {
 		bsnet.metrics.ResponseSizes.Observe(float64(size))
 		p := s.Conn().RemotePeer()
 		ctx := context.Background()
+		wl := len(received.Wantlist())
 		lb := len(received.Blocks())
 		lh := len(received.Haves())
 		ldh := len(received.DontHaves())
-		log.Debugf("ReceiveMessage from %s. Blocks: %d. Haves: %d. DontHaves: %d", s.Conn().RemotePeer(), lb, lh, ldh)
+		log.Debugf("ReceiveMessage from %s. Wantlist: %d. Blocks: %d. Haves: %d. DontHaves: %d", s.Conn().RemotePeer(), wl, lb, lh, ldh)
 		bsnet.connectEvtMgr.OnMessage(s.Conn().RemotePeer())
 		atomic.AddUint64(&bsnet.stats.MessagesRecvd, 1)
 		for _, v := range bsnet.receivers {
