@@ -386,6 +386,7 @@ func (bsnet *impl) SendMessage(
 
 	timeout := sendTimeout(outgoing.Size())
 	if err = bsnet.msgToStream(ctx, s, outgoing, timeout); err != nil {
+		log.Debugf("bitswap net SendMessage stream reset to %s error: %s", s.Conn().RemotePeer(), err)
 		_ = s.Reset()
 		return err
 	}
