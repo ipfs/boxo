@@ -302,6 +302,9 @@ func (bsnet *impl) msgToStream(ctx context.Context, s network.Stream, msg bsmsg.
 	bsnet.metrics.RequestsInFlight.Inc()
 	defer bsnet.metrics.RequestsInFlight.Dec()
 
+	wl := len(msg.Wantlist())
+	log.Debugf("sending message to %s. Wantlist: %d items", s.Conn().RemotePeer(), wl)
+
 	// Older Bitswap versions use a slightly different wire format so we need
 	// to convert the message to the appropriate format depending on the remote
 	// peer's Bitswap version.
