@@ -449,10 +449,12 @@ func (bsnet *impl) handleNewStream(s network.Stream) {
 	defer bsnet.metrics.RequestsInFlight.Dec()
 
 	if len(bsnet.receivers) == 0 {
+		log.Debugf("no receivers set for stream (%s)", s.Conn().RemotePeer())
 		_ = s.Reset()
 		return
 	}
 
+	log.Debugf("bitswap net handleNewStream from %s", s.Conn().RemotePeer())
 	reader := msgio.NewVarintReaderSize(s, network.MessageSizeMax)
 	for {
 		received, size, err := bsmsg.FromMsgReader(reader)
@@ -470,7 +472,10 @@ func (bsnet *impl) handleNewStream(s network.Stream) {
 		bsnet.metrics.ResponseSizes.Observe(float64(size))
 		p := s.Conn().RemotePeer()
 		ctx := context.Background()
-		log.Debugf("bitswap net handleNewStream from %s", s.Conn().RemotePeer())
+		lb := len(received.Blocks())
+		lh := len(received.Haves())
+		ldh := len(received.DontHaves())
+		log.Debugf("ReceiveMessage from %s. Blocks: %d. Haves: %d. DontHaves: %d", s.Conn().RemotePeer(), lb, lh, ldh)
 		bsnet.connectEvtMgr.OnMessage(s.Conn().RemotePeer())
 		atomic.AddUint64(&bsnet.stats.MessagesRecvd, 1)
 		for _, v := range bsnet.receivers {
