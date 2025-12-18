@@ -50,7 +50,7 @@ func NewFSKeystore(dir string) (*FSKeystore, error) {
 	err := os.Mkdir(dir, 0o700)
 	if err != nil {
 		if !errors.Is(err, fs.ErrExist) {
-			return nil, fmt.Errorf("cannot create keystore directory: %w", err)
+			return nil, fmt.Errorf("cannot create keystore directory %q: %w", dir, err)
 		}
 	}
 	return &FSKeystore{dir}, nil
@@ -118,7 +118,7 @@ func (ks *FSKeystore) Get(name string) (ci.PrivKey, error) {
 		if errors.Is(err, fs.ErrNotExist) {
 			return nil, ErrNoSuchKey
 		}
-		return nil, fmt.Errorf("cannot read file %q from keystore: %w", kp, err)
+		return nil, fmt.Errorf("cannot read keystore file %q: %w", kp, err)
 	}
 
 	privKey, err := ci.UnmarshalPrivateKey(data)
