@@ -147,9 +147,13 @@ func readProviderResponses(ctx context.Context, iter iter.ResultIter[types.Recor
 				continue
 			}
 
+			// Filter nil addresses as a defensive measure against corrupted data.
+			// See: https://github.com/ipfs/kubo/issues/11116
 			var addrs []multiaddr.Multiaddr
 			for _, a := range result.Addrs {
-				addrs = append(addrs, a.Multiaddr)
+				if a.Multiaddr != nil {
+					addrs = append(addrs, a.Multiaddr)
+				}
 			}
 
 			select {
@@ -175,9 +179,13 @@ func readProviderResponses(ctx context.Context, iter iter.ResultIter[types.Recor
 				continue
 			}
 
+			// Filter nil addresses as a defensive measure against corrupted data.
+			// See: https://github.com/ipfs/kubo/issues/11116
 			var addrs []multiaddr.Multiaddr
 			for _, a := range result.Addrs {
-				addrs = append(addrs, a.Multiaddr)
+				if a.Multiaddr != nil {
+					addrs = append(addrs, a.Multiaddr)
+				}
 			}
 
 			select {
