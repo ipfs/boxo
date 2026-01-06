@@ -22,6 +22,8 @@ The following emojis are used to highlight certain changes:
 
 ### Changed
 
+- `keystore`: improve error messages and include key file name [#1080](https://github.com/ipfs/boxo/pull/1080)
+
 ### Removed
 
 ### Fixed
