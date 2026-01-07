@@ -175,10 +175,10 @@ func TestFindProvidersAsync(t *testing.T) {
 	}
 
 	expected := []peer.AddrInfo{
-		{ID: p1},
-		{ID: p2},
-		{ID: p3},
-		{ID: p4},
+		{ID: p1, Addrs: []multiaddr.Multiaddr{}},
+		{ID: p2, Addrs: []multiaddr.Multiaddr{}},
+		{ID: p3, Addrs: []multiaddr.Multiaddr{}},
+		{ID: p4, Addrs: []multiaddr.Multiaddr{}},
 	}
 
 	require.Equal(t, expected, actualAIs)
