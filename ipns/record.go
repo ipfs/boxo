@@ -270,15 +270,7 @@ func NewRecord(sk ic.PrivKey, value path.Path, seq uint64, eol time.Time, ttl ti
 func newRecord(sk ic.PrivKey, value []byte, seq uint64, eol time.Time, ttl time.Duration, opts ...Option) (*Record, error) {
 	options := processOptions(opts...)
 
-	var metadata map[string]ipld.Node
-
-	if options.metadata != nil {
-		metadata = options.metadata
-	} else {
-		metadata = make(map[string]ipld.Node)
-	}
-
-	node, err := createNode(value, seq, eol, ttl, metadata)
+	node, err := createNode(value, seq, eol, ttl, options.metadata)
 	if err != nil {
 		return nil, err
 	}
