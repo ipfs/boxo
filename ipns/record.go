@@ -221,6 +221,7 @@ const (
 type options struct {
 	v1Compatibility bool
 	embedPublicKey  *bool
+	metadata        map[string]ipld.Node
 }
 
 type Option func(*options)
@@ -234,6 +235,12 @@ func WithV1Compatibility(compatible bool) Option {
 func WithPublicKey(embedded bool) Option {
 	return func(o *options) {
 		o.embedPublicKey = &embedded
+	}
+}
+
+func WithMetadata(metadata map[string]ipld.Node) Option {
+	return func(o *options) {
+		o.metadata = metadata
 	}
 }
 
@@ -263,7 +270,15 @@ func NewRecord(sk ic.PrivKey, value path.Path, seq uint64, eol time.Time, ttl ti
 func newRecord(sk ic.PrivKey, value []byte, seq uint64, eol time.Time, ttl time.Duration, opts ...Option) (*Record, error) {
 	options := processOptions(opts...)
 
-	node, err := createNode(value, seq, eol, ttl)
+	var metadata map[string]ipld.Node
+
+	if options.metadata != nil {
+		metadata = options.metadata
+	} else {
+		metadata = make(map[string]ipld.Node)
+	}
+
+	node, err := createNode(value, seq, eol, ttl, metadata)
 	if err != nil {
 		return nil, err
 	}
@@ -332,9 +347,17 @@ func newRecord(sk ic.PrivKey, value []byte, seq uint64, eol time.Time, ttl time.
 	}, nil
 }
 
-func createNode(value []byte, seq uint64, eol time.Time, ttl time.Duration) (datamodel.Node, error) {
+func createNode(value []byte, seq uint64, eol time.Time, ttl time.Duration, metadata map[string]ipld.Node) (datamodel.Node, error) {
 	m := make(map[string]ipld.Node)
 	var keys []string
+
+	// copy metadata values first - so if there is naming conflict,
+	// reserved keys are overwritten with proper values
+
+	for key, value := range metadata {
+		m[key] = value
+		keys = append(keys, key)
+	}
 
 	m[cborValueKey] = basicnode.NewBytes(value)
 	keys = append(keys, cborValueKey)
