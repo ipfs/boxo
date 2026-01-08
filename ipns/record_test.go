@@ -10,6 +10,7 @@ import (
 	"github.com/ipfs/boxo/path"
 	"github.com/ipfs/boxo/util"
 	"github.com/ipfs/go-cid"
+	"github.com/ipld/go-ipld-prime"
 	"github.com/ipld/go-ipld-prime/codec/dagcbor"
 	basicnode "github.com/ipld/go-ipld-prime/node/basic"
 	ic "github.com/libp2p/go-libp2p/core/crypto"
@@ -214,7 +215,29 @@ func TestCBORDataSerialization(t *testing.T) {
 	seq := uint64(1)
 	ttl := time.Hour
 
-	rec := mustNewRecord(t, sk, path, seq, eol, ttl)
+	// custom metadata - one bytes entry and one map entry
+	metadata := make(map[string]ipld.Node)
+	metadata["CustomKey"] = basicnode.NewBytes([]byte("test"))
+
+	customMapEntries := map[string]string{"long-key": "test", "key2": "test", "key1": "test"}
+
+	nodeBuilder := basicnode.Prototype__Map{}.NewBuilder()
+	mapAssembler, err := nodeBuilder.BeginMap(1)
+	require.NoError(t, err)
+
+	for key, value := range customMapEntries {
+		err = mapAssembler.AssembleKey().AssignString(key)
+		require.NoError(t, err)
+		err = mapAssembler.AssembleValue().AssignString(value)
+		require.NoError(t, err)
+	}
+
+	err = mapAssembler.Finish()
+	require.NoError(t, err)
+
+	metadata["CustomKeyMap"] = nodeBuilder.Build()
+
+	rec := mustNewRecord(t, sk, path, seq, eol, ttl, WithMetadata(metadata))
 
 	builder := basicnode.Prototype__Map{}.NewBuilder()
 	err = dagcbor.Decode(builder, bytes.NewReader(rec.pb.GetData()))
@@ -250,13 +273,38 @@ func TestCBORDataSerialization(t *testing.T) {
 			ttlVal, err := v.AsInt()
 			require.NoError(t, err)
 			require.Equal(t, ttl, time.Duration(ttlVal))
+
+		case "CustomKey":
+			customKeyVal, err := v.AsBytes()
+			require.NoError(t, err)
+			require.Equal(t, customKeyVal, []byte("test"))
+
+		case "CustomKeyMap":
+			customKeyMapIterator := v.MapIterator()
+			var customKeyMapFields []string
+
+			for !customKeyMapIterator.Done() {
+				mapKey, _, err := customKeyMapIterator.Next()
+				require.NoError(t, err)
+				mapKeyStr, err := mapKey.AsString()
+				require.NoError(t, err)
+				customKeyMapFields = append(customKeyMapFields, mapKeyStr)
+			}
+
+			expectedOrder := []string{"key1", "key2", "long-key"}
+			require.Len(t, customKeyMapFields, len(expectedOrder))
+			for i, f := range customKeyMapFields {
+				expected := expectedOrder[i]
+				assert.Equal(t, expected, f)
+			}
+
 		}
 
 		fields = append(fields, kStr)
 	}
 
 	// Ensure correct key order, i.e., by length then value.
-	expectedOrder := []string{"TTL", "Value", "Sequence", "Validity", "ValidityType"}
+	expectedOrder := []string{"TTL", "Value", "Sequence", "Validity", "CustomKey", "CustomKeyMap", "ValidityType"}
 	require.Len(t, fields, len(expectedOrder))
 	for i, f := range fields {
 		expected := expectedOrder[i]
