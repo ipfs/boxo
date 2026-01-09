@@ -1,3 +1,5 @@
+//go:build go1.25
+
 package decision
 
 import (
@@ -27,6 +29,16 @@ import (
 	libp2ptest "github.com/libp2p/go-libp2p/core/test"
 	mh "github.com/multiformats/go-multihash"
 )
+
+// numBytesSentTo returns the total bytes sent to peer p according to the ledger.
+func (e *Engine) numBytesSentTo(p peer.ID) uint64 {
+	return e.LedgerForPeer(p).Sent
+}
+
+// numBytesReceivedFrom returns the total bytes received from peer p according to the ledger.
+func (e *Engine) numBytesReceivedFrom(p peer.ID) uint64 {
+	return e.LedgerForPeer(p).Recv
+}
 
 type peerTag struct {
 	done  chan struct{}
