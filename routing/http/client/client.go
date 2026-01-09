@@ -14,7 +14,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/filecoin-project/go-clock"
 	ipns "github.com/ipfs/boxo/ipns"
 	"github.com/ipfs/boxo/routing/http/contentrouter"
 	"github.com/ipfs/boxo/routing/http/filters"
@@ -68,7 +67,6 @@ const (
 type Client struct {
 	baseURL    string
 	httpClient httpClient
-	clock      clock.Clock
 	accepts    string
 
 	peerID   peer.ID
@@ -207,7 +205,6 @@ func New(baseURL string, opts ...Option) (*Client, error) {
 	client := &Client{
 		baseURL:        normalizedURL,
 		httpClient:     newDefaultHTTPClient(defaultUserAgent),
-		clock:          clock.New(),
 		accepts:        strings.Join([]string{mediaTypeNDJSON, mediaTypeJSON}, ","),
 		protocolFilter: DefaultProtocolFilter, // can be customized via WithProtocolFilter
 	}
@@ -271,11 +268,11 @@ func (c *Client) FindProviders(ctx context.Context, key cid.Cid) (providers iter
 
 	m.host = req.Host
 
-	start := c.clock.Now()
+	start := time.Now()
 	resp, err := c.httpClient.Do(req)
 
 	m.err = err
-	m.latency = c.clock.Since(start)
+	m.latency = time.Since(start)
 
 	if err != nil {
 		m.record(ctx)
@@ -355,7 +352,7 @@ func (c *Client) ProvideBitswap(ctx context.Context, keys []cid.Cid, ttl time.Du
 		ks[i] = types.CID{Cid: c}
 	}
 
-	now := c.clock.Now()
+	now := time.Now()
 
 	req := types.WriteBitswapRecord{
 		Protocol: "transport-bitswap",
@@ -457,11 +454,11 @@ func (c *Client) FindPeers(ctx context.Context, pid peer.ID) (peers iter.ResultI
 
 	m.host = req.Host
 
-	start := c.clock.Now()
+	start := time.Now()
 	resp, err := c.httpClient.Do(req)
 
 	m.err = err
-	m.latency = c.clock.Since(start)
+	m.latency = time.Since(start)
 
 	if err != nil {
 		m.record(ctx)
@@ -657,9 +654,9 @@ func (c *Client) GetClosestPeers(ctx context.Context, key cid.Cid) (peers iter.R
 	req.Header.Set("Accept", c.accepts)
 
 	m.host = req.Host
-	start := c.clock.Now()
+	start := time.Now()
 	resp, err := c.httpClient.Do(req)
-	m.latency = c.clock.Since(start)
+	m.latency = time.Since(start)
 	m.err = err
 
 	if err != nil {
