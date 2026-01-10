@@ -40,7 +40,6 @@ func init() {
 	wg.Add(len(tmpls))
 
 	for _, tmpl := range tmpls {
-		tmpl := tmpl
 		go func() {
 			defer wg.Done()
 			var err error
