@@ -30,9 +30,7 @@ import (
 
 func TestEmptyNode(t *testing.T) {
 	n := ft.EmptyDirNode()
-	if len(n.Links()) != 0 {
-		t.Fatal("empty node should have 0 links")
-	}
+	require.Zero(t, len(n.Links()), "empty node should have 0 links")
 }
 
 func TestDirectoryGrowth(t *testing.T) {
@@ -48,35 +46,25 @@ func TestDirectoryGrowth(t *testing.T) {
 
 	nelems := 10000
 
-	for i := 0; i < nelems; i++ {
-		err := dir.AddChild(ctx, fmt.Sprintf("dir%d", i), d)
-		if err != nil {
-			t.Fatal(err)
-		}
+	for i := range nelems {
+		err = dir.AddChild(ctx, fmt.Sprintf("dir%d", i), d)
+		require.NoError(t, err)
 	}
 
 	_, err = dir.GetNode()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	links, err := dir.Links(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
-	if len(links) != nelems {
-		t.Fatal("didnt get right number of elements")
-	}
+	require.Len(t, links, nelems, "didnt get right number of elements")
 
 	dirc := d.Cid()
 
 	names := make(map[string]bool)
 	for _, l := range links {
 		names[l.Name] = true
-		if !l.Cid.Equals(dirc) {
-			t.Fatal("link wasnt correct")
-		}
+		require.True(t, l.Cid.Equals(dirc), "link wasnt correct")
 	}
 
 	for i := 0; i < nelems; i++ {
@@ -85,48 +73,34 @@ func TestDirectoryGrowth(t *testing.T) {
 			t.Fatal("didnt find directory: ", dn)
 		}
 
-		_, err := dir.Find(context.Background(), dn)
-		if err != nil {
-			t.Fatal(err)
-		}
+		_, err = dir.Find(context.Background(), dn)
+		require.NoError(t, err)
 	}
 }
 
 func TestDuplicateAddDir(t *testing.T) {
 	ds := mdtest.Mock()
 	dir, err := NewDirectory(ds)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	ctx := context.Background()
 	nd := ft.EmptyDirNode()
 
 	err = dir.AddChild(ctx, "test", nd)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	err = dir.AddChild(ctx, "test", nd)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	lnks, err := dir.Links(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
-	if len(lnks) != 1 {
-		t.Fatal("expected only one link")
-	}
+	require.Len(t, lnks, 1, "expected only one link")
 }
 
 func TestBasicDirectory_estimatedSize(t *testing.T) {
 	ds := mdtest.Mock()
 	basicDir, err := NewBasicDirectory(ds)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	testDirectorySizeEstimation(t, basicDir, ds, func(dir Directory) int {
 		return dir.(*BasicDirectory).estimatedSize
@@ -462,9 +436,7 @@ func sortLinksByName(links []*ipld.Link) {
 func TestDirBuilder(t *testing.T) {
 	ds := mdtest.Mock()
 	dir, err := NewDirectory(ds)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	ctx := context.Background()
 
 	child := ft.EmptyDirNode()
@@ -474,51 +446,37 @@ func TestDirBuilder(t *testing.T) {
 	count := 5000
 
 	for i := 0; i < count; i++ {
-		err := dir.AddChild(ctx, fmt.Sprintf("entry %d", i), child)
-		if err != nil {
-			t.Fatal(err)
-		}
+		err = dir.AddChild(ctx, fmt.Sprintf("entry %d", i), child)
+		require.NoError(t, err)
 	}
 
 	dirnd, err := dir.GetNode()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	links, err := dir.Links(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
-	if len(links) != count {
-		t.Fatal("not enough links dawg", len(links), count)
-	}
+	require.Len(t, links, count, "not enough links")
 
 	adir, err := NewDirectoryFromNode(ds, dirnd)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	links, err = adir.Links(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
-	names := make(map[string]bool)
+	names := make(map[string]bool, len(links))
 	for _, lnk := range links {
 		names[lnk.Name] = true
 	}
 
-	for i := 0; i < count; i++ {
+	for i := range count {
 		n := fmt.Sprintf("entry %d", i)
 		if !names[n] {
 			t.Fatal("COULDNT FIND: ", n)
 		}
 	}
 
-	if len(links) != count {
-		t.Fatal("wrong number of links", len(links), count)
-	}
+	require.Len(t, links, count, "wrong number of links")
 
 	linkResults := dir.EnumLinksAsync(ctx)
 
@@ -526,9 +484,7 @@ func TestDirBuilder(t *testing.T) {
 	var asyncLinks []*ipld.Link
 
 	for linkResult := range linkResults {
-		if linkResult.Err != nil {
-			t.Fatal(linkResult.Err)
-		}
+		require.NoError(t, linkResult.Err)
 		asyncNames[linkResult.Link.Name] = true
 		asyncLinks = append(asyncLinks, linkResult.Link)
 	}
@@ -540,9 +496,7 @@ func TestDirBuilder(t *testing.T) {
 		}
 	}
 
-	if len(asyncLinks) != count {
-		t.Fatal("wrong number of links", len(asyncLinks), count)
-	}
+	require.Len(t, asyncLinks, count, "wrong number of links")
 }
 
 func TestBasicDirectoryWithMaxLinks(t *testing.T) {

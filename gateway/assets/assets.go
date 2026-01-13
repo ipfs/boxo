@@ -194,8 +194,8 @@ func HasDNSLinkOrigin(gwURL string, path string) bool {
 
 func stripPort(hostname string) string {
 	host, _, err := net.SplitHostPort(hostname)
-	if err == nil {
-		return host
+	if err != nil {
+		return hostname
 	}
-	return hostname
+	return host
 }
