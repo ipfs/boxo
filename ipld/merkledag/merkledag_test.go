@@ -838,7 +838,7 @@ func TestRawToJson(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var res interface{}
+	var res any
 	err = json.Unmarshal(encoded, &res)
 	if err != nil {
 		t.Fatal(err)

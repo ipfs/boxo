@@ -23,7 +23,6 @@ var bSizes = []bencSpec{
 
 func benchmarkChunker(b *testing.B, ns newSplitter) {
 	for _, s := range bSizes {
-		s := s
 		b.Run(s.name, func(b *testing.B) {
 			benchmarkChunkerSize(b, ns, s.size)
 		})
