@@ -8,13 +8,16 @@ import (
 	"strings"
 )
 
-const (
-	// DefaultBlockSize is the chunk size that splitters produce (or aim to).
-	DefaultBlockSize int64 = 1024 * 256
+// DefaultBlockSize is the chunk size that splitters produce (or aim to).
+// Can be modified to change the default for all subsequent chunker operations.
+// For CID-deterministic imports, prefer using UnixFSProfile presets from
+// ipld/unixfs/io/profile.go which set this and other related globals.
+var DefaultBlockSize int64 = 1024 * 256
 
-	// No leaf block should contain more than 1MiB of payload data ( wrapping overhead aside )
-	// This effectively mandates the maximum chunk size
-	// See discussion at https://github.com/ipfs/boxo/chunker/pull/21#discussion_r369124879 for background
+const (
+	// ChunkSizeLimit is the maximum allowed chunk size.
+	// No leaf block should contain more than 1MiB of payload data (wrapping overhead aside).
+	// See discussion at https://github.com/ipfs/boxo/chunker/pull/21#discussion_r369124879
 	ChunkSizeLimit int = 1048576
 )
 
