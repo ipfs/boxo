@@ -713,3 +713,280 @@ func (d *countGetsDS) AllKeysChan(ctx context.Context) (<-chan cid.Cid, error) {
 	}
 	return d.Blockstore.AllKeysChan(ctx)
 }
+
+// TestSizeEstimationMode tests that all estimation modes work correctly.
+func TestSizeEstimationMode(t *testing.T) {
+	// Save and restore global settings after all subtests
+	oldEstimation := HAMTSizeEstimation
+	oldShardingSize := HAMTShardingSize
+	oldLinkSize := linksize.LinkSizeFunction
+	t.Cleanup(func() {
+		HAMTSizeEstimation = oldEstimation
+		HAMTShardingSize = oldShardingSize
+		linksize.LinkSizeFunction = oldLinkSize
+	})
+
+	t.Run("links mode is default", func(t *testing.T) {
+		HAMTSizeEstimation = SizeEstimationLinks // ensure default
+		ds := mdtest.Mock()
+		dir, err := NewBasicDirectory(ds)
+		require.NoError(t, err)
+		assert.Equal(t, SizeEstimationLinks, dir.GetSizeEstimationMode())
+	})
+
+	t.Run("block mode can be set globally", func(t *testing.T) {
+		HAMTSizeEstimation = SizeEstimationBlock
+		ds := mdtest.Mock()
+		dir, err := NewBasicDirectory(ds)
+		require.NoError(t, err)
+		assert.Equal(t, SizeEstimationBlock, dir.GetSizeEstimationMode())
+	})
+
+	t.Run("disabled mode can be set globally", func(t *testing.T) {
+		HAMTSizeEstimation = SizeEstimationDisabled
+		ds := mdtest.Mock()
+		dir, err := NewBasicDirectory(ds)
+		require.NoError(t, err)
+		assert.Equal(t, SizeEstimationDisabled, dir.GetSizeEstimationMode())
+	})
+
+	t.Run("WithSizeEstimationMode overrides global", func(t *testing.T) {
+		HAMTSizeEstimation = SizeEstimationLinks
+		ds := mdtest.Mock()
+		dir, err := NewBasicDirectory(ds, WithSizeEstimationMode(SizeEstimationBlock))
+		require.NoError(t, err)
+		assert.Equal(t, SizeEstimationBlock, dir.GetSizeEstimationMode())
+	})
+
+	t.Run("SetSizeEstimationMode changes mode", func(t *testing.T) {
+		HAMTSizeEstimation = SizeEstimationLinks
+		ds := mdtest.Mock()
+		dir, err := NewBasicDirectory(ds)
+		require.NoError(t, err)
+		assert.Equal(t, SizeEstimationLinks, dir.GetSizeEstimationMode())
+
+		dir.SetSizeEstimationMode(SizeEstimationBlock)
+		assert.Equal(t, SizeEstimationBlock, dir.GetSizeEstimationMode())
+
+		dir.SetSizeEstimationMode(SizeEstimationDisabled)
+		assert.Equal(t, SizeEstimationDisabled, dir.GetSizeEstimationMode())
+	})
+}
+
+// TestSizeEstimationBlockMode tests that block estimation mode correctly
+// calculates serialized dag-pb block size for HAMT threshold decisions.
+func TestSizeEstimationBlockMode(t *testing.T) {
+	// Save and restore global settings
+	oldEstimation := HAMTSizeEstimation
+	oldShardingSize := HAMTShardingSize
+	oldLinkSize := linksize.LinkSizeFunction
+	t.Cleanup(func() {
+		HAMTSizeEstimation = oldEstimation
+		HAMTShardingSize = oldShardingSize
+		linksize.LinkSizeFunction = oldLinkSize
+	})
+
+	ds := mdtest.Mock()
+	ctx := context.Background()
+
+	// Create a child node to add to directories
+	child := ft.EmptyDirNode()
+	require.NoError(t, ds.Add(ctx, child))
+
+	t.Run("block estimation uses full serialized size", func(t *testing.T) {
+		// Set a threshold that will be exceeded with accurate block estimation
+		// but not with legacy link estimation
+		HAMTShardingSize = 500
+		HAMTSizeEstimation = SizeEstimationBlock
+
+		dir, err := NewDirectory(ds, WithSizeEstimationMode(SizeEstimationBlock))
+		require.NoError(t, err)
+
+		// Add entries until we're near the threshold
+		for i := range 10 {
+			err = dir.AddChild(ctx, fmt.Sprintf("entry-%03d", i), child)
+			require.NoError(t, err)
+		}
+
+		// Get the node and check its actual serialized size
+		node, err := dir.GetNode()
+		require.NoError(t, err)
+
+		pn, ok := node.(*mdag.ProtoNode)
+		if ok {
+			data, err := pn.EncodeProtobuf(false)
+			require.NoError(t, err)
+			t.Logf("actual block size with 10 entries: %d bytes", len(data))
+		}
+	})
+
+	t.Run("links mode regression", func(t *testing.T) {
+		// Verify that links mode produces the same behavior as before
+		HAMTShardingSize = 1000
+		HAMTSizeEstimation = SizeEstimationLinks
+		linksize.LinkSizeFunction = productionLinkSize
+
+		dir, err := NewDirectory(ds)
+		require.NoError(t, err)
+
+		// Add entries and verify we stay as BasicDirectory with links mode
+		for i := range 10 {
+			err = dir.AddChild(ctx, fmt.Sprintf("entry-%03d", i), child)
+			require.NoError(t, err)
+		}
+
+		// Should still be BasicDirectory with this threshold
+		checkBasicDirectory(t, dir, "should be BasicDirectory with links estimation")
+	})
+}
+
+// TestSizeEstimationDisabled tests that disabled mode ignores size-based threshold.
+func TestSizeEstimationDisabled(t *testing.T) {
+	// Save and restore global settings
+	oldEstimation := HAMTSizeEstimation
+	oldShardingSize := HAMTShardingSize
+	oldLinkSize := linksize.LinkSizeFunction
+	t.Cleanup(func() {
+		HAMTSizeEstimation = oldEstimation
+		HAMTShardingSize = oldShardingSize
+		linksize.LinkSizeFunction = oldLinkSize
+	})
+
+	ds := mdtest.Mock()
+	ctx := context.Background()
+
+	child := ft.EmptyDirNode()
+	require.NoError(t, ds.Add(ctx, child))
+
+	t.Run("disabled mode ignores size threshold", func(t *testing.T) {
+		// Set a very low threshold that would normally trigger HAMT
+		HAMTShardingSize = 100
+		HAMTSizeEstimation = SizeEstimationDisabled
+
+		// Create directory with disabled mode and no MaxLinks set
+		dir, err := NewDirectory(ds, WithSizeEstimationMode(SizeEstimationDisabled))
+		require.NoError(t, err)
+
+		// Add many entries - should stay as BasicDirectory since
+		// SizeEstimationDisabled ignores size-based threshold
+		for i := range 20 {
+			err = dir.AddChild(ctx, fmt.Sprintf("entry-%03d", i), child)
+			require.NoError(t, err)
+		}
+
+		// Should remain BasicDirectory (no MaxLinks constraint set)
+		checkBasicDirectory(t, dir, "should be BasicDirectory when size estimation is disabled and MaxLinks not set")
+	})
+
+	t.Run("disabled mode respects MaxLinks", func(t *testing.T) {
+		HAMTShardingSize = 100
+		HAMTSizeEstimation = SizeEstimationDisabled
+
+		// Create directory with disabled mode but MaxLinks set
+		dir, err := NewDirectory(ds,
+			WithSizeEstimationMode(SizeEstimationDisabled),
+			WithMaxLinks(5))
+		require.NoError(t, err)
+
+		// Add entries up to MaxLinks
+		for i := range 5 {
+			err = dir.AddChild(ctx, fmt.Sprintf("entry-%03d", i), child)
+			require.NoError(t, err)
+		}
+		checkBasicDirectory(t, dir, "should be BasicDirectory at MaxLinks")
+
+		// Adding one more should trigger HAMT conversion
+		err = dir.AddChild(ctx, "entry-005", child)
+		require.NoError(t, err)
+		checkHAMTDirectory(t, dir, "should be HAMTDirectory after exceeding MaxLinks")
+	})
+}
+
+// TestBlockSizeCalculation verifies the helper functions for block size calculation.
+func TestBlockSizeCalculation(t *testing.T) {
+	t.Run("varintLen", func(t *testing.T) {
+		// Test varint length calculation
+		assert.Equal(t, 1, varintLen(0))
+		assert.Equal(t, 1, varintLen(127))
+		assert.Equal(t, 2, varintLen(128))
+		assert.Equal(t, 2, varintLen(16383))
+		assert.Equal(t, 3, varintLen(16384))
+	})
+
+	t.Run("linkSerializedSize includes all fields", func(t *testing.T) {
+		// Create a test CID
+		c, err := cid.Decode("QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG")
+		require.NoError(t, err)
+
+		// Calculate size with linkSerializedSize
+		blockSize := linkSerializedSize("test-name", c, 1024)
+
+		// Compare with legacy linksize calculation
+		legacySize := productionLinkSize("test-name", c)
+
+		// Block size should be larger because it includes:
+		// - Tsize field
+		// - Protobuf overhead (field tags, length prefixes)
+		assert.Greater(t, blockSize, legacySize,
+			"block serialized size should be larger than legacy link size")
+
+		t.Logf("legacy size: %d, block size: %d", legacySize, blockSize)
+	})
+
+	t.Run("calculateBlockSize matches actual encoding", func(t *testing.T) {
+		ds := mdtest.Mock()
+		ctx := context.Background()
+
+		basicDir, err := NewBasicDirectory(ds)
+		require.NoError(t, err)
+
+		child := ft.EmptyDirNode()
+		require.NoError(t, ds.Add(ctx, child))
+
+		// Add some entries
+		for i := range 5 {
+			err = basicDir.AddChild(ctx, fmt.Sprintf("file-%d", i), child)
+			require.NoError(t, err)
+		}
+
+		// Calculate size using our function
+		calculatedSize, err := calculateBlockSize(basicDir.node)
+		require.NoError(t, err)
+
+		// Get actual encoded size
+		data, err := basicDir.node.EncodeProtobuf(false)
+		require.NoError(t, err)
+		actualSize := len(data)
+
+		assert.Equal(t, actualSize, calculatedSize,
+			"calculateBlockSize should match actual encoded size")
+	})
+}
+
+// TestHAMTDirectorySizeEstimationMode tests that HAMTDirectory respects
+// the size estimation mode for conversion back to BasicDirectory.
+func TestHAMTDirectorySizeEstimationMode(t *testing.T) {
+	ds := mdtest.Mock()
+
+	t.Run("HAMTDirectory GetSizeEstimationMode defaults to global", func(t *testing.T) {
+		oldEstimation := HAMTSizeEstimation
+		defer func() { HAMTSizeEstimation = oldEstimation }()
+
+		HAMTSizeEstimation = SizeEstimationBlock
+		hamtDir, err := NewHAMTDirectory(ds, 0)
+		require.NoError(t, err)
+		assert.Equal(t, SizeEstimationBlock, hamtDir.GetSizeEstimationMode())
+	})
+
+	t.Run("HAMTDirectory SetSizeEstimationMode overrides global", func(t *testing.T) {
+		oldEstimation := HAMTSizeEstimation
+		defer func() { HAMTSizeEstimation = oldEstimation }()
+
+		HAMTSizeEstimation = SizeEstimationLinks
+		hamtDir, err := NewHAMTDirectory(ds, 0)
+		require.NoError(t, err)
+
+		hamtDir.SetSizeEstimationMode(SizeEstimationBlock)
+		assert.Equal(t, SizeEstimationBlock, hamtDir.GetSizeEstimationMode())
+	})
+}

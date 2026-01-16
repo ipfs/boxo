@@ -3,6 +3,8 @@ package io
 import (
 	"context"
 	"errors"
+	"fmt"
+	"math/bits"
 	"os"
 	"time"
 
@@ -29,6 +31,70 @@ var HAMTShardingSize = int(256 * units.KiB)
 // DefaultShardWidth is the default value used for hamt sharding width.
 // Needs to be a power of two (shard entry size) and multiple of 8 (bitfield size).
 var DefaultShardWidth = 256
+
+// SizeEstimationMode defines how directory size is estimated for HAMT sharding decisions.
+// If unsure which mode to use, prefer SizeEstimationBlock for accurate estimation.
+type SizeEstimationMode int
+
+const (
+	// SizeEstimationLinks estimates size using link names + CID byte lengths.
+	// This is the legacy behavior: sum(len(link.Name) + len(link.Cid.Bytes()))
+	// This mode ignores Tsize, protobuf overhead, and optional metadata fields
+	// (mode, mtime), which may lead to underestimation and delayed HAMT conversion.
+	// Use only when compatibility with legacy DAGs and software is required.
+	SizeEstimationLinks SizeEstimationMode = iota
+
+	// SizeEstimationBlock estimates size using full serialized dag-pb block size.
+	// This correctly accounts for all fields including Tsize, protobuf varints,
+	// and optional metadata (mode, mtime). Use this mode for accurate HAMT
+	// threshold decisions and cross-implementation CID determinism.
+	SizeEstimationBlock
+
+	// SizeEstimationDisabled disables size-based HAMT threshold entirely.
+	// When set, the decision to convert between BasicDirectory and HAMTDirectory
+	// is based solely on the number of links, controlled by MaxLinks option
+	// (set via WithMaxLinks). HAMTShardingSize is ignored. Use this mode when
+	// you want explicit control over directory sharding based on entry count
+	// rather than serialized size.
+	SizeEstimationDisabled
+)
+
+// HAMTSizeEstimation controls which method is used to estimate directory size
+// for HAMT sharding decisions. Default is SizeEstimationLinks for backward compatibility.
+// Modern software should set this to SizeEstimationBlock for accurate estimation.
+var HAMTSizeEstimation = SizeEstimationLinks
+
+// varintLen returns the encoded size of a protobuf varint.
+func varintLen(v uint64) int {
+	return int(9*uint32(bits.Len64(v))+64) / 64
+}
+
+// linkSerializedSize returns the exact number of bytes a link adds to a PBNode
+// protobuf encoding. Used for accurate block size estimation.
+func linkSerializedSize(name string, c cid.Cid, tsize uint64) int {
+	cidLen := len(c.Bytes())
+	nameLen := len(name)
+
+	// PBLink encoding (all field tags are 1 byte since field numbers < 16):
+	// - Hash (field 1, bytes): tag(1) + len_varint + cid_bytes
+	// - Name (field 2, string): tag(1) + len_varint + name_bytes
+	// - Tsize (field 3, varint): tag(1) + varint
+	linkLen := 1 + varintLen(uint64(cidLen)) + cidLen +
+		1 + varintLen(uint64(nameLen)) + nameLen +
+		1 + varintLen(tsize)
+
+	// Wrapper in PBNode.Links (field 2): tag(1) + len_varint + message
+	return 1 + varintLen(uint64(linkLen)) + linkLen
+}
+
+// calculateBlockSize returns the actual size of the serialized dag-pb block.
+func calculateBlockSize(node *mdag.ProtoNode) (int, error) {
+	data, err := node.EncodeProtobuf(false)
+	if err != nil {
+		return 0, fmt.Errorf("failed to encode directory node: %w", err)
+	}
+	return len(data), nil
+}
 
 // Directory defines a UnixFS directory. It is used for creating, reading and
 // editing directories. It allows to work with different directory schemes,
@@ -89,6 +155,16 @@ type Directory interface {
 	// SetStat sets the stat information for the directory. Used when
 	// converting between Basic and HAMT.
 	SetStat(os.FileMode, time.Time)
+
+	// SetSizeEstimationMode sets the method used to estimate serialized dag-pb block size
+	// when deciding whether to convert between BasicDirectory and HAMTDirectory.
+	// If not set, the global HAMTSizeEstimation is used.
+	SetSizeEstimationMode(SizeEstimationMode)
+
+	// GetSizeEstimationMode returns the method used to estimate serialized dag-pb block size
+	// for directory type conversion decisions.
+	// Returns the instance-specific mode if set, otherwise the global HAMTSizeEstimation.
+	GetSizeEstimationMode() SizeEstimationMode
 }
 
 // A DirectoryOption can be used to initialize directories.
@@ -146,6 +222,14 @@ func WithStat(mode os.FileMode, mtime time.Time) DirectoryOption {
 	}
 }
 
+// WithSizeEstimationMode sets the method used to estimate serialized dag-pb block size
+// when deciding whether to convert between BasicDirectory and HAMTDirectory.
+func WithSizeEstimationMode(mode SizeEstimationMode) DirectoryOption {
+	return func(d Directory) {
+		d.SetSizeEstimationMode(mode)
+	}
+}
+
 // TODO: Evaluate removing `dserv` from this layer and providing it in MFS.
 // (The functions should in that case add a `DAGService` argument.)
 
@@ -172,12 +256,17 @@ type BasicDirectory struct {
 	dserv ipld.DAGService
 
 	// Internal variable used to cache the estimated size of the basic directory:
-	// for each link, aggregate link name + link CID. DO NOT CHANGE THIS
-	// as it will affect the HAMT transition behavior in HAMTShardingSize.
+	// for each link, aggregate link name + link CID. Used for SizeEstimationLinks mode.
+	// DO NOT CHANGE THIS as it will affect the HAMT transition behavior in HAMTShardingSize.
 	// (We maintain this value up to date even if the HAMTShardingSize is off
 	// since potentially the option could be activated on the fly.)
 	estimatedSize int
-	totalLinks    int
+
+	// Cached block size for SizeEstimationBlock mode. Updated incrementally
+	// when links are added/removed.
+	cachedBlockSize int
+
+	totalLinks int
 
 	// opts
 	// maxNumberOfLinks. If set, can trigger conversion to HAMT directory.
@@ -186,6 +275,9 @@ type BasicDirectory struct {
 	cidBuilder    cid.Builder
 	mode          os.FileMode
 	mtime         time.Time
+
+	// Size estimation mode. If nil, falls back to global HAMTSizeEstimation.
+	sizeEstimation *SizeEstimationMode
 }
 
 // HAMTDirectory is the HAMT implementation of `Directory`.
@@ -205,6 +297,9 @@ type HAMTDirectory struct {
 	// for the HAMTShardingSize option.
 	sizeChange int
 	totalLinks int
+
+	// Size estimation mode. If nil, falls back to global HAMTSizeEstimation.
+	sizeEstimation *SizeEstimationMode
 }
 
 // NewBasicDirectory creates an empty basic directory with the given options.
@@ -372,6 +467,26 @@ func (d *BasicDirectory) SetStat(mode os.FileMode, mtime time.Time) {
 	}
 }
 
+// SetSizeEstimationMode sets the method used to estimate serialized dag-pb block size
+// when deciding whether to convert between BasicDirectory and HAMTDirectory.
+func (d *BasicDirectory) SetSizeEstimationMode(mode SizeEstimationMode) {
+	d.sizeEstimation = &mode
+	if mode == SizeEstimationBlock && d.node != nil {
+		// Initialize cached block size for accurate tracking
+		d.cachedBlockSize, _ = calculateBlockSize(d.node)
+	}
+}
+
+// GetSizeEstimationMode returns the method used to estimate serialized dag-pb block size
+// for BasicDirectory to HAMTDirectory conversion decisions.
+// Returns the instance-specific mode if set, otherwise the global HAMTSizeEstimation.
+func (d *BasicDirectory) GetSizeEstimationMode() SizeEstimationMode {
+	if d.sizeEstimation != nil {
+		return *d.sizeEstimation
+	}
+	return HAMTSizeEstimation // fall back to global
+}
+
 func (d *BasicDirectory) computeEstimatedSizeAndTotalLinks() {
 	d.estimatedSize = 0
 	// err is just breaking the iteration and we always return nil
@@ -422,6 +537,24 @@ func (d *BasicDirectory) needsToSwitchToHAMTDir(name string, nodeToAdd ipld.Node
 		return false, nil
 	}
 
+	switch d.GetSizeEstimationMode() {
+	case SizeEstimationDisabled:
+		return d.needsToSwitchByLinkCount(name, nodeToAdd)
+	case SizeEstimationBlock:
+		return d.needsToSwitchByBlockSize(name, nodeToAdd)
+	default:
+		return d.needsToSwitchByLinkSize(name, nodeToAdd)
+	}
+}
+
+// needsToSwitchByLinkCount only considers MaxLinks, ignoring size-based threshold.
+func (d *BasicDirectory) needsToSwitchByLinkCount(name string, nodeToAdd ipld.Node) (bool, error) {
+	entryToRemove, _ := d.node.GetNodeLink(name)
+	return d.checkMaxLinksExceeded(nodeToAdd, entryToRemove), nil
+}
+
+// needsToSwitchByLinkSize uses the legacy estimation based on link names + CID bytes.
+func (d *BasicDirectory) needsToSwitchByLinkSize(name string, nodeToAdd ipld.Node) (bool, error) {
 	operationSizeChange := 0
 	// Find if there is an old entry under that name that will be overwritten.
 	entryToRemove, err := d.node.GetNodeLink(name)
@@ -436,21 +569,81 @@ func (d *BasicDirectory) needsToSwitchToHAMTDir(name string, nodeToAdd ipld.Node
 	}
 
 	switchShardingSize := d.estimatedSize+operationSizeChange >= HAMTShardingSize
-	switchMaxLinks := false
-	// We should switch if maxLinks is set, we have reached it and a new link is being
-	// added.
+	switchMaxLinks := d.checkMaxLinksExceeded(nodeToAdd, entryToRemove)
+	return switchShardingSize || switchMaxLinks, nil
+}
+
+// needsToSwitchByBlockSize uses accurate estimation based on full serialized dag-pb block size.
+func (d *BasicDirectory) needsToSwitchByBlockSize(name string, nodeToAdd ipld.Node) (bool, error) {
+	link, err := ipld.MakeLink(nodeToAdd)
+	if err != nil {
+		return false, err
+	}
+
+	// Calculate size delta for this operation
+	newLinkSize := linkSerializedSize(name, link.Cid, uint64(link.Size))
+	oldLinkSize := 0
+	var entryToRemove *ipld.Link
+	if oldLink, err := d.node.GetNodeLink(name); err == nil {
+		entryToRemove = oldLink
+		oldLinkSize = linkSerializedSize(name, oldLink.Cid, uint64(oldLink.Size))
+	}
+
+	estimatedNewSize := d.cachedBlockSize - oldLinkSize + newLinkSize
+
+	// Fast path: clearly below threshold
+	if estimatedNewSize < HAMTShardingSize {
+		return false, nil
+	}
+
+	// Near or above threshold: recalculate exact size before switching
+	tempNode := d.node.Copy().(*mdag.ProtoNode)
+	_ = tempNode.RemoveNodeLink(name)
+	if nodeToAdd != nil {
+		if err := tempNode.AddRawLink(name, link); err != nil {
+			return false, err
+		}
+	}
+
+	exactSize, err := calculateBlockSize(tempNode)
+	if err != nil {
+		return false, err
+	}
+
+	switchShardingSize := exactSize >= HAMTShardingSize
+	switchMaxLinks := d.checkMaxLinksExceeded(nodeToAdd, entryToRemove)
+	return switchShardingSize || switchMaxLinks, nil
+}
+
+// checkMaxLinksExceeded returns true if adding a new link would exceed maxLinks.
+func (d *BasicDirectory) checkMaxLinksExceeded(nodeToAdd ipld.Node, entryToRemove *ipld.Link) bool {
 	if nodeToAdd != nil && entryToRemove == nil && d.maxLinks > 0 &&
 		(d.totalLinks+1) > d.maxLinks {
-		switchMaxLinks = true
+		return true
 	}
-	return switchShardingSize || switchMaxLinks, nil
+	return false
+}
+
+// updateCachedBlockSize adjusts the cached block size after link changes.
+// Only used when SizeEstimationBlock mode is active.
+func (d *BasicDirectory) updateCachedBlockSize(oldLink, newLink *ipld.Link, name string) {
+	if d.GetSizeEstimationMode() != SizeEstimationBlock {
+		return
+	}
+	if oldLink != nil {
+		d.cachedBlockSize -= linkSerializedSize(name, oldLink.Cid, uint64(oldLink.Size))
+	}
+	if newLink != nil {
+		d.cachedBlockSize += linkSerializedSize(name, newLink.Cid, uint64(newLink.Size))
+	}
 }
 
 // addLinkChild adds the link as an entry to this directory under the given
 // name. Plumbing function for the AddChild API.
 func (d *BasicDirectory) addLinkChild(ctx context.Context, name string, link *ipld.Link) error {
 	// Remove old link and account for size change (if it existed; ignore
-	// `ErrNotExist` otherwise).
+	// `ErrNotExist` otherwise). RemoveChild updates both estimatedSize and
+	// cachedBlockSize for the removed link.
 	err := d.RemoveChild(ctx, name)
 	if err != nil {
 		if !errors.Is(err, os.ErrNotExist) {
@@ -469,6 +662,7 @@ func (d *BasicDirectory) addLinkChild(ctx context.Context, name string, link *ip
 		return err
 	}
 	d.addToEstimatedSize(name, link.Cid)
+	d.updateCachedBlockSize(nil, link, name)
 	d.totalLinks++
 	return nil
 }
@@ -537,6 +731,7 @@ func (d *BasicDirectory) RemoveChild(ctx context.Context, name string) error {
 
 	// The name actually existed so we should update the estimated size.
 	d.removeFromEstimatedSize(link.Name, link.Cid)
+	d.updateCachedBlockSize(link, nil, name)
 	d.totalLinks--
 
 	return d.node.RemoveNodeLink(name)
@@ -618,6 +813,22 @@ func (d *HAMTDirectory) SetStat(mode os.FileMode, mtime time.Time) {
 	if !mtime.IsZero() {
 		d.mtime = mtime
 	}
+}
+
+// SetSizeEstimationMode sets the method used to estimate serialized dag-pb block size
+// when deciding whether to convert between HAMTDirectory and BasicDirectory.
+func (d *HAMTDirectory) SetSizeEstimationMode(mode SizeEstimationMode) {
+	d.sizeEstimation = &mode
+}
+
+// GetSizeEstimationMode returns the method used to estimate serialized dag-pb block size
+// for HAMTDirectory to BasicDirectory conversion decisions.
+// Returns the instance-specific mode if set, otherwise the global HAMTSizeEstimation.
+func (d *HAMTDirectory) GetSizeEstimationMode() SizeEstimationMode {
+	if d.sizeEstimation != nil {
+		return *d.sizeEstimation
+	}
+	return HAMTSizeEstimation // fall back to global
 }
 
 // AddChild implements the `Directory` interface.
@@ -736,21 +947,46 @@ func (d *HAMTDirectory) needsToSwitchToBasicDir(ctx context.Context, name string
 		return false, nil
 	}
 
-	operationSizeChange := 0
-
 	// Find if there is an old entry under that name that will be overwritten
 	// (AddEntry) or flat out removed (RemoveEntry).
 	entryToRemove, err := d.shard.Find(ctx, name)
-	if !errors.Is(err, os.ErrNotExist) {
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return false, err
+	}
+
+	// Calculate new total link count after this operation
+	newTotalLinks := d.totalLinks
+	if nodeToAdd != nil {
+		newTotalLinks++
+	}
+	if entryToRemove != nil {
+		newTotalLinks--
+	}
+
+	// Check if we can switch based on MaxLinks constraint
+	canSwitchMaxLinks := true
+	if d.maxLinks > 0 && newTotalLinks > d.maxLinks {
+		// prevent switching as we would end up with too many links
+		canSwitchMaxLinks = false
+	}
+
+	// When size estimation is disabled, only consider link count
+	if d.GetSizeEstimationMode() == SizeEstimationDisabled {
+		// With SizeEstimationDisabled, we only switch back to BasicDirectory
+		// if explicitly allowed by maxLinks (which must be set)
+		return canSwitchMaxLinks && d.maxLinks > 0 && newTotalLinks <= d.maxLinks, nil
+	}
+
+	operationSizeChange := 0
+	if entryToRemove != nil {
+		operationSizeChange -= d.linkSizeFor(entryToRemove)
+	}
+	if nodeToAdd != nil {
+		link, err := ipld.MakeLink(nodeToAdd)
 		if err != nil {
 			return false, err
 		}
-		operationSizeChange -= linksize.LinkSizeFunction(name, entryToRemove.Cid)
-	}
-
-	// For the AddEntry case compute the size addition of the new entry.
-	if nodeToAdd != nil {
-		operationSizeChange += linksize.LinkSizeFunction(name, nodeToAdd.Cid())
+		operationSizeChange += d.linkSizeFor(link)
 	}
 
 	// We must switch if size and maxlinks are below threshold
@@ -763,22 +999,17 @@ func (d *HAMTDirectory) needsToSwitchToBasicDir(ctx context.Context, name string
 		}
 	}
 
-	canSwitchMaxLinks := true
-	if d.maxLinks > 0 {
-		total := d.totalLinks
-		if nodeToAdd != nil {
-			total++
-		}
-		if entryToRemove != nil {
-			total--
-		}
-		if total > d.maxLinks {
-			// prevent switching as we would end up with too many links
-			canSwitchMaxLinks = false
-		}
-	}
-
 	return canSwitchSize && canSwitchMaxLinks, nil
+}
+
+// linkSizeFor returns the size contribution of a link based on the current estimation mode.
+func (d *HAMTDirectory) linkSizeFor(link *ipld.Link) int {
+	switch d.GetSizeEstimationMode() {
+	case SizeEstimationBlock:
+		return linkSerializedSize(link.Name, link.Cid, uint64(link.Size))
+	default:
+		return linksize.LinkSizeFunction(link.Name, link.Cid)
+	}
 }
 
 // Evaluate directory size and a future sizeChange and check if it will be below
@@ -809,7 +1040,7 @@ func (d *HAMTDirectory) sizeBelowThreshold(ctx context.Context, sizeChange int) 
 			break
 		}
 
-		partialSize += linksize.LinkSizeFunction(linkResult.Link.Name, linkResult.Link.Cid)
+		partialSize += d.linkSizeFor(linkResult.Link)
 		if partialSize+sizeChange >= HAMTShardingSize {
 			// We have already fetched enough shards to assert we are above the
 			// threshold, so no need to keep fetching.

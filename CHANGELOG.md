@@ -16,6 +16,7 @@ The following emojis are used to highlight certain changes:
 
 ### Added
 
+- `ipld/unixfs/io`: added `SizeEstimationMode` for configurable HAMT sharding threshold decisions. Supports legacy link-based estimation (`SizeEstimationLinks`), accurate block-based estimation (`SizeEstimationBlock`), or disabling size-based thresholds (`SizeEstimationDisabled`). Part of [IPIP-499](https://github.com/ipfs/specs/pull/499).
 - `routing/http`: `GET /routing/v1/dht/closest/peers/{key}` per [IPIP-476](https://github.com/ipfs/specs/pull/476)
 - upgrade to `go-libp2p-kad-dht` [v0.36.0](https://github.com/libp2p/go-libp2p-kad-dht/releases/tag/v0.36.0)
 - `ipld/merkledag`: Added fetched node size reporting to the progress tracker. See [kubo#8915](https://github.com/ipfs/kubo/issues/8915)
