@@ -581,12 +581,12 @@ func (d *BasicDirectory) needsToSwitchByBlockSize(name string, nodeToAdd ipld.No
 	}
 
 	// Calculate size delta for this operation
-	newLinkSize := linkSerializedSize(name, link.Cid, uint64(link.Size))
+	newLinkSize := linkSerializedSize(name, link.Cid, link.Size)
 	oldLinkSize := 0
 	var entryToRemove *ipld.Link
 	if oldLink, err := d.node.GetNodeLink(name); err == nil {
 		entryToRemove = oldLink
-		oldLinkSize = linkSerializedSize(name, oldLink.Cid, uint64(oldLink.Size))
+		oldLinkSize = linkSerializedSize(name, oldLink.Cid, oldLink.Size)
 	}
 
 	estimatedNewSize := d.cachedBlockSize - oldLinkSize + newLinkSize
@@ -631,10 +631,10 @@ func (d *BasicDirectory) updateCachedBlockSize(oldLink, newLink *ipld.Link, name
 		return
 	}
 	if oldLink != nil {
-		d.cachedBlockSize -= linkSerializedSize(name, oldLink.Cid, uint64(oldLink.Size))
+		d.cachedBlockSize -= linkSerializedSize(name, oldLink.Cid, oldLink.Size)
 	}
 	if newLink != nil {
-		d.cachedBlockSize += linkSerializedSize(name, newLink.Cid, uint64(newLink.Size))
+		d.cachedBlockSize += linkSerializedSize(name, newLink.Cid, newLink.Size)
 	}
 }
 
@@ -1006,7 +1006,7 @@ func (d *HAMTDirectory) needsToSwitchToBasicDir(ctx context.Context, name string
 func (d *HAMTDirectory) linkSizeFor(link *ipld.Link) int {
 	switch d.GetSizeEstimationMode() {
 	case SizeEstimationBlock:
-		return linkSerializedSize(link.Name, link.Cid, uint64(link.Size))
+		return linkSerializedSize(link.Name, link.Cid, link.Size)
 	default:
 		return linksize.LinkSizeFunction(link.Name, link.Cid)
 	}
