@@ -130,18 +130,19 @@ func TestProfileHAMTThresholdBehavior(t *testing.T) {
 			assert.False(t, isHAMT, "should remain BasicDirectory when below threshold (200 < 300)")
 		})
 
-		t.Run("at threshold switches to HAMTDirectory", func(t *testing.T) {
+		t.Run("at threshold stays BasicDirectory", func(t *testing.T) {
 			dir, err := NewDirectory(ds)
 			require.NoError(t, err)
 
 			// Add 3 entries = 300 bytes, exactly at threshold
+			// With > comparison, at threshold stays basic
 			for i := range 3 {
 				err = dir.AddChild(ctx, fmt.Sprintf("e%d", i), child)
 				require.NoError(t, err)
 			}
 
 			_, isHAMT := dir.(*DynamicDirectory).Directory.(*HAMTDirectory)
-			assert.True(t, isHAMT, "should switch to HAMTDirectory when at threshold (300 >= 300)")
+			assert.False(t, isHAMT, "should stay BasicDirectory when exactly at threshold (300 == 300)")
 		})
 
 		t.Run("above threshold switches to HAMTDirectory", func(t *testing.T) {
@@ -269,5 +270,80 @@ func TestProfileHAMTThresholdBehavior(t *testing.T) {
 		// - UnixFS Data field
 		assert.Greater(t, actualBlockSize, linksEstimate,
 			"links-based estimation should underestimate actual block size")
+	})
+
+	t.Run("SizeEstimationBlock exact threshold boundary", func(t *testing.T) {
+		saveAndRestoreGlobals(t)
+
+		// Test that the HAMT switch happens exactly when size > threshold (not >=)
+		HAMTSizeEstimation = SizeEstimationBlock
+
+		ds := mdtest.Mock()
+		ctx := t.Context()
+		child := ft.EmptyDirNode()
+		require.NoError(t, ds.Add(ctx, child))
+
+		// First, determine the exact block size after adding entries
+		testDir, err := NewDirectory(ds, WithSizeEstimationMode(SizeEstimationBlock))
+		require.NoError(t, err)
+
+		// Add entries and track sizes at each step
+		var sizes []int
+		for i := 0; i < 10; i++ {
+			err = testDir.AddChild(ctx, fmt.Sprintf("entry%d", i), child)
+			require.NoError(t, err)
+
+			node, err := testDir.GetNode()
+			require.NoError(t, err)
+			pn, ok := node.(*mdag.ProtoNode)
+			require.True(t, ok)
+			size, err := calculateBlockSize(pn)
+			require.NoError(t, err)
+			sizes = append(sizes, size)
+		}
+
+		// Set threshold to exactly the size after 5 entries
+		// (entry0..entry4 = 5 entries)
+		exactThreshold := sizes[4]
+		t.Logf("threshold set to exactly %d bytes (size after 5 entries)", exactThreshold)
+
+		t.Run("at exact threshold stays BasicDirectory", func(t *testing.T) {
+			HAMTShardingSize = exactThreshold
+
+			dir, err := NewDirectory(ds, WithSizeEstimationMode(SizeEstimationBlock))
+			require.NoError(t, err)
+
+			// Add 5 entries to reach exactly threshold size
+			for i := 0; i < 5; i++ {
+				err = dir.AddChild(ctx, fmt.Sprintf("entry%d", i), child)
+				require.NoError(t, err)
+			}
+
+			node, err := dir.GetNode()
+			require.NoError(t, err)
+			pn := node.(*mdag.ProtoNode)
+			actualSize, _ := calculateBlockSize(pn)
+			t.Logf("actual size: %d, threshold: %d", actualSize, exactThreshold)
+
+			_, isHAMT := dir.(*DynamicDirectory).Directory.(*HAMTDirectory)
+			assert.False(t, isHAMT, "should stay BasicDirectory when size equals threshold (%d == %d)", actualSize, exactThreshold)
+		})
+
+		t.Run("one byte over threshold switches to HAMTDirectory", func(t *testing.T) {
+			// Set threshold to size[4] - 1 so that size[4] is > threshold
+			HAMTShardingSize = sizes[4] - 1
+
+			dir, err := NewDirectory(ds, WithSizeEstimationMode(SizeEstimationBlock))
+			require.NoError(t, err)
+
+			// Add 5 entries - last one should trigger HAMT
+			for i := 0; i < 5; i++ {
+				err = dir.AddChild(ctx, fmt.Sprintf("entry%d", i), child)
+				require.NoError(t, err)
+			}
+
+			_, isHAMT := dir.(*DynamicDirectory).Directory.(*HAMTDirectory)
+			assert.True(t, isHAMT, "should switch to HAMTDirectory when size exceeds threshold (%d > %d)", sizes[4], HAMTShardingSize)
+		})
 	})
 }

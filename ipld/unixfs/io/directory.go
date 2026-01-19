@@ -26,6 +26,9 @@ var log = logging.Logger("unixfs")
 // The size is not the *exact* block size of the encoded BasicDirectory but just
 // the estimated size based byte length of links name and CID (BasicDirectory's
 // ProtoNode doesn't use the Data field so this estimate is pretty accurate).
+//
+// Threshold behavior: directory converts to HAMT when estimatedSize > HAMTShardingSize.
+// A directory exactly at the threshold stays basic (threshold value is NOT included).
 var HAMTShardingSize = int(256 * units.KiB)
 
 // DefaultShardWidth is the default value used for hamt sharding width.
@@ -325,7 +328,8 @@ func NewBasicDirectory(dserv ipld.DAGService, opts ...DirectoryOption) (*BasicDi
 		return nil, err
 	}
 
-	// Scan node links (if any) to restore estimated size.
+	// Initialize all size tracking fields from the node.
+	// This must be done after node is created and options applied.
 	basicDir.computeEstimatedSizeAndTotalLinks()
 
 	return basicDir, nil
@@ -338,7 +342,7 @@ func NewBasicDirectoryFromNode(dserv ipld.DAGService, node *mdag.ProtoNode) *Bas
 	basicDir.node = node
 	basicDir.dserv = dserv
 
-	// Scan node links (if any) to restore estimated size.
+	// Initialize all size tracking fields from the node.
 	basicDir.computeEstimatedSizeAndTotalLinks()
 
 	return basicDir
@@ -487,8 +491,12 @@ func (d *BasicDirectory) GetSizeEstimationMode() SizeEstimationMode {
 	return HAMTSizeEstimation // fall back to global
 }
 
+// computeEstimatedSizeAndTotalLinks initializes all size tracking fields from the current node.
+// This includes estimatedSize (for links-based estimation), totalLinks count,
+// and cachedBlockSize (for block-based estimation when that mode is active).
 func (d *BasicDirectory) computeEstimatedSizeAndTotalLinks() {
 	d.estimatedSize = 0
+	d.totalLinks = 0
 	// err is just breaking the iteration and we always return nil
 	_ = d.ForEachLink(context.TODO(), func(l *ipld.Link) error {
 		d.addToEstimatedSize(l.Name, l.Cid)
@@ -497,6 +505,12 @@ func (d *BasicDirectory) computeEstimatedSizeAndTotalLinks() {
 	})
 	// ForEachLink will never fail traversing the BasicDirectory
 	// and neither the inner callback `addToEstimatedSize`.
+
+	// Initialize cachedBlockSize for block-based estimation.
+	// Check both instance-specific mode and global mode.
+	if d.GetSizeEstimationMode() == SizeEstimationBlock && d.node != nil {
+		d.cachedBlockSize, _ = calculateBlockSize(d.node)
+	}
 }
 
 func (d *BasicDirectory) addToEstimatedSize(name string, linkCid cid.Cid) {
@@ -568,7 +582,9 @@ func (d *BasicDirectory) needsToSwitchByLinkSize(name string, nodeToAdd ipld.Nod
 		operationSizeChange += linksize.LinkSizeFunction(name, nodeToAdd.Cid())
 	}
 
-	switchShardingSize := d.estimatedSize+operationSizeChange >= HAMTShardingSize
+	// Switch to HAMT when size exceeds threshold (> not >=).
+	// Directory exactly at threshold stays basic.
+	switchShardingSize := d.estimatedSize+operationSizeChange > HAMTShardingSize
 	switchMaxLinks := d.checkMaxLinksExceeded(nodeToAdd, entryToRemove)
 	return switchShardingSize || switchMaxLinks, nil
 }
@@ -610,7 +626,9 @@ func (d *BasicDirectory) needsToSwitchByBlockSize(name string, nodeToAdd ipld.No
 		return false, err
 	}
 
-	switchShardingSize := exactSize >= HAMTShardingSize
+	// Switch to HAMT when size exceeds threshold (> not >=).
+	// Directory exactly at threshold stays basic.
+	switchShardingSize := exactSize > HAMTShardingSize
 	switchMaxLinks := d.checkMaxLinksExceeded(nodeToAdd, entryToRemove)
 	return switchShardingSize || switchMaxLinks, nil
 }
@@ -1041,9 +1059,9 @@ func (d *HAMTDirectory) sizeBelowThreshold(ctx context.Context, sizeChange int) 
 		}
 
 		partialSize += d.linkSizeFor(linkResult.Link)
-		if partialSize+sizeChange >= HAMTShardingSize {
-			// We have already fetched enough shards to assert we are above the
-			// threshold, so no need to keep fetching.
+		// Check if size exceeds threshold (> not >=, matching upgrade logic).
+		// Early exit: no need to enumerate more links once we know we're above.
+		if partialSize+sizeChange > HAMTShardingSize {
 			below = false
 			break
 		}

@@ -89,12 +89,16 @@ func NewDirectory(ctx context.Context, name string, node ipld.Node, parent paren
 // The directory is added to the DAGService. To create a new MFS
 // root use NewEmptyRootFolder instead.
 func NewEmptyDirectory(ctx context.Context, name string, parent parent, dserv ipld.DAGService, prov provider.MultihashProvider, opts MkdirOpts) (*Directory, error) {
-	db, err := uio.NewDirectory(dserv,
+	dirOpts := []uio.DirectoryOption{
 		uio.WithMaxLinks(opts.MaxLinks),
 		uio.WithMaxHAMTFanout(opts.MaxHAMTFanout),
 		uio.WithStat(opts.Mode, opts.ModTime),
 		uio.WithCidBuilder(opts.CidBuilder),
-	)
+	}
+	if opts.SizeEstimationMode != nil {
+		dirOpts = append(dirOpts, uio.WithSizeEstimationMode(*opts.SizeEstimationMode))
+	}
+	db, err := uio.NewDirectory(dserv, dirOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -580,6 +584,7 @@ func (d *Directory) setNodeData(data []byte, links []*ipld.Link) error {
 	// We need to carry our desired settings.
 	db.SetMaxLinks(d.unixfsDir.GetMaxLinks())
 	db.SetMaxHAMTFanout(d.unixfsDir.GetMaxHAMTFanout())
+	db.SetSizeEstimationMode(d.unixfsDir.GetSizeEstimationMode())
 	d.unixfsDir = db
 
 	return nil
