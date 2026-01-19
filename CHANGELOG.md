@@ -16,10 +16,10 @@ The following emojis are used to highlight certain changes:
 
 ### Added
 
-- `ipld/unixfs/io`: added `SizeEstimationMode` for configurable HAMT sharding threshold decisions. Supports legacy link-based estimation (`SizeEstimationLinks`), accurate block-based estimation (`SizeEstimationBlock`), or disabling size-based thresholds (`SizeEstimationDisabled`). Part of [IPIP-499](https://github.com/ipfs/specs/pull/499).
-- `ipld/unixfs/io`: added `UnixFSProfile` with `UnixFS_v0_2015` and `UnixFS_v1_2025` presets for CID-deterministic file and directory DAG construction per [IPIP-499](https://github.com/ipfs/specs/pull/499).
-- `chunker`: `DefaultBlockSize` is now a `var` instead of `const`, allowing runtime configuration of default chunk size.
-- `files`: `NewSerialFileWithOptions` now supports controlling whether symlinks are preserved or dereferenced before being added to IPFS. See `SerialFileOptions.DereferenceSymlinks`. Part of [IPIP-499](https://github.com/ipfs/specs/pull/499).
+- `ipld/unixfs/io`: added `SizeEstimationMode` for configurable HAMT sharding threshold decisions. Supports legacy link-based estimation (`SizeEstimationLinks`), accurate block-based estimation (`SizeEstimationBlock`), or disabling size-based thresholds (`SizeEstimationDisabled`). [#1088](https://github.com/ipfs/boxo/pull/1088), [IPIP-499](https://github.com/ipfs/specs/pull/499)
+- `ipld/unixfs/io`: added `UnixFSProfile` with `UnixFS_v0_2015` and `UnixFS_v1_2025` presets for CID-deterministic file and directory DAG construction. [#1088](https://github.com/ipfs/boxo/pull/1088), [IPIP-499](https://github.com/ipfs/specs/pull/499)
+- `chunker`: `DefaultBlockSize` is now a `var` instead of `const`, allowing runtime configuration of default chunk size. [#1088](https://github.com/ipfs/boxo/pull/1088)
+- `files`: `NewSerialFileWithOptions` now supports controlling whether symlinks are preserved or dereferenced before being added to IPFS. See `SerialFileOptions.DereferenceSymlinks`. [#1088](https://github.com/ipfs/boxo/pull/1088), [IPIP-499](https://github.com/ipfs/specs/pull/499)
 - `routing/http`: `GET /routing/v1/dht/closest/peers/{key}` per [IPIP-476](https://github.com/ipfs/specs/pull/476)
 - upgrade to `go-libp2p-kad-dht` [v0.36.0](https://github.com/libp2p/go-libp2p-kad-dht/releases/tag/v0.36.0)
 - `ipld/merkledag`: Added fetched node size reporting to the progress tracker. See [kubo#8915](https://github.com/ipfs/kubo/issues/8915)
@@ -33,7 +33,7 @@ The following emojis are used to highlight certain changes:
 
 ### Fixed
 
-- 🛠 `ipld/unixfs/io`: fixed HAMT sharding threshold comparison to use `>` instead of `>=`. A directory exactly at the threshold now stays as a basic (flat) directory, aligning behavior with code documentation and the JS implementation. This is a theoretical breaking change, but unlikely to impact real-world users as it requires a directory to be exactly at the threshold boundary. If you depend on the old behavior, adjust `HAMTShardingSize` to be 1 byte lower. See [IPIP-499](https://github.com/ipfs/specs/pull/499).
+- 🛠 `ipld/unixfs/io`: fixed HAMT sharding threshold comparison to use `>` instead of `>=`. A directory exactly at the threshold now stays as a basic (flat) directory, aligning behavior with code documentation and the JS implementation. This is a theoretical breaking change, but unlikely to impact real-world users as it requires a directory to be exactly at the threshold boundary. If you depend on the old behavior, adjust `HAMTShardingSize` to be 1 byte lower. [#1088](https://github.com/ipfs/boxo/pull/1088), [IPIP-499](https://github.com/ipfs/specs/pull/499)
 - `bitswap/network`: Fixed goroutine leak that could cause bitswap to stop serving blocks after extended uptime. The root cause is `stream.Close()` blocking indefinitely when remote peers are unresponsive during multistream handshake ([go-libp2p#3448](https://github.com/libp2p/go-libp2p/pull/3448)). This PR ([#1083](https://github.com/ipfs/boxo/pull/1083)) adds a localized fix specific to bitswap's `SendMessage` by setting a read deadline before closing streams.
 
 ### Security

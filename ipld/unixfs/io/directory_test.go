@@ -990,4 +990,3 @@ func TestHAMTDirectorySizeEstimationMode(t *testing.T) {
 		assert.Equal(t, SizeEstimationBlock, hamtDir.GetSizeEstimationMode())
 	})
 }
-
