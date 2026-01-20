@@ -200,7 +200,7 @@ func (f *serialFile) Size() (int64, error) {
 			return err
 		}
 
-		if f.filter.ShouldExclude(fi) {
+		if f.filter != nil && f.filter.ShouldExclude(fi) {
 			if fi.Mode().IsDir() {
 				return filepath.SkipDir
 			}

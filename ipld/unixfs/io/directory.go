@@ -29,10 +29,16 @@ var log = logging.Logger("unixfs")
 //
 // Threshold behavior: directory converts to HAMT when estimatedSize > HAMTShardingSize.
 // A directory exactly at the threshold stays basic (threshold value is NOT included).
+//
+// Thread safety: this global is not safe for concurrent modification.
+// Set it once during program initialization, before starting any imports.
 var HAMTShardingSize = int(256 * units.KiB)
 
 // DefaultShardWidth is the default value used for hamt sharding width.
 // Needs to be a power of two (shard entry size) and multiple of 8 (bitfield size).
+//
+// Thread safety: this global is not safe for concurrent modification.
+// Set it once during program initialization, before starting any imports.
 var DefaultShardWidth = 256
 
 // SizeEstimationMode defines how directory size is estimated for HAMT sharding decisions.
@@ -65,6 +71,9 @@ const (
 // HAMTSizeEstimation controls which method is used to estimate directory size
 // for HAMT sharding decisions. Default is SizeEstimationLinks for backward compatibility.
 // Modern software should set this to SizeEstimationBlock for accurate estimation.
+//
+// Thread safety: this global is not safe for concurrent modification.
+// Set it once during program initialization, before starting any imports.
 var HAMTSizeEstimation = SizeEstimationLinks
 
 // varintLen returns the encoded size of a protobuf varint.

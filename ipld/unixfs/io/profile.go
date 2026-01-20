@@ -93,6 +93,10 @@ var (
 // ApplyGlobals sets the global variables to match this profile's settings.
 // This affects all subsequent file and directory import operations.
 // Note: RawLeaves and CidBuilder are not globals; pass them to DAG builder options.
+//
+// Thread safety: this function modifies global variables and is not safe
+// for concurrent use. Call it once during program initialization, before
+// starting any imports. Do not call from multiple goroutines.
 func (p UnixFSProfile) ApplyGlobals() {
 	// File settings
 	chunk.DefaultBlockSize = p.ChunkSize
