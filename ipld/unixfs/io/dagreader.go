@@ -221,7 +221,6 @@ func (dr *dagReader) CtxReadFull(ctx context.Context, out []byte) (n int, err er
 
 		return nil
 	})
-
 	if err != nil {
 		if errors.Is(err, ipld.EndOfDag) {
 			// Reached the end of the (DAG) file, no more data to read.
