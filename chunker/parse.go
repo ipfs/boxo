@@ -17,7 +17,7 @@ var DefaultBlockSize int64 = 1024 * 256
 const (
 	// ChunkSizeLimit is the maximum allowed chunk size.
 	// No leaf block should contain more than 1MiB of payload data (wrapping overhead aside).
-	// See discussion at https://github.com/ipfs/boxo/chunker/pull/21#discussion_r369124879
+	// See discussion at https://github.com/ipfs/go-ipfs-chunker/pull/21#discussion_r369124879
 	ChunkSizeLimit int = 1048576
 )
 
