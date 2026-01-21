@@ -386,3 +386,130 @@ func TestSerialFileSymlinks(t *testing.T) {
 		}
 	})
 }
+
+func TestCircularSymlinks(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("skipping symlink test on Windows")
+	}
+
+	const symlinkErrMsg = "too many levels of symbolic links"
+
+	tmpdir := t.TempDir()
+
+	// Create test structure:
+	// tmpdir/
+	//   linktolinkA      -> symlink to linktolinkB
+	//   linktolinkB      -> symlink to linktolinkC
+	//   linktolinkC      -> symlink to linktolinkA
+
+	linktolinkA := filepath.Join(tmpdir, "linktolinkA")
+	linktolinkB := filepath.Join(tmpdir, "linktolinkB")
+	linktolinkC := filepath.Join(tmpdir, "linktolinkC")
+	if err := os.Symlink(linktolinkB, linktolinkA); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(linktolinkC, linktolinkB); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(linktolinkA, linktolinkC); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Run("preserve symlinks (default)", func(t *testing.T) {
+		stat, err := os.Lstat(tmpdir)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		sf, err := NewSerialFileWithOptions(tmpdir, stat, SerialFileOptions{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer sf.Close()
+
+		symlinkCount := 0
+		err = Walk(sf, func(path string, nd Node) error {
+			defer nd.Close()
+			if _, ok := nd.(*Symlink); ok {
+				symlinkCount++
+			}
+			return nil
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if symlinkCount != 3 {
+			t.Errorf("expected 3 symlinks, got %d", symlinkCount)
+		}
+	})
+
+	t.Run("dereference symlinks", func(t *testing.T) {
+		stat, err := os.Lstat(tmpdir)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		sf, err := NewSerialFileWithOptions(tmpdir, stat, SerialFileOptions{
+			DereferenceSymlinks: true,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer sf.Close()
+
+		symlinkCount := 0
+		fileContents := make(map[string]string)
+		dirCount := 0
+
+		err = Walk(sf, func(path string, nd Node) error {
+			defer nd.Close()
+			switch n := nd.(type) {
+			case *Symlink:
+				symlinkCount++
+			case File:
+				data, err := io.ReadAll(n)
+				if err != nil {
+					return err
+				}
+				fileContents[path] = string(data)
+			case Directory:
+				if path != "" { // skip root
+					dirCount++
+				}
+			}
+			return nil
+		})
+		if err == nil {
+			t.Fatal("expected error")
+		}
+		perr, ok := err.(*os.PathError)
+		if !ok {
+			t.Fatal("expected PathError, got:", err)
+		}
+		if !strings.Contains(perr.Err.Error(), symlinkErrMsg) {
+			t.Fatalf("expected error to contain %q, got %q", symlinkErrMsg, perr.Err.Error())
+		}
+	})
+
+	t.Run("dereference single symlink to symlink", func(t *testing.T) {
+		stat, err := os.Lstat(linktolinkA)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		_, err = NewSerialFileWithOptions(linktolinkA, stat, SerialFileOptions{
+			DereferenceSymlinks: true,
+		})
+		if err == nil {
+			t.Fatal("expected error")
+		}
+		perr, ok := err.(*os.PathError)
+		if !ok {
+			t.Fatal("expected PathError, got:", err)
+		}
+		if !strings.Contains(perr.Err.Error(), symlinkErrMsg) {
+			t.Fatalf("expected error to contain %q, got %q", symlinkErrMsg, perr.Err.Error())
+		}
+	})
+}
