@@ -20,7 +20,6 @@ The following emojis are used to highlight certain changes:
 - `ipld/unixfs/io`: added `UnixFSProfile` with `UnixFS_v0_2015` and `UnixFS_v1_2025` presets for CID-deterministic file and directory DAG construction. [#1088](https://github.com/ipfs/boxo/pull/1088), [IPIP-499](https://github.com/ipfs/specs/pull/499)
 - `files`: `NewSerialFileWithOptions` now supports controlling whether symlinks are preserved or dereferenced before being added to IPFS. See `SerialFileOptions.DereferenceSymlinks`. [#1088](https://github.com/ipfs/boxo/pull/1088), [IPIP-499](https://github.com/ipfs/specs/pull/499)
 - `routing/http`: `GET /routing/v1/dht/closest/peers/{key}` per [IPIP-476](https://github.com/ipfs/specs/pull/476)
-- upgrade to `go-libp2p-kad-dht` [v0.36.0](https://github.com/libp2p/go-libp2p-kad-dht/releases/tag/v0.36.0)
 - `ipld/merkledag`: Added fetched node size reporting to the progress tracker. See [kubo#8915](https://github.com/ipfs/kubo/issues/8915)
 - `gateway`: Added a configurable fallback timeout for the gateway handler, defaulting to 1 hour. Configurable via `MaxRequestDuration` in the gateway config.
 
@@ -28,6 +27,8 @@ The following emojis are used to highlight certain changes:
 
 - 🛠 `chunker`: `DefaultBlockSize` changed from `const` to `var` for runtime configuration. [#1088](https://github.com/ipfs/boxo/pull/1088)
 - `keystore`: improve error messages and include key file name [#1080](https://github.com/ipfs/boxo/pull/1080)
+- upgrade to `go-libp2p-kad-dht` [v0.37.0](https://github.com/libp2p/go-libp2p-kad-dht/releases/tag/v0.37.0)
+- upgrade to `go-libp2p` [v0.46.0](https://github.com/libp2p/go-libp2p/releases/tag/v0.46.0)
 
 ### Removed
 
