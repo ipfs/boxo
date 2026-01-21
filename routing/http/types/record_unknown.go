@@ -1,6 +1,7 @@
 package types
 
 import (
+	"bytes"
 	"encoding/json"
 
 	"github.com/ipfs/boxo/routing/http/internal/drjson"
@@ -30,7 +31,7 @@ func (ur *UnknownRecord) UnmarshalJSON(b []byte) error {
 		return err
 	}
 	ur.Schema = v.Schema
-	ur.Bytes = b
+	ur.Bytes = bytes.Clone(b)
 	return nil
 }
 
