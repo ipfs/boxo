@@ -17,13 +17,14 @@ The following emojis are used to highlight certain changes:
 ### Added
 
 - `routing/http`: `GET /routing/v1/dht/closest/peers/{key}` per [IPIP-476](https://github.com/ipfs/specs/pull/476)
-- upgrade to `go-libp2p-kad-dht` [v0.36.0](https://github.com/libp2p/go-libp2p-kad-dht/releases/tag/v0.36.0)
 - `ipld/merkledag`: Added fetched node size reporting to the progress tracker. See [kubo#8915](https://github.com/ipfs/kubo/issues/8915)
 - `gateway`: Added a configurable fallback timeout for the gateway handler, defaulting to 1 hour. Configurable via `MaxRequestDuration` in the gateway config.
 
 ### Changed
 
 - `keystore`: improve error messages and include key file name [#1080](https://github.com/ipfs/boxo/pull/1080)
+- upgrade to `go-libp2p-kad-dht` [v0.37.0](https://github.com/libp2p/go-libp2p-kad-dht/releases/tag/v0.37.0)
+- upgrade to `go-libp2p` [v0.46.0](https://github.com/libp2p/go-libp2p/releases/tag/v0.46.0)
 
 ### Removed
 
