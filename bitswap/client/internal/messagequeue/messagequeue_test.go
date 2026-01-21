@@ -320,66 +320,67 @@ func TestSendingMessagesPriority(t *testing.T) {
 }
 
 func TestCancelOverridesPendingWants(t *testing.T) {
-	ctx := context.Background()
-	messagesSent := make(chan []bsmsg.Entry)
-	resetChan := make(chan struct{}, 1)
-	fakeSender := newFakeMessageSender(resetChan, messagesSent, true)
-	fakenet := &fakeMessageNetwork{nil, nil, fakeSender}
-	peerID := random.Peers(1)[0]
-	messageQueue := New(ctx, peerID, fakenet, mockTimeoutCb)
+	synctest.Test(t, func(t *testing.T) {
+		ctx := context.Background()
+		messagesSent := make(chan []bsmsg.Entry)
+		resetChan := make(chan struct{}, 1)
+		fakeSender := newFakeMessageSender(resetChan, messagesSent, true)
+		fakenet := &fakeMessageNetwork{nil, nil, fakeSender}
+		peerID := random.Peers(1)[0]
+		messageQueue := New(ctx, peerID, fakenet, mockTimeoutCb)
 
-	wantHaves := random.Cids(2)
-	wantBlocks := random.Cids(2)
-	cancels := []cid.Cid{wantBlocks[0], wantHaves[0]}
+		wantHaves := random.Cids(2)
+		wantBlocks := random.Cids(2)
+		cancels := []cid.Cid{wantBlocks[0], wantHaves[0]}
 
-	messageQueue.Startup()
-	defer messageQueue.Shutdown()
-	messageQueue.AddWants(wantBlocks, wantHaves)
-	messageQueue.AddCancels(cancels)
-	messages := collectMessages(ctx, t, messagesSent, collectTimeout)
+		messageQueue.Startup()
+		defer messageQueue.Shutdown()
+		messageQueue.AddWants(wantBlocks, wantHaves)
+		messageQueue.AddCancels(cancels)
+		messages := collectMessages(ctx, t, messagesSent, collectTimeout)
 
-	if totalEntriesLength(messages) != len(wantHaves)+len(wantBlocks)-len(cancels) {
-		t.Fatal("Wrong message count")
-	}
+		if totalEntriesLength(messages) != len(wantHaves)+len(wantBlocks)-len(cancels) {
+			t.Fatal("Wrong message count")
+		}
 
-	// Cancelled 1 want-block and 1 want-have before they were sent
-	// so that leaves 1 want-block and 1 want-have
-	wb, wh, cl := filterWantTypes(messages[0])
-	if len(wb) != 1 || !wb[0].Equals(wantBlocks[1]) {
-		t.Fatal("Expected 1 want-block")
-	}
-	if len(wh) != 1 || !wh[0].Equals(wantHaves[1]) {
-		t.Fatal("Expected 1 want-have")
-	}
-	// Cancelled wants before they were sent, so no cancel should be sent
-	// to the network
-	if len(cl) != 0 {
-		t.Fatal("Expected no cancels")
-	}
+		// Cancelled 1 want-block and 1 want-have before they were sent
+		// so that leaves 1 want-block and 1 want-have
+		wb, wh, cl := filterWantTypes(messages[0])
+		if len(wb) != 1 || !wb[0].Equals(wantBlocks[1]) {
+			t.Fatal("Expected 1 want-block")
+		}
+		if len(wh) != 1 || !wh[0].Equals(wantHaves[1]) {
+			t.Fatal("Expected 1 want-have")
+		}
+		// Cancelled wants before they were sent, so no cancel should be sent
+		// to the network
+		if len(cl) != 0 {
+			t.Fatal("Expected no cancels")
+		}
 
-	// Cancel the remaining want-blocks and want-haves
-	// These CIDs were sent in the first message, so canceling them should
-	// generate cancel messages
+		// Cancel the remaining want-blocks and want-haves
+		// These CIDs were sent in the first message, so canceling them should
+		// generate cancel messages
 
-	// Small delay to avoid race condition: after collectMessages returns,
-	// the message has been sent to the channel, but the queue's goroutine
-	// might still be marking items as "sent". Without this delay, AddCancels
-	// might not find the CIDs in the sent list and won't generate cancel messages.
-	time.Sleep(10 * time.Millisecond)
+		// Wait for the message queue goroutine to finish marking items as "sent"
+		// before calling AddCancels. Without this, AddCancels might not find the
+		// CIDs in the sent list and won't generate cancel messages.
+		synctest.Wait()
 
-	cancels = []cid.Cid{wantBlocks[1], wantHaves[1]}
-	messageQueue.AddCancels(cancels)
-	messages = collectMessages(ctx, t, messagesSent, collectTimeout)
+		cancels = []cid.Cid{wantBlocks[1], wantHaves[1]}
+		messageQueue.AddCancels(cancels)
+		messages = collectMessages(ctx, t, messagesSent, collectTimeout)
 
-	// The remaining 2 cancels should be sent to the network as they are for
-	// wants that were sent to the network
-	if len(messages) == 0 {
-		t.Fatal("Expected cancel messages but got none")
-	}
-	_, _, cl = filterWantTypes(messages[0])
-	if len(cl) != 2 {
-		t.Fatalf("Expected 2 cancels, got %d", len(cl))
-	}
+		// The remaining 2 cancels should be sent to the network as they are for
+		// wants that were sent to the network
+		if len(messages) == 0 {
+			t.Fatal("Expected cancel messages but got none")
+		}
+		_, _, cl = filterWantTypes(messages[0])
+		if len(cl) != 2 {
+			t.Fatalf("Expected 2 cancels, got %d", len(cl))
+		}
+	})
 }
 
 func TestWantOverridesPendingCancels(t *testing.T) {
