@@ -21,7 +21,7 @@ require (
 	github.com/ipfs/go-cidutil v0.1.0
 	github.com/ipfs/go-datastore v0.9.0
 	github.com/ipfs/go-detect-race v0.0.1
-	github.com/ipfs/go-dsqueue v0.1.1
+	github.com/ipfs/go-dsqueue v0.1.2
 	github.com/ipfs/go-ipfs-delay v0.0.1
 	github.com/ipfs/go-ipfs-redirects-file v0.1.2
 	github.com/ipfs/go-ipld-format v0.6.3
