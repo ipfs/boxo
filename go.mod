@@ -26,7 +26,7 @@ require (
 	github.com/ipfs/go-ipfs-redirects-file v0.1.2
 	github.com/ipfs/go-ipld-format v0.6.3
 	github.com/ipfs/go-ipld-legacy v0.2.2
-	github.com/ipfs/go-log/v2 v2.9.0
+	github.com/ipfs/go-log/v2 v2.9.1
 	github.com/ipfs/go-metrics-interface v0.3.0
 	github.com/ipfs/go-peertaskqueue v0.8.3
 	github.com/ipfs/go-test v0.2.3
@@ -68,7 +68,7 @@ require (
 	go.opentelemetry.io/otel/exporters/zipkin v1.38.0
 	go.opentelemetry.io/otel/sdk v1.38.0
 	go.opentelemetry.io/otel/trace v1.38.0
-	go.uber.org/zap v1.27.0
+	go.uber.org/zap v1.27.1
 	golang.org/x/exp v0.0.0-20260112195511-716be5621a96
 	golang.org/x/oauth2 v0.33.0
 	golang.org/x/sync v0.19.0
