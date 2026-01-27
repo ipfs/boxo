@@ -582,9 +582,9 @@ func (d *Directory) setNodeData(data []byte, links []*ipld.Link) error {
 	}
 
 	// We need to carry our desired settings.
+	// Note: SizeEstimationMode is set at creation time and cannot be changed.
 	db.SetMaxLinks(d.unixfsDir.GetMaxLinks())
 	db.SetMaxHAMTFanout(d.unixfsDir.GetMaxHAMTFanout())
-	db.SetSizeEstimationMode(d.unixfsDir.GetSizeEstimationMode())
 	d.unixfsDir = db
 
 	return nil

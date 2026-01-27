@@ -490,7 +490,7 @@ func TestSizeEstimationBlockWithModeMtime(t *testing.T) {
 			"total mode+mtime overhead should be exactly %d bytes", expectedTotalOverhead)
 	})
 
-	t.Run("cachedBlockSize includes mode/mtime overhead", func(t *testing.T) {
+	t.Run("estimatedSize includes mode/mtime overhead", func(t *testing.T) {
 		child := ft.EmptyDirNode()
 		require.NoError(t, ds.Add(ctx, child))
 
@@ -514,9 +514,9 @@ func TestSizeEstimationBlockWithModeMtime(t *testing.T) {
 		actualSize, err := calculateBlockSize(node.(*mdag.ProtoNode))
 		require.NoError(t, err)
 
-		// Check cached size matches actual size
-		assert.Equal(t, actualSize, dir.cachedBlockSize,
-			"cachedBlockSize should match actual block size (including mode/mtime)")
+		// Check estimated size matches actual size
+		assert.Equal(t, actualSize, dir.estimatedSize,
+			"estimatedSize should match actual block size (including mode/mtime)")
 	})
 
 	t.Run("HAMT threshold accounts for mode/mtime overhead", func(t *testing.T) {
@@ -584,14 +584,14 @@ func TestSizeEstimationBlockWithModeMtime(t *testing.T) {
 	})
 }
 
-func TestCachedBlockSizeAccuracy(t *testing.T) {
+func TestEstimatedSizeAccuracy(t *testing.T) {
 	saveAndRestoreGlobals(t)
 	HAMTSizeEstimation = SizeEstimationBlock
 
 	ds := mdtest.Mock()
 	ctx := t.Context()
 
-	t.Run("cached size matches actual after multiple operations", func(t *testing.T) {
+	t.Run("estimated size matches actual after multiple operations", func(t *testing.T) {
 		child := ft.EmptyDirNode()
 		require.NoError(t, ds.Add(ctx, child))
 
@@ -616,14 +616,14 @@ func TestCachedBlockSizeAccuracy(t *testing.T) {
 			require.NoError(t, err)
 		}
 
-		// Verify cached matches actual
+		// Verify estimated size matches actual
 		node, err := dir.GetNode()
 		require.NoError(t, err)
 		actualSize, err := calculateBlockSize(node.(*mdag.ProtoNode))
 		require.NoError(t, err)
 
-		assert.Equal(t, actualSize, dir.cachedBlockSize,
-			"cachedBlockSize should match actual after add/remove/replace operations")
+		assert.Equal(t, actualSize, dir.estimatedSize,
+			"estimatedSize should match actual after add/remove/replace operations")
 	})
 
 	t.Run("linkSerializedSize matches actual link contribution", func(t *testing.T) {
@@ -664,7 +664,7 @@ func TestBlockSizeEstimationEdgeCases(t *testing.T) {
 	ds := mdtest.Mock()
 	ctx := t.Context()
 
-	t.Run("entry replacement updates cached size correctly", func(t *testing.T) {
+	t.Run("entry replacement updates estimated size correctly", func(t *testing.T) {
 		child1 := ft.EmptyDirNode()
 		require.NoError(t, ds.Add(ctx, child1))
 
@@ -681,18 +681,18 @@ func TestBlockSizeEstimationEdgeCases(t *testing.T) {
 		require.NoError(t, err)
 		node1, _ := dir.GetNode()
 		size1, _ := calculateBlockSize(node1.(*mdag.ProtoNode))
-		cached1 := dir.cachedBlockSize
-		t.Logf("after add child1: actual=%d, cached=%d", size1, cached1)
-		assert.Equal(t, size1, cached1)
+		estimated1 := dir.estimatedSize
+		t.Logf("after add child1: actual=%d, estimated=%d", size1, estimated1)
+		assert.Equal(t, size1, estimated1)
 
 		// Replace with different child
 		err = dir.AddChild(ctx, "entry", child2)
 		require.NoError(t, err)
 		node2, _ := dir.GetNode()
 		size2, _ := calculateBlockSize(node2.(*mdag.ProtoNode))
-		cached2 := dir.cachedBlockSize
-		t.Logf("after replace with child2: actual=%d, cached=%d", size2, cached2)
-		assert.Equal(t, size2, cached2)
+		estimated2 := dir.estimatedSize
+		t.Logf("after replace with child2: actual=%d, estimated=%d", size2, estimated2)
+		assert.Equal(t, size2, estimated2)
 
 		// Size should have changed due to different Tsize
 		t.Logf("size changed by: %d bytes", size2-size1)
@@ -718,8 +718,8 @@ func TestBlockSizeEstimationEdgeCases(t *testing.T) {
 
 			node, _ := dir.GetNode()
 			actualSize, _ := calculateBlockSize(node.(*mdag.ProtoNode))
-			assert.Equal(t, actualSize, dir.cachedBlockSize,
-				"cached size should match actual for name: %s", name)
+			assert.Equal(t, actualSize, dir.estimatedSize,
+				"estimated size should match actual for name: %s", name)
 		}
 	})
 
@@ -783,4 +783,195 @@ func TestBlockSizeEstimationEdgeCases(t *testing.T) {
 		_, isHAMT := dir.(*DynamicDirectory).Directory.(*HAMTDirectory)
 		assert.False(t, isHAMT, "should stay BasicDirectory when size equals threshold")
 	})
+}
+
+// TestHAMTToBasicDowngrade tests that HAMTDirectory converts back to BasicDirectory
+// at precise byte boundaries when entries are removed.
+func TestHAMTToBasicDowngrade(t *testing.T) {
+	saveAndRestoreGlobals(t)
+
+	ds := mdtest.Mock()
+	ctx := t.Context()
+
+	child := ft.EmptyDirNode()
+	require.NoError(t, ds.Add(ctx, child))
+
+	// Test both size estimation modes
+	testCases := []struct {
+		name string
+		mode SizeEstimationMode
+		// sizeFunc calculates the "size" for a given number of entries based on mode
+		sizeFunc func(numEntries int) int
+	}{
+		{
+			name: "SizeEstimationLinks",
+			mode: SizeEstimationLinks,
+			sizeFunc: func(numEntries int) int {
+				// Each entry "entryN" has name length 6 (entry0-entry9) + CID length
+				// Using the mock or calculating based on linksize function
+				size := 0
+				for i := range numEntries {
+					name := fmt.Sprintf("entry%d", i)
+					size += len(name) + child.Cid().ByteLen()
+				}
+				return size
+			},
+		},
+		{
+			name:     "SizeEstimationBlock",
+			mode:     SizeEstimationBlock,
+			sizeFunc: nil, // Will measure actual block sizes
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			HAMTSizeEstimation = tc.mode
+
+			// Measure sizes at different entry counts
+			var sizes []int
+			if tc.mode == SizeEstimationBlock {
+				// Measure actual block sizes
+				measureDir, err := NewBasicDirectory(ds, WithSizeEstimationMode(tc.mode))
+				require.NoError(t, err)
+				for i := range 10 {
+					err = measureDir.AddChild(ctx, fmt.Sprintf("entry%d", i), child)
+					require.NoError(t, err)
+					node, _ := measureDir.GetNode()
+					size, _ := calculateBlockSize(node.(*mdag.ProtoNode))
+					sizes = append(sizes, size)
+				}
+			} else {
+				// Calculate link-based sizes
+				for i := 1; i <= 10; i++ {
+					sizes = append(sizes, tc.sizeFunc(i))
+				}
+			}
+			t.Logf("sizes: 5 entries=%d, 6 entries=%d, 7 entries=%d",
+				sizes[4], sizes[5], sizes[6])
+
+			// Set threshold between 5 and 6 entries
+			threshold := (sizes[4] + sizes[5]) / 2
+			t.Logf("threshold set to %d (between 5 and 6 entries)", threshold)
+
+			t.Run("HAMT stays HAMT when above threshold after remove", func(t *testing.T) {
+				HAMTShardingSize = threshold
+
+				dir, err := NewDirectory(ds, WithSizeEstimationMode(tc.mode))
+				require.NoError(t, err)
+
+				for i := range 8 {
+					err = dir.AddChild(ctx, fmt.Sprintf("entry%d", i), child)
+					require.NoError(t, err)
+				}
+
+				_, isHAMT := dir.(*DynamicDirectory).Directory.(*HAMTDirectory)
+				require.True(t, isHAMT, "should be HAMTDirectory after adding 8 entries")
+
+				// Remove entries down to 6 (still above threshold)
+				err = dir.RemoveChild(ctx, "entry7")
+				require.NoError(t, err)
+				err = dir.RemoveChild(ctx, "entry6")
+				require.NoError(t, err)
+
+				_, isHAMT = dir.(*DynamicDirectory).Directory.(*HAMTDirectory)
+				assert.True(t, isHAMT,
+					"should stay HAMTDirectory with 6 entries (size %d > threshold %d)",
+					sizes[5], threshold)
+			})
+
+			t.Run("HAMT downgrades to Basic when at threshold after remove", func(t *testing.T) {
+				// Set threshold to exactly the size at 5 entries
+				HAMTShardingSize = sizes[4]
+				t.Logf("threshold set to exactly %d (size at 5 entries)", HAMTShardingSize)
+
+				dir, err := NewDirectory(ds, WithSizeEstimationMode(tc.mode))
+				require.NoError(t, err)
+
+				for i := range 8 {
+					err = dir.AddChild(ctx, fmt.Sprintf("entry%d", i), child)
+					require.NoError(t, err)
+				}
+
+				_, isHAMT := dir.(*DynamicDirectory).Directory.(*HAMTDirectory)
+				require.True(t, isHAMT, "should be HAMTDirectory after adding 8 entries")
+
+				// Remove down to 5 entries (at threshold)
+				for i := 7; i >= 5; i-- {
+					err = dir.RemoveChild(ctx, fmt.Sprintf("entry%d", i))
+					require.NoError(t, err)
+				}
+
+				_, isHAMT = dir.(*DynamicDirectory).Directory.(*HAMTDirectory)
+				assert.False(t, isHAMT,
+					"should downgrade to BasicDirectory when size equals threshold (%d == %d)",
+					sizes[4], HAMTShardingSize)
+			})
+
+			t.Run("HAMT downgrades to Basic when below threshold after remove", func(t *testing.T) {
+				HAMTShardingSize = threshold
+
+				dir, err := NewDirectory(ds, WithSizeEstimationMode(tc.mode))
+				require.NoError(t, err)
+
+				for i := range 8 {
+					err = dir.AddChild(ctx, fmt.Sprintf("entry%d", i), child)
+					require.NoError(t, err)
+				}
+
+				_, isHAMT := dir.(*DynamicDirectory).Directory.(*HAMTDirectory)
+				require.True(t, isHAMT, "should be HAMTDirectory after adding 8 entries")
+
+				// Remove down to 5 entries (below threshold)
+				for i := 7; i >= 5; i-- {
+					err = dir.RemoveChild(ctx, fmt.Sprintf("entry%d", i))
+					require.NoError(t, err)
+				}
+
+				_, isHAMT = dir.(*DynamicDirectory).Directory.(*HAMTDirectory)
+				assert.False(t, isHAMT,
+					"should downgrade to BasicDirectory when below threshold (%d < %d)",
+					sizes[4], threshold)
+
+				// Verify all remaining entries are intact
+				links, err := dir.Links(ctx)
+				require.NoError(t, err)
+				assert.Len(t, links, 5, "should have 5 entries after downgrade")
+			})
+
+			t.Run("precise boundary: one entry makes the difference", func(t *testing.T) {
+				// Set threshold so that 6 entries is exactly at threshold
+				HAMTShardingSize = sizes[5]
+				t.Logf("threshold set to exactly %d (size at 6 entries)", HAMTShardingSize)
+
+				dir, err := NewDirectory(ds, WithSizeEstimationMode(tc.mode))
+				require.NoError(t, err)
+
+				// Add 7 entries to get into HAMT territory
+				for i := range 7 {
+					err = dir.AddChild(ctx, fmt.Sprintf("entry%d", i), child)
+					require.NoError(t, err)
+				}
+
+				_, isHAMT := dir.(*DynamicDirectory).Directory.(*HAMTDirectory)
+				require.True(t, isHAMT, "should be HAMTDirectory with 7 entries")
+
+				// Remove one entry -> 6 entries, size == threshold -> should downgrade
+				err = dir.RemoveChild(ctx, "entry6")
+				require.NoError(t, err)
+
+				_, isHAMT = dir.(*DynamicDirectory).Directory.(*HAMTDirectory)
+				assert.False(t, isHAMT,
+					"should downgrade to BasicDirectory when at exact threshold after remove")
+
+				// Verify it's actually a BasicDirectory with correct entries
+				_, ok := dir.(*DynamicDirectory).Directory.(*BasicDirectory)
+				require.True(t, ok, "should be BasicDirectory")
+
+				links, err := dir.Links(ctx)
+				require.NoError(t, err)
+				assert.Len(t, links, 6, "should have 6 entries after downgrade")
+			})
+		})
+	}
 }

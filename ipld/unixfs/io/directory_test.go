@@ -758,19 +758,6 @@ func TestSizeEstimationMode(t *testing.T) {
 		assert.Equal(t, SizeEstimationBlock, dir.GetSizeEstimationMode())
 	})
 
-	t.Run("SetSizeEstimationMode changes mode", func(t *testing.T) {
-		HAMTSizeEstimation = SizeEstimationLinks
-		ds := mdtest.Mock()
-		dir, err := NewBasicDirectory(ds)
-		require.NoError(t, err)
-		assert.Equal(t, SizeEstimationLinks, dir.GetSizeEstimationMode())
-
-		dir.SetSizeEstimationMode(SizeEstimationBlock)
-		assert.Equal(t, SizeEstimationBlock, dir.GetSizeEstimationMode())
-
-		dir.SetSizeEstimationMode(SizeEstimationDisabled)
-		assert.Equal(t, SizeEstimationDisabled, dir.GetSizeEstimationMode())
-	})
 }
 
 // TestSizeEstimationBlockMode tests that block estimation mode correctly
@@ -978,15 +965,13 @@ func TestHAMTDirectorySizeEstimationMode(t *testing.T) {
 		assert.Equal(t, SizeEstimationBlock, hamtDir.GetSizeEstimationMode())
 	})
 
-	t.Run("HAMTDirectory SetSizeEstimationMode overrides global", func(t *testing.T) {
+	t.Run("HAMTDirectory WithSizeEstimationMode overrides global", func(t *testing.T) {
 		oldEstimation := HAMTSizeEstimation
 		defer func() { HAMTSizeEstimation = oldEstimation }()
 
 		HAMTSizeEstimation = SizeEstimationLinks
-		hamtDir, err := NewHAMTDirectory(ds, 0)
+		hamtDir, err := NewHAMTDirectory(ds, 0, WithSizeEstimationMode(SizeEstimationBlock))
 		require.NoError(t, err)
-
-		hamtDir.SetSizeEstimationMode(SizeEstimationBlock)
 		assert.Equal(t, SizeEstimationBlock, hamtDir.GetSizeEstimationMode())
 	})
 }

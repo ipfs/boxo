@@ -173,11 +173,6 @@ type Directory interface {
 	// converting between Basic and HAMT.
 	SetStat(os.FileMode, time.Time)
 
-	// SetSizeEstimationMode sets the method used to estimate serialized dag-pb block size
-	// when deciding whether to convert between BasicDirectory and HAMTDirectory.
-	// If not set, the global HAMTSizeEstimation is used.
-	SetSizeEstimationMode(SizeEstimationMode)
-
 	// GetSizeEstimationMode returns the method used to estimate serialized dag-pb block size
 	// for directory type conversion decisions.
 	// Returns the instance-specific mode if set, otherwise the global HAMTSizeEstimation.
@@ -241,9 +236,15 @@ func WithStat(mode os.FileMode, mtime time.Time) DirectoryOption {
 
 // WithSizeEstimationMode sets the method used to estimate serialized dag-pb block size
 // when deciding whether to convert between BasicDirectory and HAMTDirectory.
+// This must be set at directory creation time; mode cannot be changed afterwards.
 func WithSizeEstimationMode(mode SizeEstimationMode) DirectoryOption {
 	return func(d Directory) {
-		d.SetSizeEstimationMode(mode)
+		switch dir := d.(type) {
+		case *BasicDirectory:
+			dir.sizeEstimation = &mode
+		case *HAMTDirectory:
+			dir.sizeEstimation = &mode
+		}
 	}
 }
 
@@ -272,20 +273,13 @@ type BasicDirectory struct {
 	node  *mdag.ProtoNode
 	dserv ipld.DAGService
 
-	// Internal variable used to cache the estimated size of the basic directory:
-	// for each link, aggregate link name + link CID. Used for SizeEstimationLinks mode.
+	// Internal variable used to cache the estimated size of the basic directory.
+	// The meaning depends on the size estimation mode (set at creation time):
+	// - SizeEstimationLinks: sum of link name + CID byte lengths (legacy mode)
+	// - SizeEstimationBlock: full serialized dag-pb block size (accurate mode)
+	// - SizeEstimationDisabled: 0 (size tracking disabled)
 	// DO NOT CHANGE THIS as it will affect the HAMT transition behavior in HAMTShardingSize.
-	// (We maintain this value up to date even if the HAMTShardingSize is off
-	// since potentially the option could be activated on the fly.)
 	estimatedSize int
-
-	// Cached block size for SizeEstimationBlock mode. This value is initialized
-	// from the full serialized dag-pb block (including the UnixFS Data field
-	// with mode/mtime) and updated incrementally when links are added/removed.
-	// The incremental updates are exact because linkSerializedSize() computes
-	// the precise protobuf encoding size, and the Data field doesn't change
-	// after directory creation.
-	cachedBlockSize int
 
 	totalLinks int
 
@@ -298,6 +292,7 @@ type BasicDirectory struct {
 	mtime         time.Time
 
 	// Size estimation mode. If nil, falls back to global HAMTSizeEstimation.
+	// Set at creation time via WithSizeEstimationMode option.
 	sizeEstimation *SizeEstimationMode
 }
 
@@ -497,16 +492,6 @@ func (d *BasicDirectory) SetStat(mode os.FileMode, mtime time.Time) {
 	}
 }
 
-// SetSizeEstimationMode sets the method used to estimate serialized dag-pb block size
-// when deciding whether to convert between BasicDirectory and HAMTDirectory.
-func (d *BasicDirectory) SetSizeEstimationMode(mode SizeEstimationMode) {
-	d.sizeEstimation = &mode
-	if mode == SizeEstimationBlock && d.node != nil {
-		// Initialize cached block size for accurate tracking
-		d.cachedBlockSize, _ = calculateBlockSize(d.node)
-	}
-}
-
 // GetSizeEstimationMode returns the method used to estimate serialized dag-pb block size
 // for BasicDirectory to HAMTDirectory conversion decisions.
 // Returns the instance-specific mode if set, otherwise the global HAMTSizeEstimation.
@@ -517,37 +502,59 @@ func (d *BasicDirectory) GetSizeEstimationMode() SizeEstimationMode {
 	return HAMTSizeEstimation // fall back to global
 }
 
-// computeEstimatedSizeAndTotalLinks initializes all size tracking fields from the current node.
-// This includes estimatedSize (for links-based estimation), totalLinks count,
-// and cachedBlockSize (for block-based estimation when that mode is active).
+// computeEstimatedSizeAndTotalLinks initializes size tracking fields from the current node.
+// The estimatedSize is computed based on the current size estimation mode:
+// - SizeEstimationLinks: sum of link name + CID byte lengths
+// - SizeEstimationBlock: full serialized dag-pb block size
+// - SizeEstimationDisabled: 0
 func (d *BasicDirectory) computeEstimatedSizeAndTotalLinks() {
 	d.estimatedSize = 0
 	d.totalLinks = 0
-	// err is just breaking the iteration and we always return nil
-	_ = d.ForEachLink(context.TODO(), func(l *ipld.Link) error {
-		d.addToEstimatedSize(l.Name, l.Cid)
-		d.totalLinks++
-		return nil
-	})
-	// ForEachLink will never fail traversing the BasicDirectory
-	// and neither the inner callback `addToEstimatedSize`.
 
-	// Initialize cachedBlockSize for block-based estimation.
-	// Check both instance-specific mode and global mode.
-	if d.GetSizeEstimationMode() == SizeEstimationBlock && d.node != nil {
-		d.cachedBlockSize, _ = calculateBlockSize(d.node)
+	mode := d.GetSizeEstimationMode()
+	if mode == SizeEstimationBlock && d.node != nil {
+		// For block mode, calculate the actual serialized size
+		d.estimatedSize, _ = calculateBlockSize(d.node)
+		// Just count links since size is already computed
+		for range d.node.Links() {
+			d.totalLinks++
+		}
+		return
+	}
+
+	// For Links mode, accumulate link sizes; for Disabled mode, just count
+	for _, l := range d.node.Links() {
+		if mode == SizeEstimationLinks {
+			d.estimatedSize += linksize.LinkSizeFunction(l.Name, l.Cid)
+		}
+		d.totalLinks++
 	}
 }
 
-func (d *BasicDirectory) addToEstimatedSize(name string, linkCid cid.Cid) {
-	d.estimatedSize += linksize.LinkSizeFunction(name, linkCid)
-}
+// updateEstimatedSize adjusts estimatedSize for link changes.
+// Pass nil for oldLink when adding, nil for newLink when removing.
+// The name parameter is used for size calculation since link.Name may not be set.
+func (d *BasicDirectory) updateEstimatedSize(name string, oldLink, newLink *ipld.Link) {
+	switch d.GetSizeEstimationMode() {
+	case SizeEstimationBlock:
+		if oldLink != nil {
+			d.estimatedSize -= linkSerializedSize(name, oldLink.Cid, oldLink.Size)
+		}
+		if newLink != nil {
+			d.estimatedSize += linkSerializedSize(name, newLink.Cid, newLink.Size)
+		}
+	case SizeEstimationLinks:
+		if oldLink != nil {
+			d.estimatedSize -= linksize.LinkSizeFunction(name, oldLink.Cid)
+		}
+		if newLink != nil {
+			d.estimatedSize += linksize.LinkSizeFunction(name, newLink.Cid)
+		}
+	default:
+		// SizeEstimationDisabled: no-op
+	}
 
-func (d *BasicDirectory) removeFromEstimatedSize(name string, linkCid cid.Cid) {
-	d.estimatedSize -= linksize.LinkSizeFunction(name, linkCid)
 	if d.estimatedSize < 0 {
-		// Something has gone very wrong. Log an error and recompute the
-		// size from scratch.
 		log.Error("BasicDirectory's estimatedSize went below 0")
 		d.computeEstimatedSizeAndTotalLinks()
 	}
@@ -616,7 +623,7 @@ func (d *BasicDirectory) needsToSwitchByLinkSize(name string, nodeToAdd ipld.Nod
 }
 
 // needsToSwitchByBlockSize uses accurate estimation based on full serialized dag-pb block size.
-// The cachedBlockSize is kept accurate via linkSerializedSize() which computes exact protobuf
+// The estimatedSize is kept accurate via linkSerializedSize() which computes exact protobuf
 // encoding sizes. We use fast paths for clear cases and only do expensive exact calculation
 // when very close to the threshold boundary.
 func (d *BasicDirectory) needsToSwitchByBlockSize(name string, nodeToAdd ipld.Node) (bool, error) {
@@ -634,7 +641,7 @@ func (d *BasicDirectory) needsToSwitchByBlockSize(name string, nodeToAdd ipld.No
 		oldLinkSize = linkSerializedSize(name, oldLink.Cid, oldLink.Size)
 	}
 
-	estimatedNewSize := d.cachedBlockSize - oldLinkSize + newLinkSize
+	estimatedNewSize := d.estimatedSize - oldLinkSize + newLinkSize
 
 	// Fast path: clearly below threshold - no switch needed
 	if estimatedNewSize < HAMTShardingSize {
@@ -680,26 +687,12 @@ func (d *BasicDirectory) checkMaxLinksExceeded(nodeToAdd ipld.Node, entryToRemov
 	return false
 }
 
-// updateCachedBlockSize adjusts the cached block size after link changes.
-// Only used when SizeEstimationBlock mode is active.
-func (d *BasicDirectory) updateCachedBlockSize(oldLink, newLink *ipld.Link, name string) {
-	if d.GetSizeEstimationMode() != SizeEstimationBlock {
-		return
-	}
-	if oldLink != nil {
-		d.cachedBlockSize -= linkSerializedSize(name, oldLink.Cid, oldLink.Size)
-	}
-	if newLink != nil {
-		d.cachedBlockSize += linkSerializedSize(name, newLink.Cid, newLink.Size)
-	}
-}
-
 // addLinkChild adds the link as an entry to this directory under the given
 // name. Plumbing function for the AddChild API.
 func (d *BasicDirectory) addLinkChild(ctx context.Context, name string, link *ipld.Link) error {
 	// Remove old link and account for size change (if it existed; ignore
-	// `ErrNotExist` otherwise). RemoveChild updates both estimatedSize and
-	// cachedBlockSize for the removed link.
+	// `ErrNotExist` otherwise). RemoveChild updates estimatedSize for the
+	// removed link.
 	err := d.RemoveChild(ctx, name)
 	if err != nil {
 		if !errors.Is(err, os.ErrNotExist) {
@@ -717,8 +710,7 @@ func (d *BasicDirectory) addLinkChild(ctx context.Context, name string, link *ip
 	if err != nil {
 		return err
 	}
-	d.addToEstimatedSize(name, link.Cid)
-	d.updateCachedBlockSize(nil, link, name)
+	d.updateEstimatedSize(name, nil, link)
 	d.totalLinks++
 	return nil
 }
@@ -786,8 +778,7 @@ func (d *BasicDirectory) RemoveChild(ctx context.Context, name string) error {
 	}
 
 	// The name actually existed so we should update the estimated size.
-	d.removeFromEstimatedSize(link.Name, link.Cid)
-	d.updateCachedBlockSize(link, nil, name)
+	d.updateEstimatedSize(name, link, nil)
 	d.totalLinks--
 
 	return d.node.RemoveNodeLink(name)
@@ -871,12 +862,6 @@ func (d *HAMTDirectory) SetStat(mode os.FileMode, mtime time.Time) {
 	if !mtime.IsZero() {
 		d.mtime = mtime
 	}
-}
-
-// SetSizeEstimationMode sets the method used to estimate serialized dag-pb block size
-// when deciding whether to convert between HAMTDirectory and BasicDirectory.
-func (d *HAMTDirectory) SetSizeEstimationMode(mode SizeEstimationMode) {
-	d.sizeEstimation = &mode
 }
 
 // GetSizeEstimationMode returns the method used to estimate serialized dag-pb block size
