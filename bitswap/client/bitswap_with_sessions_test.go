@@ -206,7 +206,7 @@ func TestSessionBetweenPeers(t *testing.T) {
 
 	// Wait briefly to ensure the CANCEL for cids[0] is fully processed
 	// before continuing with more requests that might trigger rebroadcasts
-	time.Sleep(10 * time.Millisecond)
+	time.Sleep(50 * time.Millisecond)
 
 	blks = blks[1:]
 	cids = cids[1:]
