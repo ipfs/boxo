@@ -3,12 +3,12 @@ package io
 import (
 	"context"
 	"errors"
-	"fmt"
 	"math/bits"
 	"os"
 	"time"
 
 	"github.com/alecthomas/units"
+	"github.com/ipfs/boxo/files"
 	mdag "github.com/ipfs/boxo/ipld/merkledag"
 	format "github.com/ipfs/boxo/ipld/unixfs"
 	"github.com/ipfs/boxo/ipld/unixfs/hamt"
@@ -23,9 +23,13 @@ var log = logging.Logger("unixfs")
 // HAMTShardingSize is a global option that allows switching to a HAMTDirectory
 // when the BasicDirectory grows above the size (in bytes) signalled by this
 // flag. The default size of 0 disables the option.
-// The size is not the *exact* block size of the encoded BasicDirectory but just
-// the estimated size based byte length of links name and CID (BasicDirectory's
-// ProtoNode doesn't use the Data field so this estimate is pretty accurate).
+//
+// Size estimation depends on HAMTSizeEstimation mode:
+//   - SizeEstimationLinks (default): estimates using link name + CID byte lengths,
+//     ignoring Tsize, protobuf overhead, and UnixFS Data field (mode/mtime).
+//   - SizeEstimationBlock: computes exact serialized dag-pb block size arithmetically,
+//     including the UnixFS Data field and all protobuf encoding overhead.
+//   - SizeEstimationDisabled: ignores size entirely, uses only MaxLinks.
 //
 // Threshold behavior: directory converts to HAMT when estimatedSize > HAMTShardingSize.
 // A directory exactly at the threshold stays basic (threshold value is NOT included).
@@ -102,15 +106,60 @@ func linkSerializedSize(name string, c cid.Cid, tsize uint64) int {
 	return 1 + varintLen(uint64(linkLen)) + linkLen
 }
 
-// calculateBlockSize returns the actual size of the serialized dag-pb block.
-// Used for IPIP-499's "block-bytes" HAMT threshold estimation to get the exact
-// size including the UnixFS Data field (with optional mode/mtime metadata).
-func calculateBlockSize(node *mdag.ProtoNode) (int, error) {
-	data, err := node.EncodeProtobuf(false)
-	if err != nil {
-		return 0, fmt.Errorf("failed to encode directory node: %w", err)
+// dataFieldSerializedSize returns the exact number of bytes the UnixFS Data field
+// adds to a PBNode protobuf encoding for a BasicDirectory. This computes the size
+// arithmetically without serialization.
+//
+// UnixFS Data fields (https://specs.ipfs.tech/unixfs/#data):
+//   - Type     (field 1, varint):  USED - always Directory (1) for BasicDirectory
+//   - Data     (field 2, bytes):   NOT USED - only for File/Raw content
+//   - filesize (field 3, varint):  NOT USED - only for File nodes
+//   - blocksizes (field 4, repeated varint): NOT USED - only for File nodes
+//   - hashType (field 5, varint):  NOT USED - only for HAMTShard
+//   - fanout   (field 6, varint):  NOT USED - only for HAMTShard
+//   - mode     (field 7, varint):  USED - optional unix permissions
+//   - mtime    (field 8, message): USED - optional modification time
+//
+// If new fields are added to the UnixFS spec for directories, this function
+// must be updated. The test TestDataFieldSerializedSizeMatchesActual verifies
+// this calculation against actual protobuf serialization.
+func dataFieldSerializedSize(mode os.FileMode, mtime time.Time) int {
+	// Inner UnixFS Data message
+	innerSize := 0
+
+	// Type field (field 1, varint): Directory = 1
+	// tag = (1 << 3) | 0 = 8 (1 byte), value = 1 (1 byte)
+	innerSize += 2
+
+	// Mode field (field 7, optional varint)
+	if mode != 0 {
+		modeVal := uint64(files.ModePermsToUnixPerms(mode))
+		// tag = (7 << 3) | 0 = 56 (1 byte)
+		innerSize += 1 + varintLen(modeVal)
 	}
-	return len(data), nil
+
+	// Mtime field (field 8, optional embedded message)
+	if !mtime.IsZero() {
+		mtimeSize := 0
+		// seconds (field 1, int64 varint) - positive timestamps use standard encoding
+		secs := mtime.Unix()
+		if secs >= 0 {
+			mtimeSize += 1 + varintLen(uint64(secs))
+		} else {
+			mtimeSize += 1 + 10 // negative int64 always 10 bytes
+		}
+
+		// nanos (field 2, optional fixed32)
+		if mtime.Nanosecond() > 0 {
+			mtimeSize += 1 + 4 // tag(1) + fixed32(4)
+		}
+
+		// Mtime wrapper: tag(1) + len_varint + message
+		innerSize += 1 + varintLen(uint64(mtimeSize)) + mtimeSize
+	}
+
+	// PBNode.Data wrapper: tag(1) + len_varint + innerSize
+	return 1 + varintLen(uint64(innerSize)) + innerSize
 }
 
 // Directory defines a UnixFS directory. It is used for creating, reading and
@@ -273,11 +322,11 @@ type BasicDirectory struct {
 	node  *mdag.ProtoNode
 	dserv ipld.DAGService
 
-	// Internal variable used to cache the estimated size of the basic directory.
+	// Internal variable used to cache the size of the basic directory.
 	// The meaning depends on the size estimation mode (set at creation time):
-	// - SizeEstimationLinks: sum of link name + CID byte lengths (legacy mode)
-	// - SizeEstimationBlock: full serialized dag-pb block size (accurate mode)
-	// - SizeEstimationDisabled: 0 (size tracking disabled)
+	//   - SizeEstimationLinks: sum of link name + CID byte lengths (legacy estimate)
+	//   - SizeEstimationBlock: exact serialized dag-pb block size (computed arithmetically)
+	//   - SizeEstimationDisabled: 0 (size tracking disabled)
 	// DO NOT CHANGE THIS as it will affect the HAMT transition behavior in HAMTShardingSize.
 	estimatedSize int
 
@@ -354,6 +403,16 @@ func NewBasicDirectoryFromNode(dserv ipld.DAGService, node *mdag.ProtoNode) *Bas
 	basicDir := new(BasicDirectory)
 	basicDir.node = node
 	basicDir.dserv = dserv
+
+	// Extract mode/mtime from node's UnixFS data for size estimation.
+	// This allows dataFieldSerializedSize to compute the Data field size
+	// without re-parsing or re-serializing the node.
+	if data := node.Data(); len(data) > 0 {
+		if fsNode, err := format.FSNodeFromBytes(data); err == nil {
+			basicDir.mode = fsNode.Mode()
+			basicDir.mtime = fsNode.ModTime()
+		}
+	}
 
 	// Initialize all size tracking fields from the node.
 	basicDir.computeEstimatedSizeAndTotalLinks()
@@ -505,7 +564,7 @@ func (d *BasicDirectory) GetSizeEstimationMode() SizeEstimationMode {
 // computeEstimatedSizeAndTotalLinks initializes size tracking fields from the current node.
 // The estimatedSize is computed based on the current size estimation mode:
 // - SizeEstimationLinks: sum of link name + CID byte lengths
-// - SizeEstimationBlock: full serialized dag-pb block size
+// - SizeEstimationBlock: full serialized dag-pb block size (computed arithmetically)
 // - SizeEstimationDisabled: 0
 func (d *BasicDirectory) computeEstimatedSizeAndTotalLinks() {
 	d.estimatedSize = 0
@@ -513,10 +572,14 @@ func (d *BasicDirectory) computeEstimatedSizeAndTotalLinks() {
 
 	mode := d.GetSizeEstimationMode()
 	if mode == SizeEstimationBlock && d.node != nil {
-		// For block mode, calculate the actual serialized size
-		d.estimatedSize, _ = calculateBlockSize(d.node)
-		// Just count links since size is already computed
-		for range d.node.Links() {
+		// Compute data field size from stored metadata (no serialization needed).
+		// The mode and mtime fields are extracted in NewBasicDirectoryFromNode
+		// or set via WithStat option during creation.
+		d.estimatedSize = dataFieldSerializedSize(d.mode, d.mtime)
+
+		// Add link sizes using linkSerializedSize function
+		for _, l := range d.node.Links() {
+			d.estimatedSize += linkSerializedSize(l.Name, l.Cid, l.Size)
 			d.totalLinks++
 		}
 		return
@@ -623,9 +686,8 @@ func (d *BasicDirectory) needsToSwitchByLinkSize(name string, nodeToAdd ipld.Nod
 }
 
 // needsToSwitchByBlockSize uses accurate estimation based on full serialized dag-pb block size.
-// The estimatedSize is kept accurate via linkSerializedSize() which computes exact protobuf
-// encoding sizes. We use fast paths for clear cases and only do expensive exact calculation
-// when very close to the threshold boundary.
+// The estimatedSize is kept accurate via linkSerializedSize() and dataFieldSerializedSize()
+// which compute exact protobuf encoding sizes arithmetically.
 func (d *BasicDirectory) needsToSwitchByBlockSize(name string, nodeToAdd ipld.Node) (bool, error) {
 	link, err := ipld.MakeLink(nodeToAdd)
 	if err != nil {
@@ -643,37 +705,9 @@ func (d *BasicDirectory) needsToSwitchByBlockSize(name string, nodeToAdd ipld.No
 
 	estimatedNewSize := d.estimatedSize - oldLinkSize + newLinkSize
 
-	// Fast path: clearly below threshold - no switch needed
-	if estimatedNewSize < HAMTShardingSize {
-		return false, nil
-	}
-
-	// Fast path: clearly above threshold - switch without exact calculation.
-	// The margin accounts for any potential minor discrepancies. Since our
-	// incremental tracking is accurate (linkSerializedSize computes exact
-	// protobuf sizes), this margin is conservative.
-	const margin = 256 // bytes
-	if estimatedNewSize > HAMTShardingSize+margin {
-		return true, nil
-	}
-
-	// Near threshold: do exact calculation to ensure correct boundary behavior
-	tempNode := d.node.Copy().(*mdag.ProtoNode)
-	_ = tempNode.RemoveNodeLink(name)
-	if nodeToAdd != nil {
-		if err := tempNode.AddRawLink(name, link); err != nil {
-			return false, err
-		}
-	}
-
-	exactSize, err := calculateBlockSize(tempNode)
-	if err != nil {
-		return false, err
-	}
-
 	// Switch to HAMT when size exceeds threshold (> not >=).
 	// Directory exactly at threshold stays basic.
-	switchShardingSize := exactSize > HAMTShardingSize
+	switchShardingSize := estimatedNewSize > HAMTShardingSize
 	switchMaxLinks := d.checkMaxLinksExceeded(nodeToAdd, entryToRemove)
 	return switchShardingSize || switchMaxLinks, nil
 }
@@ -1066,9 +1100,16 @@ func (d *HAMTDirectory) sizeBelowThreshold(ctx context.Context, sizeChange int) 
 		panic("asked to compute HAMT size with HAMTShardingSize option off (0)")
 	}
 
-	// We don't necessarily compute the full size of *all* shards as we might
-	// end early if we already know we're above the threshold or run out of time.
+	// Start with Data field overhead for hypothetical BasicDirectory.
+	// This is the size of the serialized UnixFS Data message that would exist
+	// in a single-block BasicDirectory (Type=Directory + optional mode/mtime).
+	// For SizeEstimationLinks mode, we don't include this overhead to maintain
+	// backward compatibility with the legacy behavior.
 	partialSize := 0
+	if d.GetSizeEstimationMode() == SizeEstimationBlock {
+		partialSize = dataFieldSerializedSize(d.mode, d.mtime)
+	}
+
 	var err error
 	below := true
 

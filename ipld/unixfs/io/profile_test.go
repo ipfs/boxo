@@ -12,10 +12,23 @@ import (
 	ft "github.com/ipfs/boxo/ipld/unixfs"
 	"github.com/ipfs/boxo/ipld/unixfs/private/linksize"
 	cid "github.com/ipfs/go-cid"
+	ipld "github.com/ipfs/go-ipld-format"
 	mh "github.com/multiformats/go-multihash"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// calculateBlockSize returns the actual byte size of the serialized dag-pb block
+// by performing real protobuf encoding. Used only in tests to verify that
+// arithmetic size calculations (dataFieldSerializedSize + linkSerializedSize)
+// match actual protobuf serialization.
+func calculateBlockSize(node *mdag.ProtoNode) (int, error) {
+	data, err := node.EncodeProtobuf(false)
+	if err != nil {
+		return 0, fmt.Errorf("failed to encode directory node: %w", err)
+	}
+	return len(data), nil
+}
 
 func TestUnixFSProfiles(t *testing.T) {
 	t.Run("UnixFS_v0_2015 has correct values", func(t *testing.T) {
@@ -392,7 +405,7 @@ func TestSizeEstimationBlockWithModeMtime(t *testing.T) {
 		require.NoError(t, err)
 
 		// Directory with mode
-		dirWithMode, err := NewBasicDirectory(ds, WithStat(os.FileMode(0755), time.Time{}))
+		dirWithMode, err := NewBasicDirectory(ds, WithStat(os.FileMode(0o755), time.Time{}))
 		require.NoError(t, err)
 
 		nodeWithMode, err := dirWithMode.GetNode()
@@ -476,7 +489,7 @@ func TestSizeEstimationBlockWithModeMtime(t *testing.T) {
 
 		// Directory with both mode and mtime
 		mtime := time.Unix(1700000000, 123456789)
-		dirFull, err := NewBasicDirectory(ds, WithStat(os.FileMode(0755), mtime))
+		dirFull, err := NewBasicDirectory(ds, WithStat(os.FileMode(0o755), mtime))
 		require.NoError(t, err)
 
 		nodeFull, err := dirFull.GetNode()
@@ -497,7 +510,7 @@ func TestSizeEstimationBlockWithModeMtime(t *testing.T) {
 		// Create directory with metadata
 		mtime := time.Unix(1700000000, 123456789)
 		dir, err := NewBasicDirectory(ds,
-			WithStat(os.FileMode(0755), mtime),
+			WithStat(os.FileMode(0o755), mtime),
 			WithSizeEstimationMode(SizeEstimationBlock),
 		)
 		require.NoError(t, err)
@@ -531,7 +544,7 @@ func TestSizeEstimationBlockWithModeMtime(t *testing.T) {
 		dirPlain, err := NewBasicDirectory(ds, WithSizeEstimationMode(SizeEstimationBlock))
 		require.NoError(t, err)
 		dirMeta, err := NewBasicDirectory(ds,
-			WithStat(os.FileMode(0755), mtime),
+			WithStat(os.FileMode(0o755), mtime),
 			WithSizeEstimationMode(SizeEstimationBlock),
 		)
 		require.NoError(t, err)
@@ -561,7 +574,7 @@ func TestSizeEstimationBlockWithModeMtime(t *testing.T) {
 			dirPlain2, err := NewDirectory(ds, WithSizeEstimationMode(SizeEstimationBlock))
 			require.NoError(t, err)
 			dirMeta2, err := NewDirectory(ds,
-				WithStat(os.FileMode(0755), mtime),
+				WithStat(os.FileMode(0o755), mtime),
 				WithSizeEstimationMode(SizeEstimationBlock),
 			)
 			require.NoError(t, err)
@@ -974,4 +987,142 @@ func TestHAMTToBasicDowngrade(t *testing.T) {
 			})
 		})
 	}
+}
+
+// TestDataFieldSerializedSizeMatchesActual verifies that the arithmetic calculation
+// in dataFieldSerializedSize matches the actual protobuf serialization. This test
+// ensures the optimization doesn't drift from reality and will catch any future
+// field additions to the UnixFS spec for directories.
+func TestDataFieldSerializedSizeMatchesActual(t *testing.T) {
+	testCases := []struct {
+		name  string
+		mode  os.FileMode
+		mtime time.Time
+	}{
+		{"empty directory", 0, time.Time{}},
+		{"with mode 0755", os.FileMode(0o755), time.Time{}},
+		{"with mode 0644", os.FileMode(0o644), time.Time{}},
+		{"with mtime seconds only", 0, time.Unix(1700000000, 0)},
+		{"with mtime and nanos", 0, time.Unix(1700000000, 123456789)},
+		{"with mode and mtime", os.FileMode(0o755), time.Unix(1700000000, 123456789)},
+		{"with negative timestamp", 0, time.Unix(-1000000, 0)}, // before 1970
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Create actual node and serialize
+			var node *mdag.ProtoNode
+			if tc.mode != 0 || !tc.mtime.IsZero() {
+				node = ft.EmptyDirNodeWithStat(tc.mode, tc.mtime)
+			} else {
+				node = ft.EmptyDirNode()
+			}
+
+			actualSize, err := calculateBlockSize(node)
+			require.NoError(t, err)
+
+			// Compute using arithmetic function
+			computedSize := dataFieldSerializedSize(tc.mode, tc.mtime)
+
+			assert.Equal(t, actualSize, computedSize,
+				"dataFieldSerializedSize must match actual serialized size; "+
+					"if UnixFS spec adds new directory fields, update dataFieldSerializedSize()")
+		})
+	}
+}
+
+// TestHAMTAndBasicDirectorySizeConsistency verifies that HAMTDirectory.sizeBelowThreshold()
+// and BasicDirectory.estimatedSize compute equivalent values for the same directory contents.
+// This ensures both calculations use the same Data field overhead.
+func TestHAMTAndBasicDirectorySizeConsistency(t *testing.T) {
+	saveAndRestoreGlobals(t)
+
+	ds := mdtest.Mock()
+	ctx := t.Context()
+
+	child := ft.EmptyDirNode()
+	require.NoError(t, ds.Add(ctx, child))
+
+	t.Run("SizeEstimationBlock mode/mtime consistency", func(t *testing.T) {
+		HAMTSizeEstimation = SizeEstimationBlock
+
+		mtime := time.Unix(1700000000, 123456789)
+		mode := os.FileMode(0o755)
+
+		// Create a BasicDirectory with mode/mtime and add some entries
+		basicDir, err := NewBasicDirectory(ds,
+			WithStat(mode, mtime),
+			WithSizeEstimationMode(SizeEstimationBlock),
+		)
+		require.NoError(t, err)
+
+		for i := range 5 {
+			err = basicDir.AddChild(ctx, fmt.Sprintf("entry%d", i), child)
+			require.NoError(t, err)
+		}
+
+		// Get BasicDirectory's estimated size
+		basicEstimatedSize := basicDir.estimatedSize
+
+		// Verify it matches actual serialized size
+		node, err := basicDir.GetNode()
+		require.NoError(t, err)
+		actualSize, err := calculateBlockSize(node.(*mdag.ProtoNode))
+		require.NoError(t, err)
+		assert.Equal(t, actualSize, basicEstimatedSize,
+			"BasicDirectory.estimatedSize should match actual block size")
+
+		// Now create a HAMT and convert back to verify consistency
+		// Set threshold low to force HAMT conversion
+		HAMTShardingSize = 50
+
+		hamtDir, err := NewDirectory(ds,
+			WithStat(mode, mtime),
+			WithSizeEstimationMode(SizeEstimationBlock),
+		)
+		require.NoError(t, err)
+
+		// Add same entries to trigger HAMT conversion
+		for i := range 5 {
+			err = hamtDir.AddChild(ctx, fmt.Sprintf("entry%d", i), child)
+			require.NoError(t, err)
+		}
+
+		// Should be a HAMT now
+		hamt, ok := hamtDir.(*DynamicDirectory).Directory.(*HAMTDirectory)
+		require.True(t, ok, "should be HAMTDirectory")
+
+		// Set mode/mtime on HAMT (simulating what would happen during conversion)
+		hamt.SetStat(mode, mtime)
+
+		// Set threshold high to allow BasicDirectory and test sizeBelowThreshold
+		HAMTShardingSize = 1000
+
+		// sizeBelowThreshold should compute the same size as BasicDirectory
+		// (since it's calculating the hypothetical BasicDirectory size)
+		below, err := hamt.sizeBelowThreshold(ctx, 0)
+		require.NoError(t, err)
+		assert.True(t, below, "should be below threshold")
+
+		// The BasicDirectory estimated size should equal what HAMT would calculate
+		// for conversion decision. We can verify this by creating a fresh BasicDirectory
+		// from the HAMT's contents and comparing sizes.
+		freshBasic, err := NewBasicDirectory(ds,
+			WithStat(mode, mtime),
+			WithSizeEstimationMode(SizeEstimationBlock),
+		)
+		require.NoError(t, err)
+
+		err = hamt.ForEachLink(ctx, func(link *ipld.Link) error {
+			return freshBasic.addLinkChild(ctx, link.Name, link)
+		})
+		require.NoError(t, err)
+
+		// The fresh BasicDirectory's estimated size should be consistent
+		t.Logf("BasicDirectory estimated size: %d", basicEstimatedSize)
+		t.Logf("Fresh BasicDirectory from HAMT estimated size: %d", freshBasic.estimatedSize)
+
+		assert.Equal(t, basicEstimatedSize, freshBasic.estimatedSize,
+			"BasicDirectory size should be consistent regardless of creation path")
+	})
 }

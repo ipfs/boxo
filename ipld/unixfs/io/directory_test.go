@@ -757,7 +757,6 @@ func TestSizeEstimationMode(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, SizeEstimationBlock, dir.GetSizeEstimationMode())
 	})
-
 }
 
 // TestSizeEstimationBlockMode tests that block estimation mode correctly
