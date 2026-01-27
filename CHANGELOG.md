@@ -16,6 +16,59 @@ The following emojis are used to highlight certain changes:
 
 ### Added
 
+- `routing/http`: `GET /routing/v1/dht/closest/peers/{key}` per [IPIP-476](https://github.com/ipfs/specs/pull/476)
+- `ipld/merkledag`: Added fetched node size reporting to the progress tracker. See [kubo#8915](https://github.com/ipfs/kubo/issues/8915)
+- `gateway`: Added a configurable fallback timeout for the gateway handler, defaulting to 1 hour. Configurable via `MaxRequestDuration` in the gateway config.
+
+### Changed
+
+- `keystore`: improve error messages and include key file name [#1080](https://github.com/ipfs/boxo/pull/1080)
+- upgrade to `go-libp2p-kad-dht` [v0.37.0](https://github.com/libp2p/go-libp2p-kad-dht/releases/tag/v0.37.0)
+- upgrade to `go-libp2p` [v0.47.0](https://github.com/libp2p/go-libp2p/releases/tag/v0.47.0)
+
+### Removed
+
+### Fixed
+
+- `bitswap/network`: Fixed goroutine leak that could cause bitswap to stop serving blocks after extended uptime. The root cause is `stream.Close()` blocking indefinitely when remote peers are unresponsive during multistream handshake ([go-libp2p#3448](https://github.com/libp2p/go-libp2p/pull/3448)). This PR ([#1083](https://github.com/ipfs/boxo/pull/1083)) adds a localized fix specific to bitswap's `SendMessage` by setting a read deadline before closing streams.
+
+### Security
+
+
+## [v0.35.2]
+
+### Changed
+
+- upgrade to `go-libp2p` [v0.45.0](https://github.com/libp2p/go-libp2p/releases/tag/v0.45.0)
+- upgrade to `go-log/v2` [v2.9.0](https://github.com/ipfs/go-log/releases/tag/v2.9.0)
+  - Applications using go-log (>=2.9)+go-libp2p(>=0.45) may need to initialize their application to bridge slog-based libraries to into go-log. See documentation for go-log [release](https://github.com/ipfs/go-log/releases/tag/v2.9.0) and [slog integration](https://github.com/ipfs/go-log/blob/master/README.md#slog-integration).
+
+
+## [v0.35.1]
+
+### Added
+
+- new span for the `handleIncoming` bitswap client `getter` plus events when blocks are received.
+- mark opentelemetry spans, span attributes, and span events as being used by ProbeLab's analysis scripts
+
+### Changed
+
+- upgrade to `go-dsqueue` [v0.1.0](https://github.com/ipfs/go-dsqueue/releases/tag/v0.1.0) - Fixes batch reuse that could cause panic.
+
+### Fixed
+
+- `gateway`: Fixed duplicate peer IDs appearing in retrieval timeout error messages
+- `bitswap/client`: fix tracing by using context to pass trace and retrieval state to session [#1059](https://github.com/ipfs/boxo/pull/1059)
+  - `bitswap/client`: propagate trace state when calling GetBlocks [#1060](https://github.com/ipfs/boxo/pull/1060)
+- `bitswap/network/httpnet`: improved error detection on HTTP and block fetches:
+  - Do not attempt to GET a test CID if the endpoint returns 429 to the test HEAD request.
+  - Unify error parsing and handling of http statues and content.
+
+
+## [v0.35.0]
+
+### Added
+
 - `pinning/pinner`: Added `CheckIfPinnedWithType` method to `Pinner` interface for efficient type-specific pin checks with optional name loading ([#1035](https://github.com/ipfs/boxo/pull/1035))
   - Enables checking specific pin types (recursive, direct, indirect) without loading all pins
   - Optional `includeNames` parameter controls whether pin names are loaded from datastore
@@ -44,6 +97,7 @@ The following emojis are used to highlight certain changes:
 - `filestore`: Support providing filestore-blocks. A new `provider.MultihashProvider` parameter has been added to `filestore.New()`. When used, the blocks handled by the Filestore's `FileManager` will be provided on write (Put and PutMany).
 
 ### Removed
+- `provider`: `Provide()` calls are replaced with `StartProviding()` to benefit from the Reprovide Sweep improvement. See [kubo#10834](https://github.com/ipfs/kubo/pull/10834) and [kad-dht#1095](https://github.com/libp2p/go-libp2p-kad-dht/pull/1095).- `provider`: `Provide()` calls are replaced with `StartProviding()` to benefit from the Reprovide Sweep improvement. See [kubo#10834](https://github.com/ipfs/kubo/pull/10834) and [kad-dht#1095](https://github.com/libp2p/go-libp2p-kad-dht/pull/1095).
 
 ### Fixed
 
@@ -66,12 +120,6 @@ The following emojis are used to highlight certain changes:
   - 🛠 Attempts to read CIDs with identity multihash digests longer than `DefaultMaxIdentityDigestSize` will now produce `ErrDigestTooLarge` error.
   - Identity CIDs can inline data directly, and without a size limit, they could embed arbitrary amounts of data. Limiting the size also protects gateways from poorly written clients that might send absurdly big data to the gateway encoded as identity CIDs only to retrieve it back. Note that identity CIDs do not provide integrity verification, making them vulnerable to bit flips. They should only be used in controlled contexts like raw leaves of a larger DAG. The limit is explicitly defined as `DefaultMaxIdentityDigestSize` (128 bytes).
 
-
-## v0.35.0
-
-### Changed
-
-- `provider`: `Provide()` calls are replaced with `StartProviding()` to benefit from the Reprovide Sweep improvement. See [kubo#10834](https://github.com/ipfs/kubo/pull/10834) and [kad-dht#1095](https://github.com/libp2p/go-libp2p-kad-dht/pull/1095).
 
 ## [v0.34.0]
 

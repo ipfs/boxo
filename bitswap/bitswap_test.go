@@ -332,6 +332,13 @@ func PerformDistributionTest(t *testing.T, numInstances, numBlocks int) {
 			t.Fatal(err)
 		}
 	}
+
+	for _, inst := range instances {
+		err := inst.Exchange.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
 }
 
 // TODO simplify this test. get to the _essence_!
@@ -375,6 +382,13 @@ func TestSendToWantingPeer(t *testing.T) {
 	if !blkrecvd.Cid().Equals(alpha.Cid()) {
 		t.Fatal("Wrong block!")
 	}
+
+	for _, inst := range peers {
+		err := inst.Exchange.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
 }
 
 func TestEmptyKey(t *testing.T) {
@@ -390,6 +404,10 @@ func TestEmptyKey(t *testing.T) {
 	_, err := bs.GetBlock(ctx, cid.Cid{})
 	if !ipld.IsNotFound(err) {
 		t.Error("empty string key should return ErrNotFound")
+	}
+
+	if err = bs.Close(); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -557,6 +575,8 @@ func TestWantlistCleanup(t *testing.T) {
 	instances := ig.Instances(2)
 	instance := instances[0]
 	bswap := instance.Exchange
+	defer bswap.Close()
+	defer instances[1].Exchange.Close()
 	blocks := random.BlocksOfSize(20, blockSize)
 
 	var keys []cid.Cid

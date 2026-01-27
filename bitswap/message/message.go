@@ -69,7 +69,7 @@ type BitSwapMessage interface {
 	SetPendingBytes(int32)
 	Exportable
 
-	Loggable() map[string]interface{}
+	Loggable() map[string]any
 
 	// Reset the values in the message back to defaults, so it can be reused
 	Reset(bool)
@@ -192,12 +192,7 @@ func newMessageFromProto(pbm *pb.Message) (BitSwapMessage, error) {
 			return nil, err
 		}
 
-		c, err := pref.Sum(b.GetData())
-		if err != nil {
-			return nil, err
-		}
-
-		blk, err := blocks.NewBlockWithCid(b.GetData(), c)
+		blk, err := NewWantlistBlock(b.GetData(), cid.Undef, pref)
 		if err != nil {
 			return nil, err
 		}
@@ -412,6 +407,20 @@ func FromMsgReader(r msgio.Reader) (BitSwapMessage, int, error) {
 	return m, len(msg), nil
 }
 
+// NewWantlistBlock makes a block from a payload.
+func NewWantlistBlock(bs []byte, c cid.Cid, prefix cid.Prefix) (blocks.Block, error) {
+	blockCid, err := prefix.Sum(bs)
+	if err != nil {
+		return nil, err
+	}
+	if c.Defined() {
+		if !blockCid.Equals(c) {
+			return nil, blocks.ErrWrongHash
+		}
+	}
+	return blocks.NewBlockWithCid(bs, blockCid)
+}
+
 func (m *impl) ToProtoV0() *pb.Message {
 	pbm := &pb.Message{
 		Wantlist: &pb.Message_Wantlist{
@@ -492,12 +501,12 @@ func write(w io.Writer, m *pb.Message) error {
 	return err
 }
 
-func (m *impl) Loggable() map[string]interface{} {
+func (m *impl) Loggable() map[string]any {
 	blocks := make([]string, 0, len(m.blocks))
 	for _, v := range m.blocks {
 		blocks = append(blocks, v.Cid().String())
 	}
-	return map[string]interface{}{
+	return map[string]any{
 		"blocks": blocks,
 		"wants":  m.Wantlist(),
 	}

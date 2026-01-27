@@ -28,11 +28,11 @@ type fakeLogger struct {
 	lastError error
 }
 
-func (f *fakeLogger) Error(args ...interface{}) {
+func (f *fakeLogger) Error(args ...any) {
 	f.lastError = errors.New(fmt.Sprint(args...))
 }
 
-func (f *fakeLogger) Errorf(format string, args ...interface{}) {
+func (f *fakeLogger) Errorf(format string, args ...any) {
 	f.lastError = fmt.Errorf(format, args...)
 }
 
@@ -768,7 +768,7 @@ func TestEncodeDecodePin(t *testing.T) {
 	_, c := randNode()
 
 	pin := newPin(c, ipfspin.Recursive, "testpin")
-	pin.Metadata = make(map[string]interface{}, 2)
+	pin.Metadata = make(map[string]any, 2)
 	pin.Metadata["hello"] = "world"
 	pin.Metadata["foo"] = "bar"
 
