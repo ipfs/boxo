@@ -82,7 +82,10 @@ func varintLen(v uint64) int {
 }
 
 // linkSerializedSize returns the exact number of bytes a link adds to a PBNode
-// protobuf encoding. Used for accurate block size estimation.
+// protobuf encoding. This is used for IPIP-499's "block-bytes" HAMT threshold
+// estimation mode (SizeEstimationBlock), which provides accurate size tracking
+// by accounting for Tsize and protobuf varint overhead that simpler estimation
+// methods ignore.
 func linkSerializedSize(name string, c cid.Cid, tsize uint64) int {
 	cidLen := len(c.Bytes())
 	nameLen := len(name)
@@ -100,6 +103,8 @@ func linkSerializedSize(name string, c cid.Cid, tsize uint64) int {
 }
 
 // calculateBlockSize returns the actual size of the serialized dag-pb block.
+// Used for IPIP-499's "block-bytes" HAMT threshold estimation to get the exact
+// size including the UnixFS Data field (with optional mode/mtime metadata).
 func calculateBlockSize(node *mdag.ProtoNode) (int, error) {
 	data, err := node.EncodeProtobuf(false)
 	if err != nil {
@@ -274,8 +279,12 @@ type BasicDirectory struct {
 	// since potentially the option could be activated on the fly.)
 	estimatedSize int
 
-	// Cached block size for SizeEstimationBlock mode. Updated incrementally
-	// when links are added/removed.
+	// Cached block size for SizeEstimationBlock mode. This value is initialized
+	// from the full serialized dag-pb block (including the UnixFS Data field
+	// with mode/mtime) and updated incrementally when links are added/removed.
+	// The incremental updates are exact because linkSerializedSize() computes
+	// the precise protobuf encoding size, and the Data field doesn't change
+	// after directory creation.
 	cachedBlockSize int
 
 	totalLinks int
@@ -469,8 +478,16 @@ func (d *BasicDirectory) SetMaxHAMTFanout(n int) {
 	d.maxHAMTFanout = n
 }
 
-// SetStat has no effect and only exists to support dynamic directories. Use
-// WithStat when creating a new directory instead.
+// SetStat stores mode and/or mtime values for use during Basic<->HAMT conversions.
+// Pass zero for mode or zero time for mtime to leave that field unchanged.
+// Note: clearing previously set values is not supported; to clear mode/mtime,
+// create a new directory without them.
+//
+// This method does NOT modify the underlying node's Data field or cachedBlockSize.
+// The stored values are only applied when creating a new directory during conversion
+// (via WithStat option). If you need to update an existing node's mode/mtime,
+// modify the node directly and replace the directory, or use MFS which handles
+// this for you.
 func (d *BasicDirectory) SetStat(mode os.FileMode, mtime time.Time) {
 	if mode > 0 {
 		d.mode = mode
@@ -599,6 +616,9 @@ func (d *BasicDirectory) needsToSwitchByLinkSize(name string, nodeToAdd ipld.Nod
 }
 
 // needsToSwitchByBlockSize uses accurate estimation based on full serialized dag-pb block size.
+// The cachedBlockSize is kept accurate via linkSerializedSize() which computes exact protobuf
+// encoding sizes. We use fast paths for clear cases and only do expensive exact calculation
+// when very close to the threshold boundary.
 func (d *BasicDirectory) needsToSwitchByBlockSize(name string, nodeToAdd ipld.Node) (bool, error) {
 	link, err := ipld.MakeLink(nodeToAdd)
 	if err != nil {
@@ -616,12 +636,21 @@ func (d *BasicDirectory) needsToSwitchByBlockSize(name string, nodeToAdd ipld.No
 
 	estimatedNewSize := d.cachedBlockSize - oldLinkSize + newLinkSize
 
-	// Fast path: clearly below threshold
+	// Fast path: clearly below threshold - no switch needed
 	if estimatedNewSize < HAMTShardingSize {
 		return false, nil
 	}
 
-	// Near or above threshold: recalculate exact size before switching
+	// Fast path: clearly above threshold - switch without exact calculation.
+	// The margin accounts for any potential minor discrepancies. Since our
+	// incremental tracking is accurate (linkSerializedSize computes exact
+	// protobuf sizes), this margin is conservative.
+	const margin = 256 // bytes
+	if estimatedNewSize > HAMTShardingSize+margin {
+		return true, nil
+	}
+
+	// Near threshold: do exact calculation to ensure correct boundary behavior
 	tempNode := d.node.Copy().(*mdag.ProtoNode)
 	_ = tempNode.RemoveNodeLink(name)
 	if nodeToAdd != nil {
@@ -832,7 +861,9 @@ func (d *HAMTDirectory) SetMaxHAMTFanout(n int) {
 	d.maxHAMTFanout = n
 }
 
-// SetStat has no effect and only exists to support Dynamic directories.
+// SetStat stores mode and/or mtime values for use during HAMT->Basic conversions.
+// Pass zero for mode or zero time for mtime to leave that field unchanged.
+// See BasicDirectory.SetStat for full documentation.
 func (d *HAMTDirectory) SetStat(mode os.FileMode, mtime time.Time) {
 	if mode > 0 {
 		d.mode = mode
@@ -1113,10 +1144,9 @@ func (d *DynamicDirectory) SetMaxHAMTFanout(n int) {
 	d.Directory.SetMaxHAMTFanout(n)
 }
 
-// SetStat sets stats information. This operation does not produce any side
-// effects. It is taken into account when converting from HAMT to basic
-// directory. Mode or mtime can be set independently by using zero for mtime
-// or mode respectively.
+// SetStat stores mode and/or mtime values for use during Basic<->HAMT conversions.
+// Pass zero for mode or zero time for mtime to leave that field unchanged.
+// See BasicDirectory.SetStat for full documentation.
 func (d *DynamicDirectory) SetStat(mode os.FileMode, mtime time.Time) {
 	d.Directory.SetStat(mode, mtime)
 }
