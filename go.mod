@@ -8,7 +8,7 @@ require (
 	github.com/crackcomm/go-gitignore v0.0.0-20241020182519-7843d2ba8fdf
 	github.com/cskr/pubsub v1.0.2
 	github.com/dustin/go-humanize v1.0.1
-	github.com/gabriel-vasile/mimetype v1.4.10
+	github.com/gabriel-vasile/mimetype v1.4.12
 	github.com/gammazero/chanqueue v1.1.1
 	github.com/gammazero/deque v1.2.0
 	github.com/google/uuid v1.6.0
@@ -42,7 +42,7 @@ require (
 	github.com/libp2p/go-libp2p-routing-helpers v0.7.5
 	github.com/libp2p/go-libp2p-testing v0.12.0
 	github.com/libp2p/go-msgio v0.3.0
-	github.com/miekg/dns v1.1.68
+	github.com/miekg/dns v1.1.72
 	github.com/mr-tron/base58 v1.2.0
 	github.com/multiformats/go-base32 v0.1.0
 	github.com/multiformats/go-multiaddr v0.16.1
@@ -70,7 +70,7 @@ require (
 	go.opentelemetry.io/otel/trace v1.38.0
 	go.uber.org/zap v1.27.1
 	golang.org/x/exp v0.0.0-20260112195511-716be5621a96
-	golang.org/x/oauth2 v0.33.0
+	golang.org/x/oauth2 v0.34.0
 	golang.org/x/sync v0.19.0
 	golang.org/x/sys v0.40.0
 	google.golang.org/protobuf v1.36.11
