@@ -25,11 +25,17 @@ var logger = logging.Logger("routing/http/contentrouter")
 // entries as a defensive measure against corrupted data.
 // See: https://github.com/ipfs/kubo/issues/11116
 func filterAddrs(in []types.Multiaddr) []multiaddr.Multiaddr {
+	if len(in) == 0 {
+		return nil
+	}
 	out := make([]multiaddr.Multiaddr, 0, len(in))
 	for _, a := range in {
 		if a.Multiaddr != nil {
 			out = append(out, a.Multiaddr)
 		}
+	}
+	if len(out) == 0 {
+		return nil
 	}
 	return out
 }
