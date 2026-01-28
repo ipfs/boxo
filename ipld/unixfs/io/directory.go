@@ -128,13 +128,14 @@ func dataFieldSerializedSize(mode os.FileMode, mtime time.Time) int {
 	innerSize := 0
 
 	// Type field (field 1, varint): Directory = 1
-	// tag = (1 << 3) | 0 = 8 (1 byte), value = 1 (1 byte)
+	// Protobuf tag = field_number * 8 + wire_type = 1 * 8 + 0 = 8 (1 byte)
+	// Value 1 encodes as 1 byte, so total = 2 bytes
 	innerSize += 2
 
 	// Mode field (field 7, optional varint)
 	if mode != 0 {
 		modeVal := uint64(files.ModePermsToUnixPerms(mode))
-		// tag = (7 << 3) | 0 = 56 (1 byte)
+		// Protobuf tag = field_number * 8 + wire_type = 7 * 8 + 0 = 56 (1 byte)
 		innerSize += 1 + varintLen(modeVal)
 	}
 
