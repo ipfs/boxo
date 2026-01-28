@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	uio "github.com/ipfs/boxo/ipld/unixfs/io"
 	cid "github.com/ipfs/go-cid"
 	ipld "github.com/ipfs/go-ipld-format"
 )
@@ -120,13 +121,14 @@ func PutNode(r *Root, path string, nd ipld.Node) error {
 
 // MkdirOpts is used by Mkdir
 type MkdirOpts struct {
-	Mkparents     bool
-	Flush         bool
-	CidBuilder    cid.Builder
-	Mode          os.FileMode
-	ModTime       time.Time
-	MaxLinks      int
-	MaxHAMTFanout int
+	Mkparents          bool
+	Flush              bool
+	CidBuilder         cid.Builder
+	Mode               os.FileMode
+	ModTime            time.Time
+	MaxLinks           int
+	MaxHAMTFanout      int
+	SizeEstimationMode *uio.SizeEstimationMode
 }
 
 // Mkdir creates a directory at 'path' under the directory 'd', creating
@@ -157,8 +159,9 @@ func Mkdir(r *Root, pth string, opts MkdirOpts) error {
 
 	// opts to make the parents leave MkParents and Flush as false.
 	parentsOpts := MkdirOpts{
-		MaxLinks:      opts.MaxLinks,
-		MaxHAMTFanout: opts.MaxHAMTFanout,
+		MaxLinks:           opts.MaxLinks,
+		MaxHAMTFanout:      opts.MaxHAMTFanout,
+		SizeEstimationMode: opts.SizeEstimationMode,
 	}
 
 	for i, d := range parts[:len(parts)-1] {

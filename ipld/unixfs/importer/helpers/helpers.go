@@ -27,6 +27,9 @@ var (
 //	var DefaultLinksPerBlock = (roughLinkBlockSize / roughLinkSize)
 //	                         = ( 8192 / 47 )
 //	                         = (approximately) 174
+//
+// For CID-deterministic imports, prefer using UnixFSProfile presets from
+// ipld/unixfs/io/profile.go which set this and other related globals.
 var DefaultLinksPerBlock = roughLinkBlockSize / roughLinkSize
 
 // ErrSizeLimitExceeded signals that a block is larger than BlockSizeLimit.

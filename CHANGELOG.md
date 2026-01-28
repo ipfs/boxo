@@ -16,11 +16,19 @@ The following emojis are used to highlight certain changes:
 
 ### Added
 
+- `ipld/unixfs/io`: added `SizeEstimationMode` for configurable HAMT sharding threshold decisions. Supports legacy link-based estimation (`SizeEstimationLinks`), accurate block-based estimation (`SizeEstimationBlock`), or disabling size-based thresholds (`SizeEstimationDisabled`). [#1088](https://github.com/ipfs/boxo/pull/1088), [IPIP-499](https://github.com/ipfs/specs/pull/499)
+- `ipld/unixfs/io`: added `UnixFSProfile` with `UnixFS_v0_2015` and `UnixFS_v1_2025` presets for CID-deterministic file and directory DAG construction. [#1088](https://github.com/ipfs/boxo/pull/1088), [IPIP-499](https://github.com/ipfs/specs/pull/499)
+- `files`: `NewSerialFileWithOptions` now supports controlling whether symlinks are preserved or dereferenced before being added to IPFS. See `SerialFileOptions.DereferenceSymlinks`. [#1088](https://github.com/ipfs/boxo/pull/1088), [IPIP-499](https://github.com/ipfs/specs/pull/499)
+
 ### Changed
+
+- 🛠 `chunker`: `DefaultBlockSize` changed from `const` to `var` to allow runtime configuration via global profiles. [#1088](https://github.com/ipfs/boxo/pull/1088), [IPIP-499](https://github.com/ipfs/specs/pull/499)
 
 ### Removed
 
 ### Fixed
+
+- 🛠 `ipld/unixfs/io`: fixed HAMT sharding threshold comparison to use `>` instead of `>=`. A directory exactly at the threshold now stays as a basic (flat) directory, aligning behavior with code documentation and the JS implementation. This is a theoretical breaking change, but unlikely to impact real-world users as it requires a directory to be exactly at the threshold boundary. If you depend on the old behavior, adjust `HAMTShardingSize` to be 1 byte lower. [#1088](https://github.com/ipfs/boxo/pull/1088), [IPIP-499](https://github.com/ipfs/specs/pull/499)
 
 ### Security
 
@@ -28,7 +36,6 @@ The following emojis are used to highlight certain changes:
 ## [v0.36.0]
 
 ### Added
-
 - `routing/http`: `GET /routing/v1/dht/closest/peers/{key}` per [IPIP-476](https://github.com/ipfs/specs/pull/476)
 - `ipld/merkledag`: Added fetched node size reporting to the progress tracker. See [kubo#8915](https://github.com/ipfs/kubo/issues/8915)
 - `gateway`: Added a configurable fallback timeout for the gateway handler, defaulting to 1 hour. Configurable via `MaxRequestDuration` in the gateway config.
