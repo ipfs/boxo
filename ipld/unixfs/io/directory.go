@@ -82,6 +82,12 @@ var HAMTSizeEstimation = SizeEstimationLinks
 
 // varintLen returns the encoded size of a protobuf varint.
 func varintLen(v uint64) int {
+	// Protobuf varints use 7 bits per byte (MSB is continuation flag), so a value
+	// requiring N bits needs ceil(N/7) bytes. This is equivalent to:
+	//   if v == 0 { return 1 }
+	//   return (bits.Len64(v) + 6) / 7
+	// but avoids branching: (9*bitLen + 64) / 64 maps bitLen=0 to 1 and computes
+	// ceil(bitLen/7) for bitLen>0 (since 9/64 approximates 1/7).
 	return int(9*uint32(bits.Len64(v))+64) / 64
 }
 
@@ -142,12 +148,14 @@ func dataFieldSerializedSize(mode os.FileMode, mtime time.Time) int {
 	// Mtime field (field 8, optional embedded message)
 	if !mtime.IsZero() {
 		mtimeSize := 0
-		// seconds (field 1, int64 varint) - positive timestamps use standard encoding
+		// seconds (field 1, int64 varint)
 		secs := mtime.Unix()
 		if secs >= 0 {
 			mtimeSize += 1 + varintLen(uint64(secs))
 		} else {
-			mtimeSize += 1 + 10 // negative int64 always 10 bytes
+			// Protobuf encodes negative int64 as 10-byte varint (sign-extended to
+			// fill all 64 bits, requiring the maximum varint encoding length).
+			mtimeSize += 1 + 10
 		}
 
 		// nanos (field 2, optional fixed32)
