@@ -312,6 +312,53 @@ func (dm *DagModifier) ensureSafeProtoNodeHash(node *mdag.ProtoNode) {
 	}
 }
 
+// maybeCollapseToRawLeaf checks if the current node is a ProtoNode wrapper around
+// a single RawNode child with no metadata, and if RawLeaves is enabled, collapses
+// the structure to just the RawNode. This ensures CID compatibility with ipfs add
+// for single-block files. Returns (node, true) if collapsed, (nil, false) otherwise.
+func (dm *DagModifier) maybeCollapseToRawLeaf() (ipld.Node, bool) {
+	if !dm.RawLeaves {
+		return nil, false
+	}
+
+	protoNode, ok := dm.curNode.(*mdag.ProtoNode)
+	if !ok {
+		return nil, false
+	}
+
+	// Must have exactly one child link
+	links := protoNode.Links()
+	if len(links) != 1 {
+		return nil, false
+	}
+
+	// Parse UnixFS metadata to check for ModTime or other metadata
+	fsn, err := ft.FSNodeFromBytes(protoNode.Data())
+	if err != nil {
+		return nil, false // Not valid UnixFS, keep as is
+	}
+
+	// If there's metadata (like ModTime), keep as ProtoNode
+	if !fsn.ModTime().IsZero() {
+		return nil, false
+	}
+
+	// Get the child node from DAGService (should be cached from appendData)
+	childNode, err := links[0].GetNode(dm.ctx, dm.dagserv)
+	if err != nil {
+		return nil, false // Can't fetch child, keep as is
+	}
+
+	// Child must be a RawNode
+	rawChild, ok := childNode.(*mdag.RawNode)
+	if !ok {
+		return nil, false
+	}
+
+	// Collapse to the RawNode child
+	return rawChild, true
+}
+
 // modifyDag writes the data in 'dm.wrBuf' over the data in 'node' starting at 'offset'
 // returns the new key of the passed in node.
 func (dm *DagModifier) modifyDag(n ipld.Node, offset uint64) (cid.Cid, error) {
@@ -586,6 +633,14 @@ func (dm *DagModifier) GetNode() (ipld.Node, error) {
 	err := dm.Sync()
 	if err != nil {
 		return nil, err
+	}
+
+	// If RawLeaves is enabled and the result is a ProtoNode with a single RawNode child
+	// and no metadata, collapse it to just the RawNode for CID compatibility with ipfs add.
+	// The collapsed RawNode is returned directly (no Copy needed - it's a different node
+	// fetched from DAGService, not dm.curNode, and RawNodes are immutable).
+	if collapsed, ok := dm.maybeCollapseToRawLeaf(); ok {
+		return collapsed, nil
 	}
 	return dm.curNode.Copy(), nil
 }

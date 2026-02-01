@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"testing"
+	"time"
 
 	dag "github.com/ipfs/boxo/ipld/merkledag"
 	"github.com/ipfs/boxo/ipld/unixfs"
@@ -1499,6 +1500,183 @@ func TestRawNodeGrowthConversion(t *testing.T) {
 		// Verify structure
 		if len(protoNode.Links()) < 2 {
 			t.Errorf("Expected multiple blocks, got %d", len(protoNode.Links()))
+		}
+	})
+}
+
+func TestRawLeavesCollapse(t *testing.T) {
+	t.Run("single-block file collapses to RawNode when RawLeaves enabled", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		dserv := testu.GetDAGServ()
+
+		// Create an empty file node with CIDv1 (required for raw leaves)
+		emptyNode := testu.GetEmptyNode(t, dserv, testu.UseCidV1)
+
+		// Create DagModifier with RawLeaves enabled
+		dmod, err := NewDagModifier(ctx, emptyNode, dserv, testu.SizeSplitterGen(512))
+		if err != nil {
+			t.Fatal(err)
+		}
+		dmod.RawLeaves = true
+
+		// Write small data (fits in single block)
+		data := []byte("hello world")
+		_, err = dmod.Write(data)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		// Get the final node
+		resultNode, err := dmod.GetNode()
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		// Should be a RawNode, not a ProtoNode
+		rawNode, ok := resultNode.(*dag.RawNode)
+		if !ok {
+			t.Fatalf("expected RawNode for single-block file with RawLeaves=true, got %T", resultNode)
+		}
+
+		// Verify the data
+		if !bytes.Equal(rawNode.RawData(), data) {
+			t.Errorf("data mismatch: expected %q, got %q", data, rawNode.RawData())
+		}
+
+		// Verify CID uses raw codec
+		if rawNode.Cid().Prefix().Codec != cid.Raw {
+			t.Errorf("expected raw codec, got %d", rawNode.Cid().Prefix().Codec)
+		}
+	})
+
+	t.Run("multi-block file stays as ProtoNode", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		dserv := testu.GetDAGServ()
+
+		// Create an empty file node with CIDv1
+		emptyNode := testu.GetEmptyNode(t, dserv, testu.UseCidV1)
+
+		// Create DagModifier with RawLeaves enabled and small chunk size
+		dmod, err := NewDagModifier(ctx, emptyNode, dserv, testu.SizeSplitterGen(32))
+		if err != nil {
+			t.Fatal(err)
+		}
+		dmod.RawLeaves = true
+
+		// Write enough data to require multiple blocks
+		data := bytes.Repeat([]byte("x"), 100)
+		_, err = dmod.Write(data)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		// Get the final node
+		resultNode, err := dmod.GetNode()
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		// Should be a ProtoNode (not collapsed)
+		protoNode, ok := resultNode.(*dag.ProtoNode)
+		if !ok {
+			t.Fatalf("expected ProtoNode for multi-block file, got %T", resultNode)
+		}
+
+		// Should have multiple children
+		if len(protoNode.Links()) < 2 {
+			t.Errorf("expected multiple blocks, got %d links", len(protoNode.Links()))
+		}
+	})
+
+	t.Run("file with ModTime stays as ProtoNode", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		dserv := testu.GetDAGServ()
+
+		// Create a file node with ModTime metadata
+		fsNode := unixfs.NewFSNode(unixfs.TFile)
+		fsNode.SetModTime(time.Now())
+		fsNodeData, err := fsNode.GetBytes()
+		if err != nil {
+			t.Fatal(err)
+		}
+		emptyNode := dag.NodeWithData(fsNodeData)
+		emptyNode.SetCidBuilder(cid.Prefix{
+			Version:  1,
+			Codec:    cid.DagProtobuf,
+			MhType:   mh.SHA2_256,
+			MhLength: -1,
+		})
+		err = dserv.Add(ctx, emptyNode)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		// Create DagModifier with RawLeaves enabled
+		dmod, err := NewDagModifier(ctx, emptyNode, dserv, testu.SizeSplitterGen(512))
+		if err != nil {
+			t.Fatal(err)
+		}
+		dmod.RawLeaves = true
+
+		// Write small data (would fit in single block)
+		data := []byte("hello world")
+		_, err = dmod.Write(data)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		// Get the final node
+		resultNode, err := dmod.GetNode()
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		// Should stay as ProtoNode because of ModTime metadata
+		_, ok := resultNode.(*dag.ProtoNode)
+		if !ok {
+			t.Fatalf("expected ProtoNode for file with ModTime, got %T", resultNode)
+		}
+	})
+
+	t.Run("RawLeaves=false keeps ProtoNode", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		dserv := testu.GetDAGServ()
+
+		// Create an empty file node with CIDv1
+		emptyNode := testu.GetEmptyNode(t, dserv, testu.UseCidV1)
+
+		// Create DagModifier with RawLeaves explicitly disabled
+		dmod, err := NewDagModifier(ctx, emptyNode, dserv, testu.SizeSplitterGen(512))
+		if err != nil {
+			t.Fatal(err)
+		}
+		dmod.RawLeaves = false
+
+		// Write small data
+		data := []byte("hello world")
+		_, err = dmod.Write(data)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		// Get the final node
+		resultNode, err := dmod.GetNode()
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		// Should stay as ProtoNode when RawLeaves=false
+		_, ok := resultNode.(*dag.ProtoNode)
+		if !ok {
+			t.Fatalf("expected ProtoNode when RawLeaves=false, got %T", resultNode)
 		}
 	})
 }
