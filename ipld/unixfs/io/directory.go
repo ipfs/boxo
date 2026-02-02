@@ -235,6 +235,10 @@ type Directory interface {
 	// for directory type conversion decisions.
 	// Returns the instance-specific mode if set, otherwise the global HAMTSizeEstimation.
 	GetSizeEstimationMode() SizeEstimationMode
+
+	// SetSizeEstimationMode sets the method used to estimate serialized dag-pb block size.
+	// Used when inheriting settings from a parent directory after loading from disk.
+	SetSizeEstimationMode(SizeEstimationMode)
 }
 
 // A DirectoryOption can be used to initialize directories.
@@ -570,6 +574,26 @@ func (d *BasicDirectory) GetSizeEstimationMode() SizeEstimationMode {
 	return HAMTSizeEstimation // fall back to global
 }
 
+// SetSizeEstimationMode sets the method used to estimate serialized dag-pb block size.
+// Used when inheriting settings from a parent directory after loading from disk.
+// Note: This only recomputes estimatedSize, not totalLinks, since link count
+// is independent of the estimation mode.
+func (d *BasicDirectory) SetSizeEstimationMode(mode SizeEstimationMode) {
+	oldMode := d.GetSizeEstimationMode()
+	d.sizeEstimation = &mode
+
+	// Only recompute estimatedSize if mode actually changed
+	if mode == oldMode {
+		return
+	}
+
+	// Recompute estimatedSize with new mode, but preserve totalLinks
+	savedTotalLinks := d.totalLinks
+	d.computeEstimatedSizeAndTotalLinks()
+	// Restore totalLinks since it shouldn't change based on mode
+	d.totalLinks = savedTotalLinks
+}
+
 // computeEstimatedSizeAndTotalLinks initializes size tracking fields from the current node.
 // The estimatedSize is computed based on the current size estimation mode:
 // - SizeEstimationLinks: sum of link name + CID byte lengths
@@ -723,29 +747,27 @@ func (d *BasicDirectory) needsToSwitchByBlockSize(name string, nodeToAdd ipld.No
 
 // checkMaxLinksExceeded returns true if adding a new link would exceed maxLinks.
 func (d *BasicDirectory) checkMaxLinksExceeded(nodeToAdd ipld.Node, entryToRemove *ipld.Link) bool {
-	if nodeToAdd != nil && entryToRemove == nil && d.maxLinks > 0 &&
-		(d.totalLinks+1) > d.maxLinks {
-		return true
-	}
-	return false
+	return nodeToAdd != nil && entryToRemove == nil && d.maxLinks > 0 && (d.totalLinks+1) > d.maxLinks
 }
 
 // addLinkChild adds the link as an entry to this directory under the given
 // name. Plumbing function for the AddChild API.
 func (d *BasicDirectory) addLinkChild(ctx context.Context, name string, link *ipld.Link) error {
 	// Remove old link and account for size change (if it existed; ignore
-	// `ErrNotExist` otherwise). RemoveChild updates estimatedSize for the
-	// removed link.
+	// `ErrNotExist` otherwise). RemoveChild updates both estimatedSize and
+	// totalLinks for the removed link.
+	existed := false
 	err := d.RemoveChild(ctx, name)
 	if err != nil {
 		if !errors.Is(err, os.ErrNotExist) {
 			return err
 		}
-	} else { // existed
-		d.totalLinks--
+	} else {
+		existed = true
 	}
 
-	if d.maxLinks > 0 && d.totalLinks+1 > d.maxLinks {
+	// Only check maxLinks for truly new entries (not replacements)
+	if !existed && d.maxLinks > 0 && d.totalLinks+1 > d.maxLinks {
 		return errors.New("BasicDirectory: cannot add child: maxLinks reached")
 	}
 
@@ -915,6 +937,12 @@ func (d *HAMTDirectory) GetSizeEstimationMode() SizeEstimationMode {
 		return *d.sizeEstimation
 	}
 	return HAMTSizeEstimation // fall back to global
+}
+
+// SetSizeEstimationMode sets the method used to estimate serialized dag-pb block size.
+// Used when inheriting settings from a parent directory after loading from disk.
+func (d *HAMTDirectory) SetSizeEstimationMode(mode SizeEstimationMode) {
+	d.sizeEstimation = &mode
 }
 
 // AddChild implements the `Directory` interface.

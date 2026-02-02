@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	chunker "github.com/ipfs/boxo/chunker"
 	dag "github.com/ipfs/boxo/ipld/merkledag"
 	ft "github.com/ipfs/boxo/ipld/unixfs"
 	uio "github.com/ipfs/boxo/ipld/unixfs/io"
@@ -42,7 +43,8 @@ type Directory struct {
 	// reading and editing directories.
 	unixfsDir uio.Directory
 
-	prov provider.MultihashProvider
+	prov    provider.MultihashProvider
+	chunker chunker.SplitterGen // inherited from parent, nil means default
 }
 
 // NewDirectory constructs a new MFS directory.
@@ -82,6 +84,7 @@ func NewDirectory(ctx context.Context, name string, node ipld.Node, parent paren
 		unixfsDir:    db,
 		prov:         prov,
 		entriesCache: make(map[string]FSNode),
+		chunker:      parent.getChunker(), // inherit from parent
 	}, nil
 }
 
@@ -115,6 +118,12 @@ func NewEmptyDirectory(ctx context.Context, name string, parent parent, dserv ip
 
 	// note: we don't provide the empty unixfs dir as it is always local.
 
+	// Use chunker from opts if set, otherwise inherit from parent
+	c := opts.Chunker
+	if c == nil {
+		c = parent.getChunker()
+	}
+
 	return &Directory{
 		inode: inode{
 			name:       name,
@@ -125,12 +134,18 @@ func NewEmptyDirectory(ctx context.Context, name string, parent parent, dserv ip
 		unixfsDir:    db,
 		prov:         prov,
 		entriesCache: make(map[string]FSNode),
+		chunker:      c,
 	}, nil
 }
 
 // GetCidBuilder gets the CID builder of the root node
 func (d *Directory) GetCidBuilder() cid.Builder {
 	return d.unixfsDir.GetCidBuilder()
+}
+
+// getChunker implements the parent interface.
+func (d *Directory) getChunker() chunker.SplitterGen {
+	return d.chunker
 }
 
 // SetCidBuilder sets the CID builder
@@ -218,8 +233,11 @@ func (d *Directory) cacheNode(name string, nd ipld.Node) (FSNode, error) {
 
 			// these options are not persisted so they need to be
 			// inherited from the parent.
-			ndir.unixfsDir.SetMaxLinks(d.unixfsDir.GetMaxLinks())
+			parentMaxLinks := d.unixfsDir.GetMaxLinks()
+			parentMode := d.unixfsDir.GetSizeEstimationMode()
+			ndir.unixfsDir.SetMaxLinks(parentMaxLinks)
 			ndir.unixfsDir.SetMaxHAMTFanout(d.unixfsDir.GetMaxHAMTFanout())
+			ndir.unixfsDir.SetSizeEstimationMode(parentMode)
 			d.entriesCache[name] = ndir
 			return ndir, nil
 		case ft.TFile, ft.TRaw, ft.TSymlink:

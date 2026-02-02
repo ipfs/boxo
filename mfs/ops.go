@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	chunker "github.com/ipfs/boxo/chunker"
 	uio "github.com/ipfs/boxo/ipld/unixfs/io"
 	cid "github.com/ipfs/go-cid"
 	ipld "github.com/ipfs/go-ipld-format"
@@ -129,6 +130,7 @@ type MkdirOpts struct {
 	MaxLinks           int
 	MaxHAMTFanout      int
 	SizeEstimationMode *uio.SizeEstimationMode
+	Chunker            chunker.SplitterGen // chunker factory for files created in this directory
 }
 
 // Mkdir creates a directory at 'path' under the directory 'd', creating

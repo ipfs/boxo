@@ -258,6 +258,11 @@ func (dm *DagModifier) Sync() error {
 			return err
 		}
 
+		// Ensure the final node doesn't exceed identity hash limits
+		if pn, ok := dm.curNode.(*mdag.ProtoNode); ok {
+			dm.ensureSafeProtoNodeHash(pn)
+		}
+
 		err = dm.dagserv.Add(dm.ctx, dm.curNode)
 		if err != nil {
 			return err
@@ -513,12 +518,50 @@ func (dm *DagModifier) modifyDag(n ipld.Node, offset uint64) (cid.Cid, error) {
 // RawNode to ProtoNode. The original data remains accessible through the
 // direct CID of the original raw block, and the new dag-pb CID makes
 // post-append data accessible through the standard UnixFS APIs.
+
+// identitySafeDAGService wraps a DAGService to handle identity CID overflow.
+// When adding a node with identity hash that would exceed the size limit,
+// it automatically switches to a cryptographic hash.
+type identitySafeDAGService struct {
+	ipld.DAGService
+	fallbackPrefix cid.Prefix
+}
+
+func (s *identitySafeDAGService) Add(ctx context.Context, nd ipld.Node) error {
+	// Check if this is a ProtoNode with identity hash that's too large
+	if pn, ok := nd.(*mdag.ProtoNode); ok {
+		if prefix, ok := pn.CidBuilder().(cid.Prefix); ok && prefix.MhType == mh.IDENTITY {
+			encoded, _ := pn.EncodeProtobuf(false)
+			if len(encoded) > verifcid.DefaultMaxIdentityDigestSize {
+				// Switch to fallback hash
+				pn.SetCidBuilder(s.fallbackPrefix)
+			}
+		}
+	}
+	return s.DAGService.Add(ctx, nd)
+}
+
 func (dm *DagModifier) appendData(nd ipld.Node, spl chunker.Splitter) (ipld.Node, error) {
+	// Create a wrapper DAGService that handles identity overflow automatically.
+	// This allows small appends to preserve identity while preventing overflow errors.
+	dagserv := dm.dagserv
+	if dm.Prefix.MhType == mh.IDENTITY {
+		dagserv = &identitySafeDAGService{
+			DAGService: dm.dagserv,
+			fallbackPrefix: cid.Prefix{
+				Version:  dm.Prefix.Version,
+				Codec:    dm.Prefix.Codec,
+				MhType:   util.DefaultIpfsHash,
+				MhLength: -1,
+			},
+		}
+	}
+
 	switch nd := nd.(type) {
 	case *mdag.ProtoNode:
 		// ProtoNode can be directly passed to trickle.Append
 		dbp := &help.DagBuilderParams{
-			Dagserv:    dm.dagserv,
+			Dagserv:    dagserv,
 			Maxlinks:   dm.MaxLinks,
 			CidBuilder: dm.Prefix,
 			RawLeaves:  dm.RawLeaves,
@@ -556,7 +599,7 @@ func (dm *DagModifier) appendData(nd ipld.Node, spl chunker.Splitter) (ipld.Node
 
 		// Now we can append new data using trickle
 		dbp := &help.DagBuilderParams{
-			Dagserv:    dm.dagserv,
+			Dagserv:    dagserv,
 			Maxlinks:   dm.MaxLinks,
 			CidBuilder: dm.Prefix,
 			RawLeaves:  true, // Ensure future leaves are raw for consistency

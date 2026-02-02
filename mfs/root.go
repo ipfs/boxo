@@ -10,8 +10,10 @@ import (
 	"os"
 	"time"
 
+	chunker "github.com/ipfs/boxo/chunker"
 	dag "github.com/ipfs/boxo/ipld/merkledag"
 	ft "github.com/ipfs/boxo/ipld/unixfs"
+	uio "github.com/ipfs/boxo/ipld/unixfs/io"
 	"github.com/ipfs/boxo/provider"
 	ipld "github.com/ipfs/go-ipld-format"
 	logging "github.com/ipfs/go-log/v2"
@@ -55,6 +57,9 @@ type parent interface {
 	// `updateChildEntry` to update the entry pointing to the new directory,
 	// this mechanism is in turn repeated until reaching the `Root`.
 	updateChildEntry(c child) error
+
+	// getChunker returns the chunker factory for files, or nil for default.
+	getChunker() chunker.SplitterGen
 }
 
 type NodeType int
@@ -98,12 +103,44 @@ type Root struct {
 	// Root directory of the MFS layout.
 	dir *Directory
 
-	repub *Republisher
-	prov  provider.MultihashProvider
+	repub   *Republisher
+	prov    provider.MultihashProvider
+	chunker chunker.SplitterGen // chunker factory for files, nil means default
+
+	// Directory settings to propagate to child directories when loaded from disk.
+	maxLinks           int
+	sizeEstimationMode *uio.SizeEstimationMode
+}
+
+// RootOption is a functional option for configuring a Root.
+type RootOption func(*Root)
+
+// WithChunker sets the chunker factory for files created in this MFS.
+// If not set (or nil), chunker.DefaultSplitter is used.
+func WithChunker(c chunker.SplitterGen) RootOption {
+	return func(r *Root) {
+		r.chunker = c
+	}
+}
+
+// WithMaxLinks sets the max links for directories created in this MFS.
+// This is used to determine when to switch between BasicDirectory and HAMTDirectory.
+func WithMaxLinks(n int) RootOption {
+	return func(r *Root) {
+		r.maxLinks = n
+	}
+}
+
+// WithSizeEstimationMode sets the size estimation mode for directories in this MFS.
+// This controls how directory size is estimated for HAMT sharding decisions.
+func WithSizeEstimationMode(mode uio.SizeEstimationMode) RootOption {
+	return func(r *Root) {
+		r.sizeEstimationMode = &mode
+	}
 }
 
 // NewRoot creates a new Root and starts up a republisher routine for it.
-func NewRoot(ctx context.Context, ds ipld.DAGService, node *dag.ProtoNode, pf PubFunc, prov provider.MultihashProvider) (*Root, error) {
+func NewRoot(ctx context.Context, ds ipld.DAGService, node *dag.ProtoNode, pf PubFunc, prov provider.MultihashProvider, opts ...RootOption) (*Root, error) {
 	var repub *Republisher
 	if pf != nil {
 		repub = NewRepublisher(pf, repubQuick, repubLong, node.Cid())
@@ -111,6 +148,10 @@ func NewRoot(ctx context.Context, ds ipld.DAGService, node *dag.ProtoNode, pf Pu
 
 	root := &Root{
 		repub: repub,
+	}
+
+	for _, opt := range opts {
+		opt(root)
 	}
 
 	fsn, err := ft.FSNodeFromBytes(node.Data())
@@ -127,6 +168,14 @@ func NewRoot(ctx context.Context, ds ipld.DAGService, node *dag.ProtoNode, pf Pu
 			return nil, err
 		}
 
+		// Apply root-level directory settings
+		if root.maxLinks > 0 {
+			newDir.unixfsDir.SetMaxLinks(root.maxLinks)
+		}
+		if root.sizeEstimationMode != nil {
+			newDir.unixfsDir.SetSizeEstimationMode(*root.sizeEstimationMode)
+		}
+
 		root.dir = newDir
 	case ft.TFile, ft.TMetadata, ft.TRaw:
 		return nil, fmt.Errorf("root can't be a file (unixfs type: %s)", fsn.Type())
@@ -140,10 +189,19 @@ func NewRoot(ctx context.Context, ds ipld.DAGService, node *dag.ProtoNode, pf Pu
 
 // NewEmptyRoot creates an empty Root directory with the given directory
 // options. A republisher is created if PubFunc is not nil.
-func NewEmptyRoot(ctx context.Context, ds ipld.DAGService, pf PubFunc, prov provider.MultihashProvider, opts MkdirOpts) (*Root, error) {
+func NewEmptyRoot(ctx context.Context, ds ipld.DAGService, pf PubFunc, prov provider.MultihashProvider, mkdirOpts MkdirOpts, rootOpts ...RootOption) (*Root, error) {
 	root := new(Root)
 
-	dir, err := NewEmptyDirectory(ctx, "", root, ds, prov, opts)
+	for _, opt := range rootOpts {
+		opt(root)
+	}
+
+	// Pass chunker from root opts to mkdir opts if not already set
+	if mkdirOpts.Chunker == nil {
+		mkdirOpts.Chunker = root.chunker
+	}
+
+	dir, err := NewEmptyDirectory(ctx, "", root, ds, prov, mkdirOpts)
 	if err != nil {
 		return nil, err
 	}
@@ -168,6 +226,16 @@ func NewEmptyRoot(ctx context.Context, ds ipld.DAGService, pf PubFunc, prov prov
 // GetDirectory returns the root directory.
 func (kr *Root) GetDirectory() *Directory {
 	return kr.dir
+}
+
+// GetChunker returns the chunker factory, or nil if using default.
+func (kr *Root) GetChunker() chunker.SplitterGen {
+	return kr.chunker
+}
+
+// getChunker implements the parent interface.
+func (kr *Root) getChunker() chunker.SplitterGen {
+	return kr.chunker
 }
 
 // Flush signals that an update has occurred since the last publish,

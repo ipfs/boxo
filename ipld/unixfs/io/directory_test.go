@@ -886,6 +886,29 @@ func TestSizeEstimationDisabled(t *testing.T) {
 		require.NoError(t, err)
 		checkHAMTDirectory(t, dir, "should be HAMTDirectory after exceeding MaxLinks")
 	})
+
+	t.Run("block mode respects MaxLinks", func(t *testing.T) {
+		HAMTShardingSize = 256 * 1024 // 256KB - high enough to not be triggered by size
+		HAMTSizeEstimation = SizeEstimationBlock
+
+		// Create directory with block mode and MaxLinks set
+		dir, err := NewDirectory(ds,
+			WithSizeEstimationMode(SizeEstimationBlock),
+			WithMaxLinks(5))
+		require.NoError(t, err)
+
+		// Add entries up to MaxLinks
+		for i := range 5 {
+			err = dir.AddChild(ctx, fmt.Sprintf("entry-%03d", i), child)
+			require.NoError(t, err)
+		}
+		checkBasicDirectory(t, dir, "should be BasicDirectory at MaxLinks")
+
+		// Adding one more should trigger HAMT conversion
+		err = dir.AddChild(ctx, "entry-005", child)
+		require.NoError(t, err)
+		checkHAMTDirectory(t, dir, "should be HAMTDirectory after exceeding MaxLinks in block mode")
+	})
 }
 
 // TestBlockSizeCalculation verifies the helper functions for block size calculation.
