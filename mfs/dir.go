@@ -105,6 +105,10 @@ func NewEmptyDirectory(ctx context.Context, name string, parent parent, dserv ip
 	if err != nil {
 		return nil, err
 	}
+	// Set HAMTShardingSize after creation (not a DirectoryOption)
+	if opts.HAMTShardingSize > 0 {
+		db.SetHAMTShardingSize(opts.HAMTShardingSize)
+	}
 
 	nd, err := db.GetNode()
 	if err != nil {
@@ -237,6 +241,7 @@ func (d *Directory) cacheNode(name string, nd ipld.Node) (FSNode, error) {
 			parentMode := d.unixfsDir.GetSizeEstimationMode()
 			ndir.unixfsDir.SetMaxLinks(parentMaxLinks)
 			ndir.unixfsDir.SetMaxHAMTFanout(d.unixfsDir.GetMaxHAMTFanout())
+			ndir.unixfsDir.SetHAMTShardingSize(d.unixfsDir.GetHAMTShardingSize())
 			ndir.unixfsDir.SetSizeEstimationMode(parentMode)
 			d.entriesCache[name] = ndir
 			return ndir, nil
@@ -365,8 +370,9 @@ func (d *Directory) ForEachEntry(ctx context.Context, f func(NodeListing) error)
 
 func (d *Directory) Mkdir(name string) (*Directory, error) {
 	return d.MkdirWithOpts(name, MkdirOpts{
-		MaxLinks:      d.unixfsDir.GetMaxLinks(),
-		MaxHAMTFanout: d.unixfsDir.GetMaxHAMTFanout(),
+		MaxLinks:         d.unixfsDir.GetMaxLinks(),
+		MaxHAMTFanout:    d.unixfsDir.GetMaxHAMTFanout(),
+		HAMTShardingSize: d.unixfsDir.GetHAMTShardingSize(),
 	})
 }
 
@@ -603,6 +609,7 @@ func (d *Directory) setNodeData(data []byte, links []*ipld.Link) error {
 	// Note: SizeEstimationMode is set at creation time and cannot be changed.
 	db.SetMaxLinks(d.unixfsDir.GetMaxLinks())
 	db.SetMaxHAMTFanout(d.unixfsDir.GetMaxHAMTFanout())
+	db.SetHAMTShardingSize(d.unixfsDir.GetHAMTShardingSize())
 	d.unixfsDir = db
 
 	return nil

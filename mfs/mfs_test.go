@@ -2209,3 +2209,258 @@ func TestChunkerInheritance(t *testing.T) {
 		}
 	}
 }
+
+// TestRootOptionMaxHAMTFanout verifies that WithMaxHAMTFanout propagates
+// to directories and affects HAMT shard width.
+func TestRootOptionMaxHAMTFanout(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	ds := getDagserv(t)
+
+	// Use custom fanout of 64 (non-default: default is 256).
+	const customFanout = 64
+
+	// Use SizeEstimationDisabled so we rely only on MaxLinks for HAMT conversion.
+	sizeEstimationDisabled := uio.SizeEstimationDisabled
+	const maxLinks = 3
+
+	root, err := NewEmptyRoot(ctx, ds, nil, nil,
+		MkdirOpts{SizeEstimationMode: &sizeEstimationDisabled},
+		WithMaxLinks(maxLinks),
+		WithMaxHAMTFanout(customFanout),
+		WithSizeEstimationMode(sizeEstimationDisabled))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create subdirectory
+	if err := Mkdir(root, "/subdir", MkdirOpts{
+		MaxLinks:           maxLinks,
+		MaxHAMTFanout:      customFanout,
+		SizeEstimationMode: &sizeEstimationDisabled,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	subdir, err := Lookup(root, "/subdir")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := subdir.(*Directory)
+
+	// Verify MaxHAMTFanout was propagated
+	actualFanout := dir.unixfsDir.GetMaxHAMTFanout()
+	if actualFanout != customFanout {
+		t.Fatalf("MaxHAMTFanout not propagated: expected %d, got %d", customFanout, actualFanout)
+	}
+
+	// Add files to trigger HAMT conversion (exceeds MaxLinks=3)
+	for i := 0; i < 4; i++ {
+		child := dag.NodeWithData(ft.FilePBData([]byte("test"), 4))
+		if err := ds.Add(ctx, child); err != nil {
+			t.Fatal(err)
+		}
+		if err := dir.AddChild(fmt.Sprintf("file%d", i), child); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Flush and verify it became HAMT
+	if err := dir.Flush(); err != nil {
+		t.Fatal(err)
+	}
+	node, err := dir.GetNode()
+	if err != nil {
+		t.Fatal(err)
+	}
+	fsn, err := ft.FSNodeFromBytes(node.(*dag.ProtoNode).Data())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fsn.Type() != ft.THAMTShard {
+		t.Fatalf("expected THAMTShard, got %s", fsn.Type())
+	}
+
+	// Verify the HAMT uses the custom fanout by checking the shard's fanout field.
+	// The fanout is stored in the UnixFS Data field.
+	if fsn.Fanout() != uint64(customFanout) {
+		t.Fatalf("expected HAMT fanout %d, got %d", customFanout, fsn.Fanout())
+	}
+}
+
+// TestRootOptionHAMTShardingSize verifies that WithHAMTShardingSize propagates
+// to directories and affects HAMT conversion threshold.
+func TestRootOptionHAMTShardingSize(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	ds := getDagserv(t)
+
+	// Use very small threshold of 100 bytes (non-default: default is 256KiB).
+	// This should trigger HAMT conversion with just a few small files.
+	const customShardingSize = 100
+
+	// Use SizeEstimationBlock for accurate size tracking.
+	sizeEstimationBlock := uio.SizeEstimationBlock
+
+	root, err := NewEmptyRoot(ctx, ds, nil, nil,
+		MkdirOpts{SizeEstimationMode: &sizeEstimationBlock},
+		WithHAMTShardingSize(customShardingSize),
+		WithSizeEstimationMode(sizeEstimationBlock))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create subdirectory
+	if err := Mkdir(root, "/subdir", MkdirOpts{
+		SizeEstimationMode: &sizeEstimationBlock,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	subdir, err := Lookup(root, "/subdir")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := subdir.(*Directory)
+
+	// Verify HAMTShardingSize was propagated
+	actualShardingSize := dir.unixfsDir.GetHAMTShardingSize()
+	if actualShardingSize != customShardingSize {
+		t.Fatalf("HAMTShardingSize not propagated: expected %d, got %d", customShardingSize, actualShardingSize)
+	}
+
+	// Verify starts as BasicDirectory
+	node, err := dir.GetNode()
+	if err != nil {
+		t.Fatal(err)
+	}
+	fsn, err := ft.FSNodeFromBytes(node.(*dag.ProtoNode).Data())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fsn.Type() != ft.TDirectory {
+		t.Fatalf("expected TDirectory initially, got %s", fsn.Type())
+	}
+
+	// Add files to exceed the small 100-byte threshold.
+	// Each link adds roughly 40-50 bytes, so 3 files should exceed 100 bytes.
+	for i := 0; i < 3; i++ {
+		child := dag.NodeWithData(ft.FilePBData([]byte("test content"), 12))
+		if err := ds.Add(ctx, child); err != nil {
+			t.Fatal(err)
+		}
+		if err := dir.AddChild(fmt.Sprintf("file%d", i), child); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Flush and verify it became HAMT
+	if err := dir.Flush(); err != nil {
+		t.Fatal(err)
+	}
+	node, err = dir.GetNode()
+	if err != nil {
+		t.Fatal(err)
+	}
+	fsn, err = ft.FSNodeFromBytes(node.(*dag.ProtoNode).Data())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fsn.Type() != ft.THAMTShard {
+		t.Fatalf("expected THAMTShard after exceeding custom sharding threshold (%d bytes), got %s", customShardingSize, fsn.Type())
+	}
+}
+
+// TestHAMTShardingSizeInheritance verifies that HAMTShardingSize propagates
+// through nested subdirectories and after reload from DAG.
+func TestHAMTShardingSizeInheritance(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	ds := getDagserv(t)
+
+	// Use very small threshold
+	const customShardingSize = 150
+	sizeEstimationBlock := uio.SizeEstimationBlock
+
+	// Create root with custom settings
+	root, err := NewEmptyRoot(ctx, ds, nil, nil,
+		MkdirOpts{SizeEstimationMode: &sizeEstimationBlock},
+		WithHAMTShardingSize(customShardingSize),
+		WithSizeEstimationMode(sizeEstimationBlock))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create nested subdirectory
+	if err := Mkdir(root, "/a/b", MkdirOpts{Mkparents: true}); err != nil {
+		t.Fatal(err)
+	}
+
+	// Add a file to /a/b
+	child := dag.NodeWithData(ft.FilePBData([]byte("test"), 4))
+	if err := ds.Add(ctx, child); err != nil {
+		t.Fatal(err)
+	}
+	if err := PutNode(root, "/a/b/file", child); err != nil {
+		t.Fatal(err)
+	}
+
+	// Flush to persist to DAG
+	if err := root.GetDirectory().Flush(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Get root node and reload (simulates daemon restart)
+	rootNode, err := root.GetDirectory().GetNode()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create new root from persisted node with same settings
+	root2, err := NewRoot(ctx, ds, rootNode.(*dag.ProtoNode), nil, nil,
+		WithHAMTShardingSize(customShardingSize),
+		WithSizeEstimationMode(sizeEstimationBlock))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Access reloaded nested directory (triggers cacheNode)
+	subdir2, err := Lookup(root2, "/a/b")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir2 := subdir2.(*Directory)
+
+	// Verify settings were propagated after reload
+	actualShardingSize := dir2.unixfsDir.GetHAMTShardingSize()
+	if actualShardingSize != customShardingSize {
+		t.Fatalf("HAMTShardingSize not propagated after reload: expected %d, got %d", customShardingSize, actualShardingSize)
+	}
+
+	// Add more files to exceed threshold
+	for i := 1; i < 5; i++ {
+		child := dag.NodeWithData(ft.FilePBData([]byte("test content"), 12))
+		if err := ds.Add(ctx, child); err != nil {
+			t.Fatal(err)
+		}
+		if err := dir2.AddChild(fmt.Sprintf("file%d", i), child); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Verify it became HAMT (proves custom threshold was applied after reload)
+	if err := dir2.Flush(); err != nil {
+		t.Fatal(err)
+	}
+	node, err := dir2.GetNode()
+	if err != nil {
+		t.Fatal(err)
+	}
+	fsn, err := ft.FSNodeFromBytes(node.(*dag.ProtoNode).Data())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fsn.Type() != ft.THAMTShard {
+		t.Fatalf("expected THAMTShard after reload with custom threshold, got %s", fsn.Type())
+	}
+}

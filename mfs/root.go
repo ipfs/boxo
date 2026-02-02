@@ -109,6 +109,8 @@ type Root struct {
 
 	// Directory settings to propagate to child directories when loaded from disk.
 	maxLinks           int
+	maxHAMTFanout      int
+	hamtShardingSize   int
 	sizeEstimationMode *uio.SizeEstimationMode
 }
 
@@ -136,6 +138,24 @@ func WithMaxLinks(n int) RootOption {
 func WithSizeEstimationMode(mode uio.SizeEstimationMode) RootOption {
 	return func(r *Root) {
 		r.sizeEstimationMode = &mode
+	}
+}
+
+// WithMaxHAMTFanout sets the max fanout (width) for HAMT directories in this MFS.
+// This controls the maximum number of children per HAMT bucket.
+// Must be a power of 2 and multiple of 8.
+func WithMaxHAMTFanout(n int) RootOption {
+	return func(r *Root) {
+		r.maxHAMTFanout = n
+	}
+}
+
+// WithHAMTShardingSize sets the per-directory size threshold for switching to HAMT.
+// When a directory's estimated size exceeds this threshold, it converts to HAMT.
+// If not set (0), the global uio.HAMTShardingSize is used.
+func WithHAMTShardingSize(size int) RootOption {
+	return func(r *Root) {
+		r.hamtShardingSize = size
 	}
 }
 
@@ -172,6 +192,12 @@ func NewRoot(ctx context.Context, ds ipld.DAGService, node *dag.ProtoNode, pf Pu
 		if root.maxLinks > 0 {
 			newDir.unixfsDir.SetMaxLinks(root.maxLinks)
 		}
+		if root.maxHAMTFanout > 0 {
+			newDir.unixfsDir.SetMaxHAMTFanout(root.maxHAMTFanout)
+		}
+		if root.hamtShardingSize > 0 {
+			newDir.unixfsDir.SetHAMTShardingSize(root.hamtShardingSize)
+		}
 		if root.sizeEstimationMode != nil {
 			newDir.unixfsDir.SetSizeEstimationMode(*root.sizeEstimationMode)
 		}
@@ -196,9 +222,15 @@ func NewEmptyRoot(ctx context.Context, ds ipld.DAGService, pf PubFunc, prov prov
 		opt(root)
 	}
 
-	// Pass chunker from root opts to mkdir opts if not already set
+	// Pass settings from root opts to mkdir opts if not already set
 	if mkdirOpts.Chunker == nil {
 		mkdirOpts.Chunker = root.chunker
+	}
+	if mkdirOpts.MaxHAMTFanout == 0 && root.maxHAMTFanout > 0 {
+		mkdirOpts.MaxHAMTFanout = root.maxHAMTFanout
+	}
+	if mkdirOpts.HAMTShardingSize == 0 && root.hamtShardingSize > 0 {
+		mkdirOpts.HAMTShardingSize = root.hamtShardingSize
 	}
 
 	dir, err := NewEmptyDirectory(ctx, "", root, ds, prov, mkdirOpts)

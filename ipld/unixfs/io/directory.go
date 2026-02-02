@@ -239,6 +239,14 @@ type Directory interface {
 	// SetSizeEstimationMode sets the method used to estimate serialized dag-pb block size.
 	// Used when inheriting settings from a parent directory after loading from disk.
 	SetSizeEstimationMode(SizeEstimationMode)
+
+	// GetHAMTShardingSize returns the per-directory threshold for HAMT sharding.
+	// If not set (0), the global HAMTShardingSize is used.
+	GetHAMTShardingSize() int
+
+	// SetHAMTShardingSize sets the per-directory threshold for HAMT sharding.
+	// Used when inheriting settings from a parent directory after loading from disk.
+	SetHAMTShardingSize(size int)
 }
 
 // A DirectoryOption can be used to initialize directories.
@@ -356,6 +364,9 @@ type BasicDirectory struct {
 	// Size estimation mode. If nil, falls back to global HAMTSizeEstimation.
 	// Set at creation time via WithSizeEstimationMode option.
 	sizeEstimation *SizeEstimationMode
+
+	// Per-directory HAMT sharding size threshold. If 0, falls back to global HAMTShardingSize.
+	hamtShardingSize int
 }
 
 // HAMTDirectory is the HAMT implementation of `Directory`.
@@ -378,6 +389,9 @@ type HAMTDirectory struct {
 
 	// Size estimation mode. If nil, falls back to global HAMTSizeEstimation.
 	sizeEstimation *SizeEstimationMode
+
+	// Per-directory HAMT sharding size threshold. If 0, falls back to global HAMTShardingSize.
+	hamtShardingSize int
 }
 
 // NewBasicDirectory creates an empty basic directory with the given options.
@@ -594,6 +608,18 @@ func (d *BasicDirectory) SetSizeEstimationMode(mode SizeEstimationMode) {
 	d.totalLinks = savedTotalLinks
 }
 
+// GetHAMTShardingSize returns the per-directory threshold for HAMT sharding.
+// If not set (0), the global HAMTShardingSize is used.
+func (d *BasicDirectory) GetHAMTShardingSize() int {
+	return d.hamtShardingSize
+}
+
+// SetHAMTShardingSize sets the per-directory threshold for HAMT sharding.
+// Used when inheriting settings from a parent directory after loading from disk.
+func (d *BasicDirectory) SetHAMTShardingSize(size int) {
+	d.hamtShardingSize = size
+}
+
 // computeEstimatedSizeAndTotalLinks initializes size tracking fields from the current node.
 // The estimatedSize is computed based on the current size estimation mode:
 // - SizeEstimationLinks: sum of link name + CID byte lengths
@@ -675,8 +701,18 @@ func (d *BasicDirectory) AddChild(ctx context.Context, name string, node ipld.No
 	return d.addLinkChild(ctx, name, link)
 }
 
+// getEffectiveShardingSize returns the per-directory HAMT sharding threshold if set,
+// otherwise falls back to the global HAMTShardingSize.
+func (d *BasicDirectory) getEffectiveShardingSize() int {
+	if d.hamtShardingSize > 0 {
+		return d.hamtShardingSize
+	}
+	return HAMTShardingSize
+}
+
 func (d *BasicDirectory) needsToSwitchToHAMTDir(name string, nodeToAdd ipld.Node) (bool, error) {
-	if HAMTShardingSize == 0 { // Option disabled.
+	shardingSize := d.getEffectiveShardingSize()
+	if shardingSize == 0 { // Option disabled.
 		return false, nil
 	}
 
@@ -713,7 +749,7 @@ func (d *BasicDirectory) needsToSwitchByLinkSize(name string, nodeToAdd ipld.Nod
 
 	// Switch to HAMT when size exceeds threshold (> not >=).
 	// Directory exactly at threshold stays basic.
-	switchShardingSize := d.estimatedSize+operationSizeChange > HAMTShardingSize
+	switchShardingSize := d.estimatedSize+operationSizeChange > d.getEffectiveShardingSize()
 	switchMaxLinks := d.checkMaxLinksExceeded(nodeToAdd, entryToRemove)
 	return switchShardingSize || switchMaxLinks, nil
 }
@@ -740,7 +776,7 @@ func (d *BasicDirectory) needsToSwitchByBlockSize(name string, nodeToAdd ipld.No
 
 	// Switch to HAMT when size exceeds threshold (> not >=).
 	// Directory exactly at threshold stays basic.
-	switchShardingSize := estimatedNewSize > HAMTShardingSize
+	switchShardingSize := estimatedNewSize > d.getEffectiveShardingSize()
 	switchMaxLinks := d.checkMaxLinksExceeded(nodeToAdd, entryToRemove)
 	return switchShardingSize || switchMaxLinks, nil
 }
@@ -945,6 +981,27 @@ func (d *HAMTDirectory) SetSizeEstimationMode(mode SizeEstimationMode) {
 	d.sizeEstimation = &mode
 }
 
+// GetHAMTShardingSize returns the per-directory threshold for HAMT sharding.
+// If not set (0), the global HAMTShardingSize is used.
+func (d *HAMTDirectory) GetHAMTShardingSize() int {
+	return d.hamtShardingSize
+}
+
+// SetHAMTShardingSize sets the per-directory threshold for HAMT sharding.
+// Used when inheriting settings from a parent directory after loading from disk.
+func (d *HAMTDirectory) SetHAMTShardingSize(size int) {
+	d.hamtShardingSize = size
+}
+
+// getEffectiveShardingSize returns the per-directory HAMT sharding threshold if set,
+// otherwise falls back to the global HAMTShardingSize.
+func (d *HAMTDirectory) getEffectiveShardingSize() int {
+	if d.hamtShardingSize > 0 {
+		return d.hamtShardingSize
+	}
+	return HAMTShardingSize
+}
+
 // AddChild implements the `Directory` interface.
 func (d *HAMTDirectory) AddChild(ctx context.Context, name string, nd ipld.Node) error {
 	oldChild, err := d.shard.Swap(ctx, name, nd)
@@ -1057,7 +1114,7 @@ func (d *HAMTDirectory) removeFromSizeChange(name string, linkCid cid.Cid) {
 // nodeToAdd is nil). We compute both (potential) future subtraction and
 // addition to the size change.
 func (d *HAMTDirectory) needsToSwitchToBasicDir(ctx context.Context, name string, nodeToAdd ipld.Node) (switchToBasic bool, err error) {
-	if HAMTShardingSize == 0 { // Option disabled.
+	if d.getEffectiveShardingSize() == 0 { // Option disabled.
 		return false, nil
 	}
 
@@ -1133,7 +1190,8 @@ func (d *HAMTDirectory) linkSizeFor(link *ipld.Link) int {
 // to keep counting) or an error occurs (like the context being canceled
 // if we take too much time fetching the necessary shards).
 func (d *HAMTDirectory) sizeBelowThreshold(ctx context.Context, sizeChange int) (bool, error) {
-	if HAMTShardingSize == 0 {
+	shardingSize := d.getEffectiveShardingSize()
+	if shardingSize == 0 {
 		panic("asked to compute HAMT size with HAMTShardingSize option off (0)")
 	}
 
@@ -1164,7 +1222,7 @@ func (d *HAMTDirectory) sizeBelowThreshold(ctx context.Context, sizeChange int) 
 		partialSize += d.linkSizeFor(linkResult.Link)
 		// Check if size exceeds threshold (> not >=, matching upgrade logic).
 		// Early exit: no need to enumerate more links once we know we're above.
-		if partialSize+sizeChange > HAMTShardingSize {
+		if partialSize+sizeChange > shardingSize {
 			below = false
 			break
 		}
