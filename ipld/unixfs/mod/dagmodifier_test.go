@@ -615,6 +615,78 @@ func testSeekPastEndWrite(t *testing.T, opts testu.NodeOpts) {
 	}
 }
 
+// TestSparseWriteOnExistingRawNode ensures curNode is updated after sparse
+// expansion. This mimics the scenario where `ipfs files write --offset N` is
+// called on an existing file created with --raw-leaves:
+// 1. First command creates a RawNode file
+// 2. Second command loads the RawNode and writes at offset past its end
+// Without the fix, expandSparse wouldn't update curNode, causing modifyDag
+// to operate on the old unexpanded node and panic with slice bounds error.
+func TestSparseWriteOnExistingRawNode(t *testing.T) {
+	ctx := context.Background()
+	dserv := testu.GetDAGServ()
+
+	// Step 1: Create initial file as RawNode (simulates ipfs files write --raw-leaves)
+	initialData := []byte("foobar\n")
+	rawNode, err := dag.NewRawNodeWPrefix(initialData, cid.Prefix{
+		Version:  1,
+		Codec:    cid.Raw,
+		MhType:   mh.SHA2_256,
+		MhLength: -1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = dserv.Add(ctx, rawNode)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Step 2: Load existing RawNode in NEW DagModifier (simulates second ipfs files write)
+	dagmod, err := NewDagModifier(ctx, rawNode, dserv, testu.SizeSplitterGen(512))
+	if err != nil {
+		t.Fatal(err)
+	}
+	dagmod.RawLeaves = true
+
+	// Step 3: Write at offset 50 (past end of 7-byte file)
+	_, err = dagmod.Seek(50, io.SeekStart)
+	if err != nil {
+		t.Fatalf("Seek to offset 50 failed: %v", err)
+	}
+
+	newData := []byte("blah\n")
+	_, err = dagmod.Write(newData)
+	if err != nil {
+		t.Fatalf("Write at offset 50 failed: %v", err)
+	}
+
+	// Step 4: Sync - this panicked before the fix
+	err = dagmod.Sync()
+	if err != nil {
+		t.Fatalf("Sync failed: %v", err)
+	}
+
+	// Step 5: Verify result
+	_, err = dagmod.Seek(0, io.SeekStart)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := io.ReadAll(dagmod)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Expected: "foobar\n" + 43 zero bytes + "blah\n" = 55 bytes
+	expected := make([]byte, 55)
+	copy(expected, initialData)
+	copy(expected[50:], newData)
+
+	if err = testu.ArrComp(result, expected); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestRelativeSeek(t *testing.T) {
 	runAllSubtests(t, testRelativeSeek)
 }

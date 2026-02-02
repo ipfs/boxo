@@ -161,7 +161,13 @@ func (dm *DagModifier) expandSparse(size int64) error {
 		return err
 	}
 	err = dm.dagserv.Add(dm.ctx, nnode)
-	return err
+	if err != nil {
+		return err
+	}
+	// Update curNode so subsequent writes use the expanded node.
+	// Without this, writes after sparse expansion would go to the old node.
+	dm.curNode = nnode
+	return nil
 }
 
 // Write continues writing to the dag at the current offset
