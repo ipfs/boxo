@@ -30,6 +30,7 @@ The following emojis are used to highlight certain changes:
 
 - 🛠 `ipld/unixfs/io`: fixed HAMT sharding threshold comparison to use `>` instead of `>=`. A directory exactly at the threshold now stays as a basic (flat) directory, aligning behavior with code documentation and the JS implementation. This is a theoretical breaking change, but unlikely to impact real-world users as it requires a directory to be exactly at the threshold boundary. If you depend on the old behavior, adjust `HAMTShardingSize` to be 1 byte lower. [#1088](https://github.com/ipfs/boxo/pull/1088), [IPIP-499](https://github.com/ipfs/specs/pull/499)
 - `ipld/unixfs/mod`: fixed sparse file writes in MFS. Writing past the end of a file (e.g., `ipfs files write --offset 1000 /file` on a smaller file) would lose data because `expandSparse` created the zero-padding node but didn't update the internal pointer. Subsequent writes went to the old unexpanded node.
+- `ipld/unixfs/io`: fixed mode/mtime metadata loss during Basic<->HAMT directory conversions. Previously, directories with `WithStat(mode, mtime)` would lose this metadata when converting between basic and sharded formats, or when reloading a HAMT directory from disk.
 
 ### Security
 

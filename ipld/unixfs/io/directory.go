@@ -459,13 +459,14 @@ func NewHAMTDirectory(dserv ipld.DAGService, sizeChange int, opts ...DirectoryOp
 		opt(dir)
 	}
 
-	// FIXME: do shards not support mtime and mode?
 	shard, err := hamt.NewShard(dir.dserv, dir.maxHAMTFanout)
 	if err != nil {
 		return nil, err
 	}
 
 	shard.SetCidBuilder(dir.cidBuilder)
+	// Propagate mode/mtime to the shard for inclusion in UnixFS data
+	shard.SetStat(dir.mode, dir.mtime)
 	dir.shard = shard
 
 	return dir, nil
@@ -523,6 +524,9 @@ func NewDirectoryFromNode(dserv ipld.DAGService, node ipld.Node) (Directory, err
 		if err != nil {
 			return nil, err
 		}
+		// Restore mode/mtime from the HAMT shard's UnixFS metadata.
+		// These are needed for HAMT->Basic conversion to preserve metadata.
+		hamtDir.SetStat(fsNode.Mode(), fsNode.ModTime())
 		return &DynamicDirectory{hamtDir}, nil
 	}
 
@@ -953,7 +957,8 @@ func (d *HAMTDirectory) SetMaxHAMTFanout(n int) {
 	d.maxHAMTFanout = n
 }
 
-// SetStat stores mode and/or mtime values for use during HAMT->Basic conversions.
+// SetStat stores mode and/or mtime values for use during HAMT->Basic conversions
+// and also propagates them to the underlying shard for inclusion in GetNode().
 // Pass zero for mode or zero time for mtime to leave that field unchanged.
 // See BasicDirectory.SetStat for full documentation.
 func (d *HAMTDirectory) SetStat(mode os.FileMode, mtime time.Time) {
@@ -962,6 +967,10 @@ func (d *HAMTDirectory) SetStat(mode os.FileMode, mtime time.Time) {
 	}
 	if !mtime.IsZero() {
 		d.mtime = mtime
+	}
+	// Also propagate to the shard so GetNode() includes mode/mtime
+	if d.shard != nil {
+		d.shard.SetStat(d.mode, d.mtime)
 	}
 }
 
@@ -1322,10 +1331,18 @@ func (d *DynamicDirectory) AddChild(ctx context.Context, name string, nd ipld.No
 		hamtFanout = basicDir.maxHAMTFanout
 	}
 
-	hamtDir, err = basicDir.switchToSharding(ctx, WithMaxHAMTFanout(hamtFanout), WithMaxLinks(basicDir.maxLinks), WithCidBuilder(basicDir.GetCidBuilder()))
+	hamtDir, err = basicDir.switchToSharding(ctx,
+		WithMaxHAMTFanout(hamtFanout),
+		WithMaxLinks(basicDir.maxLinks),
+		WithCidBuilder(basicDir.GetCidBuilder()),
+		WithStat(basicDir.mode, basicDir.mtime),
+		WithSizeEstimationMode(basicDir.GetSizeEstimationMode()),
+	)
 	if err != nil {
 		return err
 	}
+	// Propagate per-directory HAMT sharding size (not a DirectoryOption)
+	hamtDir.SetHAMTShardingSize(basicDir.GetHAMTShardingSize())
 	err = hamtDir.AddChild(ctx, name, nd)
 	if err != nil {
 		return err
@@ -1358,10 +1375,17 @@ func (d *DynamicDirectory) RemoveChild(ctx context.Context, name string) error {
 		maxLinks++
 	}
 
-	basicDir, err := hamtDir.switchToBasic(ctx, WithMaxLinks(maxLinks), WithCidBuilder(hamtDir.GetCidBuilder()))
+	basicDir, err := hamtDir.switchToBasic(ctx,
+		WithMaxLinks(maxLinks),
+		WithCidBuilder(hamtDir.GetCidBuilder()),
+		WithStat(hamtDir.mode, hamtDir.mtime),
+		WithSizeEstimationMode(hamtDir.GetSizeEstimationMode()),
+	)
 	if err != nil {
 		return err
 	}
+	// Propagate per-directory HAMT sharding size (not a DirectoryOption)
+	basicDir.SetHAMTShardingSize(hamtDir.GetHAMTShardingSize())
 
 	err = basicDir.RemoveChild(ctx, name)
 	if err != nil {
