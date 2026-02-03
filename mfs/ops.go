@@ -179,6 +179,7 @@ func Mkdir(r *Root, pth string, opts MkdirOpts) error {
 		MaxHAMTFanout:      opts.MaxHAMTFanout,
 		HAMTShardingSize:   opts.HAMTShardingSize,
 		SizeEstimationMode: opts.SizeEstimationMode,
+		Chunker:            opts.Chunker,
 	}
 
 	for i, d := range parts[:len(parts)-1] {

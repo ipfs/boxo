@@ -2464,3 +2464,75 @@ func TestHAMTShardingSizeInheritance(t *testing.T) {
 		t.Fatalf("expected THAMTShard after reload with custom threshold, got %s", fsn.Type())
 	}
 }
+
+// TestMkdirParentsChunker verifies that Mkdir with Mkparents propagates
+// the Chunker from opts to intermediate directories, not just the final one.
+func TestMkdirParentsChunker(t *testing.T) {
+	ctx := t.Context()
+	ds := getDagserv(t)
+
+	// Create root with 256-byte chunker (the "default" for this test).
+	// This is what intermediate directories would incorrectly inherit
+	// if the bug exists.
+	rootChunkSize := int64(256)
+	root, err := NewEmptyRoot(ctx, ds, nil, nil, MkdirOpts{},
+		WithChunker(chunker.SizeSplitterGen(rootChunkSize)))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create /a/b/c with a DIFFERENT 128-byte chunker.
+	// The bug: intermediate directory /a inherits root's 256-byte chunker
+	// instead of the 128-byte chunker specified in opts.
+	optsChunkSize := int64(128)
+	err = Mkdir(root, "/a/b/c", MkdirOpts{
+		Mkparents: true,
+		Chunker:   chunker.SizeSplitterGen(optsChunkSize),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create file in /a (the first intermediate directory)
+	nd := dag.NodeWithData(ft.FilePBData(nil, 0))
+	nd.SetCidBuilder(cid.V1Builder{Codec: cid.DagProtobuf, MhType: multihash.SHA2_256})
+	if err := ds.Add(ctx, nd); err != nil {
+		t.Fatal(err)
+	}
+	if err := PutNode(root, "/a/testfile", nd); err != nil {
+		t.Fatal(err)
+	}
+
+	// Write 512 bytes
+	// With root's 256-byte chunker (bug): 2 chunks
+	// With opts' 128-byte chunker (correct): 4 chunks
+	data := make([]byte, 512)
+	for i := range data {
+		data[i] = byte(i % 256)
+	}
+
+	fi, err := Lookup(root, "/a/testfile")
+	if err != nil {
+		t.Fatal(err)
+	}
+	fd, err := fi.(*File).Open(Flags{Write: true, Sync: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fd.Write(data); err != nil {
+		t.Fatal(err)
+	}
+	if err := fd.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify: should have 4 chunks (opts' chunker), not 2 (root's chunker)
+	node, err := fi.GetNode()
+	if err != nil {
+		t.Fatal(err)
+	}
+	links := node.Links()
+	if len(links) != 4 {
+		t.Fatalf("intermediate dir should use opts.Chunker (128-byte, 4 chunks), not root's (256-byte, 2 chunks); got %d links", len(links))
+	}
+}
