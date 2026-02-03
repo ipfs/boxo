@@ -1788,5 +1788,4 @@ func TestRawLeavesCollapse(t *testing.T) {
 			t.Fatalf("expected ProtoNode when RawLeaves=false, got %T", resultNode)
 		}
 	})
-
 }

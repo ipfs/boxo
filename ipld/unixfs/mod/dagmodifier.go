@@ -1,24 +1,3 @@
-// Package mod provides DAG modification utilities to, for example,
-// insert additional nodes in a unixfs DAG or truncate them.
-//
-// Identity CID Handling:
-//
-// This package automatically handles identity CIDs (multihash code 0x00) which
-// inline data directly in the CID. When modifying nodes with identity CIDs,
-// the package ensures the [verifcid.MaxIdentityDigestSize] limit is respected by
-// automatically switching to a cryptographic hash function when the encoded
-// data would exceed this limit. The replacement hash function is chosen from
-// (in order): the configured Prefix if non-identity, or [util.DefaultIpfsHash]
-// as a fallback. This prevents creation of unacceptably big identity CIDs
-// while preserving them for small data that fits within the limit.
-//
-// RawNode Growth:
-//
-// When appending data to a RawNode that would require multiple blocks, the
-// node is automatically converted to a UnixFS file structure. This is necessary
-// because RawNodes cannot have child nodes. The original raw data remains
-// accessible via its original CID, while the new structure provides full
-// UnixFS capabilities.
 package mod
 
 import (
@@ -389,7 +368,8 @@ func (dm *DagModifier) modifyDag(n ipld.Node, offset uint64) (cid.Cid, error) {
 				return cid.Cid{}, err
 			}
 
-			// Update newly written node..
+			// MFS semantics: update mtime on content modification (see doc.go).
+			// To preserve a specific mtime, set it explicitly after the operation.
 			if !fsn.ModTime().IsZero() {
 				fsn.SetModTime(time.Now())
 			}
@@ -789,6 +769,7 @@ func (dm *DagModifier) dagTruncate(ctx context.Context, n ipld.Node, size uint64
 			}
 
 			fsn.SetData(fsn.Data()[:size])
+			// MFS semantics: update mtime on truncation (see doc.go)
 			if !fsn.ModTime().IsZero() {
 				fsn.SetModTime(time.Now())
 			}
