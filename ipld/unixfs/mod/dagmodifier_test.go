@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
 	"testing"
 	"time"
 
@@ -1664,57 +1665,93 @@ func TestRawLeavesCollapse(t *testing.T) {
 		}
 	})
 
-	t.Run("file with ModTime stays as ProtoNode", func(t *testing.T) {
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
+	// Table-driven test for metadata preservation.
+	// Files with Mode or ModTime metadata should NOT collapse to RawNode
+	// even when RawLeaves=true and the file fits in a single block.
+	// We use explicit non-zero values and verify they're preserved exactly.
+	testMtime := time.Date(2025, 6, 15, 12, 30, 0, 0, time.UTC)
+	metadataTests := []struct {
+		name  string
+		mode  os.FileMode
+		mtime time.Time
+	}{
+		{"file with ModTime stays as ProtoNode", 0, testMtime},
+		{"file with Mode stays as ProtoNode", 0o755, time.Time{}},
+		{"file with both Mode and ModTime stays as ProtoNode", 0o644, testMtime},
+	}
 
-		dserv := testu.GetDAGServ()
+	for _, tc := range metadataTests {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
 
-		// Create a file node with ModTime metadata
-		fsNode := unixfs.NewFSNode(unixfs.TFile)
-		fsNode.SetModTime(time.Now())
-		fsNodeData, err := fsNode.GetBytes()
-		if err != nil {
-			t.Fatal(err)
-		}
-		emptyNode := dag.NodeWithData(fsNodeData)
-		emptyNode.SetCidBuilder(cid.Prefix{
-			Version:  1,
-			Codec:    cid.DagProtobuf,
-			MhType:   mh.SHA2_256,
-			MhLength: -1,
+			dserv := testu.GetDAGServ()
+
+			// Create a file node with specified metadata
+			fsNode := unixfs.NewFSNode(unixfs.TFile)
+			if tc.mode != 0 {
+				fsNode.SetMode(tc.mode)
+			}
+			if !tc.mtime.IsZero() {
+				fsNode.SetModTime(tc.mtime)
+			}
+			fsNodeData, err := fsNode.GetBytes()
+			if err != nil {
+				t.Fatal(err)
+			}
+			emptyNode := dag.NodeWithData(fsNodeData)
+			emptyNode.SetCidBuilder(cid.Prefix{
+				Version:  1,
+				Codec:    cid.DagProtobuf,
+				MhType:   mh.SHA2_256,
+				MhLength: -1,
+			})
+			err = dserv.Add(ctx, emptyNode)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			// Create DagModifier with RawLeaves enabled
+			dmod, err := NewDagModifier(ctx, emptyNode, dserv, testu.SizeSplitterGen(512))
+			if err != nil {
+				t.Fatal(err)
+			}
+			dmod.RawLeaves = true
+
+			// Write small data (would fit in single block)
+			data := []byte("hello world")
+			_, err = dmod.Write(data)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			// Get the final node
+			resultNode, err := dmod.GetNode()
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			// Should stay as ProtoNode because of metadata
+			protoNode, ok := resultNode.(*dag.ProtoNode)
+			if !ok {
+				t.Fatalf("expected ProtoNode, got %T", resultNode)
+			}
+
+			// Verify metadata is preserved
+			fsn, err := unixfs.FSNodeFromBytes(protoNode.Data())
+			if err != nil {
+				t.Fatal(err)
+			}
+			// Mode should be preserved exactly
+			if tc.mode != 0 && fsn.Mode() != tc.mode {
+				t.Errorf("Mode: expected %o, got %o", tc.mode, fsn.Mode())
+			}
+			// ModTime gets updated to time.Now() on write, so just verify it's present
+			if !tc.mtime.IsZero() && fsn.ModTime().IsZero() {
+				t.Error("ModTime was lost (expected non-zero)")
+			}
 		})
-		err = dserv.Add(ctx, emptyNode)
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		// Create DagModifier with RawLeaves enabled
-		dmod, err := NewDagModifier(ctx, emptyNode, dserv, testu.SizeSplitterGen(512))
-		if err != nil {
-			t.Fatal(err)
-		}
-		dmod.RawLeaves = true
-
-		// Write small data (would fit in single block)
-		data := []byte("hello world")
-		_, err = dmod.Write(data)
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		// Get the final node
-		resultNode, err := dmod.GetNode()
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		// Should stay as ProtoNode because of ModTime metadata
-		_, ok := resultNode.(*dag.ProtoNode)
-		if !ok {
-			t.Fatalf("expected ProtoNode for file with ModTime, got %T", resultNode)
-		}
-	})
+	}
 
 	t.Run("RawLeaves=false keeps ProtoNode", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
@@ -1751,4 +1788,5 @@ func TestRawLeavesCollapse(t *testing.T) {
 			t.Fatalf("expected ProtoNode when RawLeaves=false, got %T", resultNode)
 		}
 	})
+
 }

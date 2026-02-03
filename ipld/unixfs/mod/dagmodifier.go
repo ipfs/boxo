@@ -349,8 +349,8 @@ func (dm *DagModifier) maybeCollapseToRawLeaf() (ipld.Node, bool) {
 		return nil, false // Not valid UnixFS, keep as is
 	}
 
-	// If there's metadata (like ModTime), keep as ProtoNode
-	if !fsn.ModTime().IsZero() {
+	// If there's metadata (like ModTime or Mode), keep as ProtoNode
+	if !fsn.ModTime().IsZero() || fsn.Mode() != 0 {
 		return nil, false
 	}
 
