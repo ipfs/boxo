@@ -328,7 +328,7 @@ func TestProfileHAMTThresholdBehavior(t *testing.T) {
 
 		// Add entries and track sizes at each step
 		var sizes []int
-		for i := 0; i < 10; i++ {
+		for i := range 10 {
 			err = testDir.AddChild(ctx, fmt.Sprintf("entry%d", i), child)
 			require.NoError(t, err)
 
@@ -353,7 +353,7 @@ func TestProfileHAMTThresholdBehavior(t *testing.T) {
 			require.NoError(t, err)
 
 			// Add 5 entries to reach exactly threshold size
-			for i := 0; i < 5; i++ {
+			for i := range 5 {
 				err = dir.AddChild(ctx, fmt.Sprintf("entry%d", i), child)
 				require.NoError(t, err)
 			}
@@ -376,7 +376,7 @@ func TestProfileHAMTThresholdBehavior(t *testing.T) {
 			require.NoError(t, err)
 
 			// Add 5 entries - last one should trigger HAMT
-			for i := 0; i < 5; i++ {
+			for i := range 5 {
 				err = dir.AddChild(ctx, fmt.Sprintf("entry%d", i), child)
 				require.NoError(t, err)
 			}

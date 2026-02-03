@@ -1974,7 +1974,7 @@ func TestRootOptionMaxLinks(t *testing.T) {
 	}
 
 	// Add exactly 4 files (exceeds MaxLinks=3, but would not exceed default ~174)
-	for i := 0; i < fileCount; i++ {
+	for i := range fileCount {
 		child := dag.NodeWithData(ft.FilePBData([]byte("test"), 4))
 		if err := ds.Add(ctx, child); err != nil {
 			t.Fatal(err)
@@ -2035,7 +2035,7 @@ func TestRootOptionSizeEstimationMode(t *testing.T) {
 	}
 
 	// Add 2 files (below MaxLinks threshold)
-	for i := 0; i < 2; i++ {
+	for i := range 2 {
 		child := dag.NodeWithData(ft.FilePBData([]byte("test"), 4))
 		if err := ds.Add(ctx, child); err != nil {
 			t.Fatal(err)
@@ -2255,7 +2255,7 @@ func TestRootOptionMaxHAMTFanout(t *testing.T) {
 	}
 
 	// Add files to trigger HAMT conversion (exceeds MaxLinks=3)
-	for i := 0; i < 4; i++ {
+	for i := range 4 {
 		child := dag.NodeWithData(ft.FilePBData([]byte("test"), 4))
 		if err := ds.Add(ctx, child); err != nil {
 			t.Fatal(err)
@@ -2344,7 +2344,7 @@ func TestRootOptionHAMTShardingSize(t *testing.T) {
 
 	// Add files to exceed the small 100-byte threshold.
 	// Each link adds roughly 40-50 bytes, so 3 files should exceed 100 bytes.
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		child := dag.NodeWithData(ft.FilePBData([]byte("test content"), 12))
 		if err := ds.Add(ctx, child); err != nil {
 			t.Fatal(err)
