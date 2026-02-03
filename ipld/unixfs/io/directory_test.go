@@ -1134,10 +1134,10 @@ func TestUnicodeFilenamesInSizeEstimation(t *testing.T) {
 		byteLen  int // expected byte length of filename
 	}{
 		{"ASCII", "hello.txt", 9},
-		{"Chinese", "文件.txt", 10},      // 2 Chinese chars (3 bytes each) + 4 ASCII
-		{"Emoji", "📁folder", 10},        // 1 emoji (4 bytes) + 6 ASCII
-		{"Mixed", "日本語ファイル", 21}, // 7 Japanese chars (3 bytes each)
-		{"Combining", "café", 5},         // 'e' + combining acute accent
+		{"Chinese", "文件.txt", 10}, // 2 Chinese chars (3 bytes each) + 4 ASCII
+		{"Emoji", "📁folder", 10},  // 1 emoji (4 bytes) + 6 ASCII
+		{"Mixed", "日本語ファイル", 21},  // 7 Japanese chars (3 bytes each)
+		{"Combining", "café", 5},  // 'e' + combining acute accent
 	}
 
 	for _, tc := range testCases {
@@ -1177,7 +1177,11 @@ func TestUnicodeFilenamesInSizeEstimation(t *testing.T) {
 
 // TestConcurrentHAMTConversion verifies that concurrent reads don't corrupt
 // directory state during HAMT conversion.
-func TestConcurrentHAMTConversion(t *testing.T) {
+// TestSequentialHAMTConversion tests that directories handle rapid sequential
+// operations during HAMT conversion correctly.
+// Note: Directory is not thread-safe for concurrent reads and writes.
+// This test verifies that rapid sequential operations work correctly.
+func TestSequentialHAMTConversion(t *testing.T) {
 	ds := mdtest.Mock()
 	ctx := context.Background()
 
@@ -1200,54 +1204,22 @@ func TestConcurrentHAMTConversion(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	var wg sync.WaitGroup
-	errors := make(chan error, 100)
+	// Interleave reads and writes to test HAMT conversion during operations
+	for i := range 20 {
+		// Read
+		links, err := dir.Links(ctx)
+		require.NoError(t, err)
+		assert.GreaterOrEqual(t, len(links), 5+i, "should have at least %d entries", 5+i)
 
-	// Start readers that continuously list entries
-	for i := range 3 {
-		wg.Add(1)
-		go func(readerID int) {
-			defer wg.Done()
-			for j := range 20 {
-				links, err := dir.Links(ctx)
-				if err != nil {
-					errors <- fmt.Errorf("reader %d iteration %d: Links() failed: %w", readerID, j, err)
-					return
-				}
-				// Just verify we got some links
-				if len(links) == 0 {
-					errors <- fmt.Errorf("reader %d iteration %d: got 0 links", readerID, j)
-					return
-				}
-			}
-		}(i)
-	}
-
-	// Writer that adds entries, triggering HAMT conversion
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		for i := range 20 {
-			err := dir.AddChild(ctx, fmt.Sprintf("concurrent-%d", i), child)
-			if err != nil {
-				errors <- fmt.Errorf("writer iteration %d: AddChild failed: %w", i, err)
-				return
-			}
-		}
-	}()
-
-	wg.Wait()
-	close(errors)
-
-	// Check for errors
-	for err := range errors {
-		t.Error(err)
+		// Write - this may trigger HAMT conversion
+		err = dir.AddChild(ctx, fmt.Sprintf("sequential-%d", i), child)
+		require.NoError(t, err)
 	}
 
 	// Verify final state is consistent
 	links, err := dir.Links(ctx)
 	require.NoError(t, err)
-	assert.Equal(t, 25, len(links), "should have 5 initial + 20 concurrent entries")
+	assert.Equal(t, 25, len(links), "should have 5 initial + 20 sequential entries")
 }
 
 // TestHAMTDirectoryModeAndMtimeAfterReload verifies that mode and mtime metadata
@@ -1262,7 +1234,7 @@ func TestHAMTDirectoryModeAndMtimeAfterReload(t *testing.T) {
 
 	HAMTShardingSize = 200 // low threshold
 
-	testMode := os.FileMode(0755)
+	testMode := os.FileMode(0o755)
 	testMtime := time.Date(2024, 6, 15, 12, 0, 0, 0, time.UTC)
 
 	// Create directory with mode and mtime
