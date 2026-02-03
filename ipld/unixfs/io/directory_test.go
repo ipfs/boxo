@@ -526,6 +526,52 @@ func TestBasicDirectoryWithMaxLinks(t *testing.T) {
 	require.Error(t, err)
 }
 
+// TestBasicDirectoryMaxLinksAllowsReplacement verifies that replacing an existing
+// entry does not count against maxLinks. When at maxLinks capacity, replacing an
+// existing entry should succeed (it's not adding a new link).
+func TestBasicDirectoryMaxLinksAllowsReplacement(t *testing.T) {
+	ds := mdtest.Mock()
+	ctx := context.Background()
+
+	dir, err := NewBasicDirectory(ds, WithMaxLinks(2))
+	require.NoError(t, err)
+
+	// add two entries to reach maxLinks
+	child1 := ft.EmptyDirNode()
+	require.NoError(t, ds.Add(ctx, child1))
+	require.NoError(t, dir.AddChild(ctx, "entry1", child1))
+
+	child2 := ft.EmptyDirNode()
+	require.NoError(t, ds.Add(ctx, child2))
+	require.NoError(t, dir.AddChild(ctx, "entry2", child2))
+
+	// adding a third entry should fail (maxLinks reached)
+	child3 := ft.EmptyDirNode()
+	require.NoError(t, ds.Add(ctx, child3))
+	err = dir.AddChild(ctx, "entry3", child3)
+	require.Error(t, err, "adding third entry should fail")
+
+	// but replacing an existing entry should succeed
+	replacement := ft.EmptyDirNode()
+	require.NoError(t, ds.Add(ctx, replacement))
+	err = dir.AddChild(ctx, "entry1", replacement)
+	require.NoError(t, err, "replacing existing entry should succeed even at maxLinks")
+
+	// verify the replacement happened
+	links, err := dir.Links(ctx)
+	require.NoError(t, err)
+	require.Len(t, links, 2)
+
+	found := false
+	for _, l := range links {
+		if l.Name == "entry1" && l.Cid.Equals(replacement.Cid()) {
+			found = true
+			break
+		}
+	}
+	require.True(t, found, "entry1 should point to the replacement node")
+}
+
 // TestHAMTDirectoryWithMaxLinks tests that no HAMT shard as more than MaxLinks.
 func TestHAMTDirectoryWithMaxLinks(t *testing.T) {
 	ds := mdtest.Mock()

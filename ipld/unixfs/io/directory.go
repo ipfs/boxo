@@ -796,20 +796,17 @@ func (d *BasicDirectory) addLinkChild(ctx context.Context, name string, link *ip
 	// Remove old link and account for size change (if it existed; ignore
 	// `ErrNotExist` otherwise). RemoveChild updates both estimatedSize and
 	// totalLinks for the removed link.
-	existed := false
 	err := d.RemoveChild(ctx, name)
 	if err != nil {
 		if !errors.Is(err, os.ErrNotExist) {
 			return err
 		}
-	} else {
-		existed = true
+		// Entry didn't exist, so this is a new link. Check maxLinks.
+		if d.maxLinks > 0 && d.totalLinks+1 > d.maxLinks {
+			return errors.New("BasicDirectory: cannot add child: maxLinks reached")
+		}
 	}
-
-	// Only check maxLinks for truly new entries (not replacements)
-	if !existed && d.maxLinks > 0 && d.totalLinks+1 > d.maxLinks {
-		return errors.New("BasicDirectory: cannot add child: maxLinks reached")
-	}
+	// else: entry existed and was removed, no maxLinks check needed for replacement
 
 	err = d.node.AddRawLink(name, link)
 	if err != nil {
