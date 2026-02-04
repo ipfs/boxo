@@ -94,8 +94,13 @@ func TestCarParams(t *testing.T) {
 			{"application/vnd.ipld.car; dups=n", nil, DagOrderDFS, DuplicateBlocksExcluded},
 			{"application/vnd.ipld.car", nil, DagOrderDFS, DuplicateBlocksExcluded},
 			{"application/vnd.ipld.car;version=1;order=dfs;dups=y", nil, DagOrderDFS, DuplicateBlocksIncluded},
-			{"application/vnd.ipld.car;version=1;order=dfs;dups=y", url.Values{"car-order": []string{"unk"}}, DagOrderDFS, DuplicateBlocksIncluded},
+			// IPIP-523: URL query params take priority over Accept header params
+			{"application/vnd.ipld.car;version=1;order=dfs;dups=y", url.Values{"car-order": []string{"unk"}}, DagOrderUnknown, DuplicateBlocksIncluded},
 			{"application/vnd.ipld.car;version=1;dups=y", url.Values{"car-order": []string{"unk"}}, DagOrderUnknown, DuplicateBlocksIncluded},
+			// IPIP-523: URL params work without Accept header (non-default dups to detect wiring bugs)
+			{"", url.Values{"format": []string{"car"}, "car-dups": []string{"y"}}, DagOrderDFS, DuplicateBlocksIncluded},
+			// IPIP-523: URL dups=y overrides Accept dups=n
+			{"application/vnd.ipld.car;order=dfs;dups=n", url.Values{"car-dups": []string{"y"}}, DagOrderDFS, DuplicateBlocksIncluded},
 		}
 		for _, test := range tests {
 			r := mustNewRequest(t, http.MethodGet, "http://example.com/?"+test.params.Encode(), nil)
