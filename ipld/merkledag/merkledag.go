@@ -18,6 +18,13 @@ import (
 	basicnode "github.com/ipld/go-ipld-prime/node/basic"
 )
 
+var (
+	_ format.LinkGetter = &dagService{}
+	_ format.NodeGetter = &dagService{}
+	_ format.NodeGetter = &sesGetter{}
+	_ format.DAGService = &dagService{}
+)
+
 var ipldLegacyDecoder *legacy.Decoder
 
 // TODO: Don't require global registries
@@ -58,7 +65,6 @@ func (n *dagService) Add(ctx context.Context, nd format.Node) error {
 	if n == nil { // FIXME remove this assertion. protect with constructor invariant
 		return errors.New("dagService is nil")
 	}
-
 	return n.Blocks.AddBlock(ctx, nd)
 }
 
@@ -413,7 +419,6 @@ func Walk(ctx context.Context, getLinks GetLinks, c cid.Cid, visit func(cid.Cid)
 	visitDepth := func(c cid.Cid, depth int) bool {
 		return visit(c)
 	}
-
 	return WalkDepth(ctx, getLinks, c, visitDepth, options...)
 }
 
@@ -428,9 +433,8 @@ func WalkDepth(ctx context.Context, getLinks GetLinks, c cid.Cid, visit func(cid
 
 	if opts.Concurrency > 1 {
 		return parallelWalkDepth(ctx, getLinks, c, visit, opts)
-	} else {
-		return sequentialWalkDepth(ctx, getLinks, c, 0, visit, opts)
 	}
+	return sequentialWalkDepth(ctx, getLinks, c, 0, visit, opts)
 }
 
 func sequentialWalkDepth(ctx context.Context, getLinks GetLinks, root cid.Cid, depth int, visit func(cid.Cid, int) bool, options *walkOptions) error {
@@ -451,13 +455,13 @@ func sequentialWalkDepth(ctx context.Context, getLinks GetLinks, root cid.Cid, d
 	// Successfully fetched "root". Provide it when needed.
 	if prov := options.Provider; prov != nil {
 		log.Debugf("merkledag: provide %s", root)
-		if err := prov.StartProviding(false, root.Hash()); err != nil {
+		if err = prov.StartProviding(false, root.Hash()); err != nil {
 			log.Warnf("merkledag: error while providing %s: %s", root, err)
 		}
 	}
 
 	for _, lnk := range links {
-		if err := sequentialWalkDepth(ctx, getLinks, lnk.Cid, depth+1, visit, options); err != nil {
+		if err = sequentialWalkDepth(ctx, getLinks, lnk.Cid, depth+1, visit, options); err != nil {
 			return err
 		}
 	}
@@ -528,7 +532,7 @@ func parallelWalkDepth(ctx context.Context, getLinks GetLinks, root cid.Cid, vis
 	fetchersCtx, cancel := context.WithCancel(ctx)
 	defer wg.Wait()
 	defer cancel()
-	for i := 0; i < options.Concurrency; i++ {
+	for range options.Concurrency {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -633,10 +637,3 @@ func parallelWalkDepth(ctx context.Context, getLinks GetLinks, root cid.Cid, vis
 		}
 	}
 }
-
-var (
-	_ format.LinkGetter = &dagService{}
-	_ format.NodeGetter = &dagService{}
-	_ format.NodeGetter = &sesGetter{}
-	_ format.DAGService = &dagService{}
-)
