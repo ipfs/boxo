@@ -23,6 +23,7 @@ The following emojis are used to highlight certain changes:
 ### Changed
 
 - 🛠 `chunker`: `DefaultBlockSize` changed from `const` to `var` to allow runtime configuration via global profiles. [#1088](https://github.com/ipfs/boxo/pull/1088), [IPIP-499](https://github.com/ipfs/specs/pull/499)
+- `gateway`: ✨ [IPIP-523](https://github.com/ipfs/specs/pull/523) `?format=` URL query parameter now takes precedence over `Accept` HTTP header, ensuring deterministic HTTP cache behavior and allowing browsers to use `?format=` even when they send `Accept` headers with specific content types. [#1074](https://github.com/ipfs/boxo/pull/1074)
 
 ### Removed
 
