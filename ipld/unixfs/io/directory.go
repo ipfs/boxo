@@ -3,6 +3,7 @@ package io
 import (
 	"context"
 	"errors"
+	"fmt"
 	"math/bits"
 	"os"
 	"time"
@@ -19,6 +20,10 @@ import (
 )
 
 var log = logging.Logger("unixfs")
+
+// ErrInvalidHAMTFanout is returned when an invalid HAMT fanout value is provided.
+// Valid values must be a positive power of 2 and a multiple of 8 (e.g., 8, 16, 32, 64, 128, 256).
+var ErrInvalidHAMTFanout = errors.New("HAMT fanout must be a positive power of 2 and multiple of 8")
 
 // HAMTShardingSize is a global option that allows switching to a HAMTDirectory
 // when the BasicDirectory grows above the size (in bytes) signalled by this
@@ -272,18 +277,19 @@ func WithMaxLinks(n int) DirectoryOption {
 	}
 }
 
-// WithMaxHAMTFanout stablishes the maximum fanout factor (number of links) for
+// WithMaxHAMTFanout establishes the maximum fanout factor (number of links) for
 // a HAMT directory or a Dynamic directory with an underlying HAMT directory:
 //
-// - On Dynamic directories, it specifies the HAMT fanout when a HAMT
-// used. When unset, DefaultShardWidth applies.
+//   - On Dynamic directories, it specifies the HAMT fanout when a HAMT is
+//     used. When unset, DefaultShardWidth applies.
+//   - On pure HAMT directories, it sets the ShardWidth, otherwise DefaultShardWidth
+//     is used.
 //
-// - On pure HAMT directories, it sets the ShardWidth, otherwise DefaultShardWidth
-// is used.
+// Valid values must be a positive power of 2 and a multiple of 8
+// (e.g., 8, 16, 32, 64, 128, 256, 512, 1024).
 //
-// HAMT directories require this value to be a power of 2 and a multiple of
-// 8. If it is not the case, it will not be used and DefaultHAMTWidth will be
-// used instead.
+// If an invalid value is provided, NewBasicDirectory and NewHAMTDirectory will
+// return ErrInvalidHAMTFanout. Use 0 or omit this option to use DefaultShardWidth.
 func WithMaxHAMTFanout(n int) DirectoryOption {
 	return func(d Directory) {
 		d.SetMaxHAMTFanout(n)
@@ -405,6 +411,13 @@ func NewBasicDirectory(dserv ipld.DAGService, opts ...DirectoryOption) (*BasicDi
 		o(basicDir)
 	}
 
+	// Validate maxHAMTFanout: 0 means use default, positive must be valid
+	if basicDir.maxHAMTFanout == 0 {
+		basicDir.maxHAMTFanout = DefaultShardWidth
+	} else if !validShardWidth(basicDir.maxHAMTFanout) {
+		return nil, fmt.Errorf("%w: %d", ErrInvalidHAMTFanout, basicDir.maxHAMTFanout)
+	}
+
 	var node *mdag.ProtoNode
 	if basicDir.mode > 0 || !basicDir.mtime.IsZero() {
 		node = format.EmptyDirNodeWithStat(basicDir.mode, basicDir.mtime)
@@ -457,6 +470,13 @@ func NewHAMTDirectory(dserv ipld.DAGService, sizeChange int, opts ...DirectoryOp
 
 	for _, opt := range opts {
 		opt(dir)
+	}
+
+	// Validate maxHAMTFanout: 0 means use default, positive must be valid
+	if dir.maxHAMTFanout == 0 {
+		dir.maxHAMTFanout = DefaultShardWidth
+	} else if !validShardWidth(dir.maxHAMTFanout) {
+		return nil, fmt.Errorf("%w: %d", ErrInvalidHAMTFanout, dir.maxHAMTFanout)
 	}
 
 	shard, err := hamt.NewShard(dir.dserv, dir.maxHAMTFanout)
@@ -550,16 +570,10 @@ func (d *BasicDirectory) GetMaxHAMTFanout() int {
 	return d.maxHAMTFanout
 }
 
-// SetMAXHAMTFanout has no relevance for BasicDirectories.
+// SetMaxHAMTFanout sets the HAMT fanout for use during Basic->HAMT conversion.
+// The value is validated when the directory is created via NewBasicDirectory.
+// Valid values: positive power of 2 and multiple of 8. Use 0 for default.
 func (d *BasicDirectory) SetMaxHAMTFanout(n int) {
-	if n > 0 && !validShardWidth(n) {
-		log.Warnf("Invalid HAMTMaxFanout: %d. Using default (%d)", n, DefaultShardWidth)
-		n = DefaultShardWidth
-	}
-	if n == 0 {
-		n = DefaultShardWidth
-	}
-
 	d.maxHAMTFanout = n
 }
 
@@ -939,18 +953,10 @@ func (d *HAMTDirectory) GetMaxHAMTFanout() int {
 	return d.maxHAMTFanout
 }
 
-// SetMaxHAMTFanout has no effect and only exists to support Dynamic
-// directories. Max fanout can be set during creation using
-// WithMaxHAMTFanout().
+// SetMaxHAMTFanout sets the HAMT fanout. The value is validated when the
+// directory is created via NewHAMTDirectory.
+// Valid values: positive power of 2 and multiple of 8. Use 0 for default.
 func (d *HAMTDirectory) SetMaxHAMTFanout(n int) {
-	if n > 0 && !validShardWidth(n) {
-		log.Warnf("Invalid HAMTMaxFanout: %d. Using default (%d)", n, DefaultShardWidth)
-		n = DefaultShardWidth
-	}
-	if n == 0 {
-		n = DefaultShardWidth
-	}
-
 	d.maxHAMTFanout = n
 }
 

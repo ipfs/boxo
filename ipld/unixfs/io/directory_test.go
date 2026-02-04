@@ -676,6 +676,78 @@ func TestValidShardWidth(t *testing.T) {
 	}
 }
 
+// TestInvalidMaxHAMTFanoutReturnsError verifies that invalid values
+// passed to WithMaxHAMTFanout cause NewBasicDirectory and NewHAMTDirectory
+// to return ErrInvalidHAMTFanout.
+func TestInvalidMaxHAMTFanoutReturnsError(t *testing.T) {
+	ds := mdtest.Mock()
+
+	// Invalid values that should cause an error
+	invalidValues := []int{
+		-1,   // negative
+		1,    // not multiple of 8
+		2,    // power of 2 but not multiple of 8
+		4,    // power of 2 but not multiple of 8
+		7,    // not power of 2
+		12,   // not power of 2
+		1337, // not power of 2
+	}
+
+	// Valid values that should be accepted
+	validValues := []int{
+		0, // 0 means "use default"
+		8,
+		16,
+		64,
+		256,
+		1024,
+	}
+
+	t.Run("BasicDirectory WithMaxHAMTFanout rejects invalid values with error", func(t *testing.T) {
+		for _, invalid := range invalidValues {
+			_, err := NewBasicDirectory(ds, WithMaxHAMTFanout(invalid))
+			require.ErrorIs(t, err, ErrInvalidHAMTFanout,
+				"invalid value %d should return ErrInvalidHAMTFanout", invalid)
+		}
+	})
+
+	t.Run("BasicDirectory WithMaxHAMTFanout accepts valid values", func(t *testing.T) {
+		for _, valid := range validValues {
+			dir, err := NewBasicDirectory(ds, WithMaxHAMTFanout(valid))
+			require.NoError(t, err, "valid value %d should be accepted", valid)
+			if valid == 0 {
+				assert.Equal(t, DefaultShardWidth, dir.GetMaxHAMTFanout(),
+					"0 should use default %d", DefaultShardWidth)
+			} else {
+				assert.Equal(t, valid, dir.GetMaxHAMTFanout(),
+					"valid value %d should be accepted", valid)
+			}
+		}
+	})
+
+	t.Run("HAMTDirectory WithMaxHAMTFanout rejects invalid values with error", func(t *testing.T) {
+		for _, invalid := range invalidValues {
+			_, err := NewHAMTDirectory(ds, 0, WithMaxHAMTFanout(invalid))
+			require.ErrorIs(t, err, ErrInvalidHAMTFanout,
+				"invalid value %d should return ErrInvalidHAMTFanout", invalid)
+		}
+	})
+
+	t.Run("HAMTDirectory WithMaxHAMTFanout accepts valid values", func(t *testing.T) {
+		for _, valid := range validValues {
+			dir, err := NewHAMTDirectory(ds, 0, WithMaxHAMTFanout(valid))
+			require.NoError(t, err, "valid value %d should be accepted", valid)
+			if valid == 0 {
+				assert.Equal(t, DefaultShardWidth, dir.GetMaxHAMTFanout(),
+					"0 should use default %d", DefaultShardWidth)
+			} else {
+				assert.Equal(t, valid, dir.GetMaxHAMTFanout(),
+					"valid value %d should be accepted", valid)
+			}
+		}
+	})
+}
+
 // countGetsDS is a DAG service that keeps track of the number of
 // unique CIDs fetched.
 type countGetsDS struct {
