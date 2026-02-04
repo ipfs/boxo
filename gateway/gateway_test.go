@@ -18,6 +18,7 @@ import (
 	"github.com/ipfs/go-cid"
 	ipld "github.com/ipfs/go-ipld-format"
 	mh "github.com/multiformats/go-multihash"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -1496,5 +1497,112 @@ func TestMaxRangeRequestFileSize(t *testing.T) {
 		body, err := io.ReadAll(res.Body)
 		require.NoError(t, err)
 		require.Equal(t, "fnord", string(body))
+	})
+}
+
+func TestValidateConfig_MaxRequestDuration(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		input    time.Duration
+		expected time.Duration
+	}{
+		{"zero uses default", 0, DefaultMaxRequestDuration},
+		{"negative uses default", -1 * time.Second, DefaultMaxRequestDuration},
+		{"positive value preserved", 30 * time.Minute, 30 * time.Minute},
+		{"very short duration preserved", 1 * time.Millisecond, 1 * time.Millisecond},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			c := validateConfig(Config{MaxRequestDuration: tc.input})
+			assert.Equal(t, tc.expected, c.MaxRequestDuration)
+		})
+	}
+}
+
+// slowMockBackend is a backend that waits before responding, respecting context cancellation.
+type slowMockBackend struct {
+	delay time.Duration
+}
+
+func (mb *slowMockBackend) Get(ctx context.Context, path path.ImmutablePath, getRange ...ByteRange) (ContentPathMetadata, *GetResponse, error) {
+	return mb.waitAndReturnError(ctx)
+}
+
+func (mb *slowMockBackend) GetAll(ctx context.Context, path path.ImmutablePath) (ContentPathMetadata, files.Node, error) {
+	_, _, err := mb.waitAndReturnError(ctx)
+	return ContentPathMetadata{}, nil, err
+}
+
+func (mb *slowMockBackend) GetBlock(ctx context.Context, path path.ImmutablePath) (ContentPathMetadata, files.File, error) {
+	_, _, err := mb.waitAndReturnError(ctx)
+	return ContentPathMetadata{}, nil, err
+}
+
+func (mb *slowMockBackend) Head(ctx context.Context, path path.ImmutablePath) (ContentPathMetadata, *HeadResponse, error) {
+	_, _, err := mb.waitAndReturnError(ctx)
+	return ContentPathMetadata{}, nil, err
+}
+
+func (mb *slowMockBackend) GetCAR(ctx context.Context, path path.ImmutablePath, params CarParams) (ContentPathMetadata, io.ReadCloser, error) {
+	_, _, err := mb.waitAndReturnError(ctx)
+	return ContentPathMetadata{}, nil, err
+}
+
+func (mb *slowMockBackend) ResolveMutable(ctx context.Context, p path.Path) (path.ImmutablePath, time.Duration, time.Time, error) {
+	_, _, err := mb.waitAndReturnError(ctx)
+	return path.ImmutablePath{}, 0, time.Time{}, err
+}
+
+func (mb *slowMockBackend) GetIPNSRecord(ctx context.Context, c cid.Cid) ([]byte, error) {
+	_, _, err := mb.waitAndReturnError(ctx)
+	return nil, err
+}
+
+func (mb *slowMockBackend) GetDNSLinkRecord(ctx context.Context, hostname string) (path.Path, error) {
+	_, _, err := mb.waitAndReturnError(ctx)
+	return nil, err
+}
+
+func (mb *slowMockBackend) IsCached(ctx context.Context, p path.Path) bool {
+	return false
+}
+
+func (mb *slowMockBackend) ResolvePath(ctx context.Context, path path.ImmutablePath) (ContentPathMetadata, error) {
+	_, _, err := mb.waitAndReturnError(ctx)
+	return ContentPathMetadata{}, err
+}
+
+func (mb *slowMockBackend) waitAndReturnError(ctx context.Context) (ContentPathMetadata, *GetResponse, error) {
+	select {
+	case <-time.After(mb.delay):
+		return ContentPathMetadata{}, nil, errors.New("backend completed but should have timed out")
+	case <-ctx.Done():
+		return ContentPathMetadata{}, nil, ctx.Err()
+	}
+}
+
+func TestMaxRequestDuration(t *testing.T) {
+	t.Parallel()
+
+	t.Run("request times out when backend is slow", func(t *testing.T) {
+		t.Parallel()
+
+		backend := &slowMockBackend{delay: 500 * time.Millisecond}
+		ts := newTestServerWithConfig(t, backend, Config{
+			DeserializedResponses: true,
+			MaxRequestDuration:    50 * time.Millisecond,
+			MetricsRegistry:       prometheus.NewRegistry(),
+		})
+
+		req := mustNewRequest(t, http.MethodGet, ts.URL+"/ipfs/bafkreifzjut3te2nhyekklss27nh3k72ysco7y32koao5eei66wof36n5e", nil)
+		res := mustDo(t, req)
+		defer res.Body.Close()
+
+		// context.DeadlineExceeded from backend results in 504 Gateway Timeout
+		require.Equal(t, http.StatusGatewayTimeout, res.StatusCode)
 	})
 }

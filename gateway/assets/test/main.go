@@ -149,7 +149,7 @@ func init() {
 	loadDagTestData()
 }
 
-func runTemplate(w http.ResponseWriter, filename string, data interface{}) {
+func runTemplate(w http.ResponseWriter, filename string, data any) {
 	fs := os.DirFS(".")
 	tpl, err := assets.BuildTemplate(fs, filename)
 	if err != nil {
