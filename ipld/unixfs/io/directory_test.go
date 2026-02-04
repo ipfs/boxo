@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"os"
 	"slices"
 	"strconv"
 	"strings"
@@ -525,6 +526,52 @@ func TestBasicDirectoryWithMaxLinks(t *testing.T) {
 	require.Error(t, err)
 }
 
+// TestBasicDirectoryMaxLinksAllowsReplacement verifies that replacing an existing
+// entry does not count against maxLinks. When at maxLinks capacity, replacing an
+// existing entry should succeed (it's not adding a new link).
+func TestBasicDirectoryMaxLinksAllowsReplacement(t *testing.T) {
+	ds := mdtest.Mock()
+	ctx := context.Background()
+
+	dir, err := NewBasicDirectory(ds, WithMaxLinks(2))
+	require.NoError(t, err)
+
+	// add two entries to reach maxLinks
+	child1 := ft.EmptyDirNode()
+	require.NoError(t, ds.Add(ctx, child1))
+	require.NoError(t, dir.AddChild(ctx, "entry1", child1))
+
+	child2 := ft.EmptyDirNode()
+	require.NoError(t, ds.Add(ctx, child2))
+	require.NoError(t, dir.AddChild(ctx, "entry2", child2))
+
+	// adding a third entry should fail (maxLinks reached)
+	child3 := ft.EmptyDirNode()
+	require.NoError(t, ds.Add(ctx, child3))
+	err = dir.AddChild(ctx, "entry3", child3)
+	require.Error(t, err, "adding third entry should fail")
+
+	// but replacing an existing entry should succeed
+	replacement := ft.EmptyDirNode()
+	require.NoError(t, ds.Add(ctx, replacement))
+	err = dir.AddChild(ctx, "entry1", replacement)
+	require.NoError(t, err, "replacing existing entry should succeed even at maxLinks")
+
+	// verify the replacement happened
+	links, err := dir.Links(ctx)
+	require.NoError(t, err)
+	require.Len(t, links, 2)
+
+	found := false
+	for _, l := range links {
+		if l.Name == "entry1" && l.Cid.Equals(replacement.Cid()) {
+			found = true
+			break
+		}
+	}
+	require.True(t, found, "entry1 should point to the replacement node")
+}
+
 // TestHAMTDirectoryWithMaxLinks tests that no HAMT shard as more than MaxLinks.
 func TestHAMTDirectoryWithMaxLinks(t *testing.T) {
 	ds := mdtest.Mock()
@@ -629,6 +676,78 @@ func TestValidShardWidth(t *testing.T) {
 	}
 }
 
+// TestInvalidMaxHAMTFanoutReturnsError verifies that invalid values
+// passed to WithMaxHAMTFanout cause NewBasicDirectory and NewHAMTDirectory
+// to return ErrInvalidHAMTFanout.
+func TestInvalidMaxHAMTFanoutReturnsError(t *testing.T) {
+	ds := mdtest.Mock()
+
+	// Invalid values that should cause an error
+	invalidValues := []int{
+		-1,   // negative
+		1,    // not multiple of 8
+		2,    // power of 2 but not multiple of 8
+		4,    // power of 2 but not multiple of 8
+		7,    // not power of 2
+		12,   // not power of 2
+		1337, // not power of 2
+	}
+
+	// Valid values that should be accepted
+	validValues := []int{
+		0, // 0 means "use default"
+		8,
+		16,
+		64,
+		256,
+		1024,
+	}
+
+	t.Run("BasicDirectory WithMaxHAMTFanout rejects invalid values with error", func(t *testing.T) {
+		for _, invalid := range invalidValues {
+			_, err := NewBasicDirectory(ds, WithMaxHAMTFanout(invalid))
+			require.ErrorIs(t, err, ErrInvalidHAMTFanout,
+				"invalid value %d should return ErrInvalidHAMTFanout", invalid)
+		}
+	})
+
+	t.Run("BasicDirectory WithMaxHAMTFanout accepts valid values", func(t *testing.T) {
+		for _, valid := range validValues {
+			dir, err := NewBasicDirectory(ds, WithMaxHAMTFanout(valid))
+			require.NoError(t, err, "valid value %d should be accepted", valid)
+			if valid == 0 {
+				assert.Equal(t, DefaultShardWidth, dir.GetMaxHAMTFanout(),
+					"0 should use default %d", DefaultShardWidth)
+			} else {
+				assert.Equal(t, valid, dir.GetMaxHAMTFanout(),
+					"valid value %d should be accepted", valid)
+			}
+		}
+	})
+
+	t.Run("HAMTDirectory WithMaxHAMTFanout rejects invalid values with error", func(t *testing.T) {
+		for _, invalid := range invalidValues {
+			_, err := NewHAMTDirectory(ds, 0, WithMaxHAMTFanout(invalid))
+			require.ErrorIs(t, err, ErrInvalidHAMTFanout,
+				"invalid value %d should return ErrInvalidHAMTFanout", invalid)
+		}
+	})
+
+	t.Run("HAMTDirectory WithMaxHAMTFanout accepts valid values", func(t *testing.T) {
+		for _, valid := range validValues {
+			dir, err := NewHAMTDirectory(ds, 0, WithMaxHAMTFanout(valid))
+			require.NoError(t, err, "valid value %d should be accepted", valid)
+			if valid == 0 {
+				assert.Equal(t, DefaultShardWidth, dir.GetMaxHAMTFanout(),
+					"0 should use default %d", DefaultShardWidth)
+			} else {
+				assert.Equal(t, valid, dir.GetMaxHAMTFanout(),
+					"valid value %d should be accepted", valid)
+			}
+		}
+	})
+}
+
 // countGetsDS is a DAG service that keeps track of the number of
 // unique CIDs fetched.
 type countGetsDS struct {
@@ -712,4 +831,775 @@ func (d *countGetsDS) AllKeysChan(ctx context.Context) (<-chan cid.Cid, error) {
 		panic("implement me")
 	}
 	return d.Blockstore.AllKeysChan(ctx)
+}
+
+// TestSizeEstimationMode tests that all estimation modes work correctly.
+func TestSizeEstimationMode(t *testing.T) {
+	// Save and restore global settings after all subtests
+	oldEstimation := HAMTSizeEstimation
+	oldShardingSize := HAMTShardingSize
+	oldLinkSize := linksize.LinkSizeFunction
+	t.Cleanup(func() {
+		HAMTSizeEstimation = oldEstimation
+		HAMTShardingSize = oldShardingSize
+		linksize.LinkSizeFunction = oldLinkSize
+	})
+
+	t.Run("links mode is default", func(t *testing.T) {
+		HAMTSizeEstimation = SizeEstimationLinks // ensure default
+		ds := mdtest.Mock()
+		dir, err := NewBasicDirectory(ds)
+		require.NoError(t, err)
+		assert.Equal(t, SizeEstimationLinks, dir.GetSizeEstimationMode())
+	})
+
+	t.Run("block mode can be set globally", func(t *testing.T) {
+		HAMTSizeEstimation = SizeEstimationBlock
+		ds := mdtest.Mock()
+		dir, err := NewBasicDirectory(ds)
+		require.NoError(t, err)
+		assert.Equal(t, SizeEstimationBlock, dir.GetSizeEstimationMode())
+	})
+
+	t.Run("disabled mode can be set globally", func(t *testing.T) {
+		HAMTSizeEstimation = SizeEstimationDisabled
+		ds := mdtest.Mock()
+		dir, err := NewBasicDirectory(ds)
+		require.NoError(t, err)
+		assert.Equal(t, SizeEstimationDisabled, dir.GetSizeEstimationMode())
+	})
+
+	t.Run("WithSizeEstimationMode overrides global", func(t *testing.T) {
+		HAMTSizeEstimation = SizeEstimationLinks
+		ds := mdtest.Mock()
+		dir, err := NewBasicDirectory(ds, WithSizeEstimationMode(SizeEstimationBlock))
+		require.NoError(t, err)
+		assert.Equal(t, SizeEstimationBlock, dir.GetSizeEstimationMode())
+	})
+}
+
+// TestSizeEstimationBlockMode tests that block estimation mode correctly
+// calculates serialized dag-pb block size for HAMT threshold decisions.
+func TestSizeEstimationBlockMode(t *testing.T) {
+	// Save and restore global settings
+	oldEstimation := HAMTSizeEstimation
+	oldShardingSize := HAMTShardingSize
+	oldLinkSize := linksize.LinkSizeFunction
+	t.Cleanup(func() {
+		HAMTSizeEstimation = oldEstimation
+		HAMTShardingSize = oldShardingSize
+		linksize.LinkSizeFunction = oldLinkSize
+	})
+
+	ds := mdtest.Mock()
+	ctx := context.Background()
+
+	// Create a child node to add to directories
+	child := ft.EmptyDirNode()
+	require.NoError(t, ds.Add(ctx, child))
+
+	t.Run("block estimation uses full serialized size", func(t *testing.T) {
+		// Set a threshold that will be exceeded with accurate block estimation
+		// but not with legacy link estimation
+		HAMTShardingSize = 500
+		HAMTSizeEstimation = SizeEstimationBlock
+
+		dir, err := NewDirectory(ds, WithSizeEstimationMode(SizeEstimationBlock))
+		require.NoError(t, err)
+
+		// Add entries until we're near the threshold
+		for i := range 10 {
+			err = dir.AddChild(ctx, fmt.Sprintf("entry-%03d", i), child)
+			require.NoError(t, err)
+		}
+
+		// Get the node and check its actual serialized size
+		node, err := dir.GetNode()
+		require.NoError(t, err)
+
+		pn, ok := node.(*mdag.ProtoNode)
+		if ok {
+			data, err := pn.EncodeProtobuf(false)
+			require.NoError(t, err)
+			t.Logf("actual block size with 10 entries: %d bytes", len(data))
+		}
+	})
+
+	t.Run("links mode regression", func(t *testing.T) {
+		// Verify that links mode produces the same behavior as before
+		HAMTShardingSize = 1000
+		HAMTSizeEstimation = SizeEstimationLinks
+		linksize.LinkSizeFunction = productionLinkSize
+
+		dir, err := NewDirectory(ds)
+		require.NoError(t, err)
+
+		// Add entries and verify we stay as BasicDirectory with links mode
+		for i := range 10 {
+			err = dir.AddChild(ctx, fmt.Sprintf("entry-%03d", i), child)
+			require.NoError(t, err)
+		}
+
+		// Should still be BasicDirectory with this threshold
+		checkBasicDirectory(t, dir, "should be BasicDirectory with links estimation")
+	})
+}
+
+// TestSizeEstimationDisabled tests that disabled mode ignores size-based threshold.
+func TestSizeEstimationDisabled(t *testing.T) {
+	// Save and restore global settings
+	oldEstimation := HAMTSizeEstimation
+	oldShardingSize := HAMTShardingSize
+	oldLinkSize := linksize.LinkSizeFunction
+	t.Cleanup(func() {
+		HAMTSizeEstimation = oldEstimation
+		HAMTShardingSize = oldShardingSize
+		linksize.LinkSizeFunction = oldLinkSize
+	})
+
+	ds := mdtest.Mock()
+	ctx := context.Background()
+
+	child := ft.EmptyDirNode()
+	require.NoError(t, ds.Add(ctx, child))
+
+	t.Run("disabled mode ignores size threshold", func(t *testing.T) {
+		// Set a very low threshold that would normally trigger HAMT
+		HAMTShardingSize = 100
+		HAMTSizeEstimation = SizeEstimationDisabled
+
+		// Create directory with disabled mode and no MaxLinks set
+		dir, err := NewDirectory(ds, WithSizeEstimationMode(SizeEstimationDisabled))
+		require.NoError(t, err)
+
+		// Add many entries - should stay as BasicDirectory since
+		// SizeEstimationDisabled ignores size-based threshold
+		for i := range 20 {
+			err = dir.AddChild(ctx, fmt.Sprintf("entry-%03d", i), child)
+			require.NoError(t, err)
+		}
+
+		// Should remain BasicDirectory (no MaxLinks constraint set)
+		checkBasicDirectory(t, dir, "should be BasicDirectory when size estimation is disabled and MaxLinks not set")
+	})
+
+	t.Run("disabled mode respects MaxLinks", func(t *testing.T) {
+		HAMTShardingSize = 100
+		HAMTSizeEstimation = SizeEstimationDisabled
+
+		// Create directory with disabled mode but MaxLinks set
+		dir, err := NewDirectory(ds,
+			WithSizeEstimationMode(SizeEstimationDisabled),
+			WithMaxLinks(5))
+		require.NoError(t, err)
+
+		// Add entries up to MaxLinks
+		for i := range 5 {
+			err = dir.AddChild(ctx, fmt.Sprintf("entry-%03d", i), child)
+			require.NoError(t, err)
+		}
+		checkBasicDirectory(t, dir, "should be BasicDirectory at MaxLinks")
+
+		// Adding one more should trigger HAMT conversion
+		err = dir.AddChild(ctx, "entry-005", child)
+		require.NoError(t, err)
+		checkHAMTDirectory(t, dir, "should be HAMTDirectory after exceeding MaxLinks")
+	})
+
+	t.Run("block mode respects MaxLinks", func(t *testing.T) {
+		HAMTShardingSize = 256 * 1024 // 256KB - high enough to not be triggered by size
+		HAMTSizeEstimation = SizeEstimationBlock
+
+		// Create directory with block mode and MaxLinks set
+		dir, err := NewDirectory(ds,
+			WithSizeEstimationMode(SizeEstimationBlock),
+			WithMaxLinks(5))
+		require.NoError(t, err)
+
+		// Add entries up to MaxLinks
+		for i := range 5 {
+			err = dir.AddChild(ctx, fmt.Sprintf("entry-%03d", i), child)
+			require.NoError(t, err)
+		}
+		checkBasicDirectory(t, dir, "should be BasicDirectory at MaxLinks")
+
+		// Adding one more should trigger HAMT conversion
+		err = dir.AddChild(ctx, "entry-005", child)
+		require.NoError(t, err)
+		checkHAMTDirectory(t, dir, "should be HAMTDirectory after exceeding MaxLinks in block mode")
+	})
+}
+
+// TestBlockSizeCalculation verifies the helper functions for block size calculation.
+func TestBlockSizeCalculation(t *testing.T) {
+	t.Run("varintLen", func(t *testing.T) {
+		// Test varint length calculation
+		assert.Equal(t, 1, varintLen(0))
+		assert.Equal(t, 1, varintLen(127))
+		assert.Equal(t, 2, varintLen(128))
+		assert.Equal(t, 2, varintLen(16383))
+		assert.Equal(t, 3, varintLen(16384))
+	})
+
+	t.Run("linkSerializedSize includes all fields", func(t *testing.T) {
+		// Create a test CID
+		c, err := cid.Decode("QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG")
+		require.NoError(t, err)
+
+		// Calculate size with linkSerializedSize
+		blockSize := linkSerializedSize("test-name", c, 1024)
+
+		// Compare with legacy linksize calculation
+		legacySize := productionLinkSize("test-name", c)
+
+		// Block size should be larger because it includes:
+		// - Tsize field
+		// - Protobuf overhead (field tags, length prefixes)
+		assert.Greater(t, blockSize, legacySize,
+			"block serialized size should be larger than legacy link size")
+
+		t.Logf("legacy size: %d, block size: %d", legacySize, blockSize)
+	})
+
+	t.Run("calculateBlockSize matches actual encoding", func(t *testing.T) {
+		ds := mdtest.Mock()
+		ctx := context.Background()
+
+		basicDir, err := NewBasicDirectory(ds)
+		require.NoError(t, err)
+
+		child := ft.EmptyDirNode()
+		require.NoError(t, ds.Add(ctx, child))
+
+		// Add some entries
+		for i := range 5 {
+			err = basicDir.AddChild(ctx, fmt.Sprintf("file-%d", i), child)
+			require.NoError(t, err)
+		}
+
+		// Calculate size using our function
+		calculatedSize, err := calculateBlockSize(basicDir.node)
+		require.NoError(t, err)
+
+		// Get actual encoded size
+		data, err := basicDir.node.EncodeProtobuf(false)
+		require.NoError(t, err)
+		actualSize := len(data)
+
+		assert.Equal(t, actualSize, calculatedSize,
+			"calculateBlockSize should match actual encoded size")
+	})
+}
+
+// TestHAMTDirectorySizeEstimationMode tests that HAMTDirectory respects
+// the size estimation mode for conversion back to BasicDirectory.
+func TestHAMTDirectorySizeEstimationMode(t *testing.T) {
+	ds := mdtest.Mock()
+
+	t.Run("HAMTDirectory GetSizeEstimationMode defaults to global", func(t *testing.T) {
+		oldEstimation := HAMTSizeEstimation
+		defer func() { HAMTSizeEstimation = oldEstimation }()
+
+		HAMTSizeEstimation = SizeEstimationBlock
+		hamtDir, err := NewHAMTDirectory(ds, 0)
+		require.NoError(t, err)
+		assert.Equal(t, SizeEstimationBlock, hamtDir.GetSizeEstimationMode())
+	})
+
+	t.Run("HAMTDirectory WithSizeEstimationMode overrides global", func(t *testing.T) {
+		oldEstimation := HAMTSizeEstimation
+		defer func() { HAMTSizeEstimation = oldEstimation }()
+
+		HAMTSizeEstimation = SizeEstimationLinks
+		hamtDir, err := NewHAMTDirectory(ds, 0, WithSizeEstimationMode(SizeEstimationBlock))
+		require.NoError(t, err)
+		assert.Equal(t, SizeEstimationBlock, hamtDir.GetSizeEstimationMode())
+	})
+}
+
+// TestNegativeMtimeEncoding verifies dataFieldSerializedSize handles negative
+// timestamps (dates before Unix epoch, e.g., 1960) correctly. Negative int64
+// values require 10-byte varint encoding in protobuf.
+func TestNegativeMtimeEncoding(t *testing.T) {
+	// Date before Unix epoch: January 1, 1960
+	negativeMtime := time.Date(1960, 1, 1, 0, 0, 0, 0, time.UTC)
+	require.True(t, negativeMtime.Unix() < 0, "test requires negative Unix timestamp")
+
+	// Calculate size with negative mtime
+	sizeWithNegativeMtime := dataFieldSerializedSize(0, negativeMtime)
+
+	// Calculate size with positive mtime of similar magnitude
+	positiveMtime := time.Date(2030, 1, 1, 0, 0, 0, 0, time.UTC)
+	sizeWithPositiveMtime := dataFieldSerializedSize(0, positiveMtime)
+
+	// Negative mtime should use more bytes (10-byte varint vs ~5 bytes for positive)
+	assert.Greater(t, sizeWithNegativeMtime, sizeWithPositiveMtime,
+		"negative mtime should use more bytes due to 10-byte varint encoding")
+
+	// Verify by creating actual directory and comparing
+	ds := mdtest.Mock()
+	ctx := context.Background()
+
+	basicDir, err := NewBasicDirectory(ds, WithStat(0, negativeMtime))
+	require.NoError(t, err)
+
+	child := ft.EmptyDirNode()
+	require.NoError(t, ds.Add(ctx, child))
+	require.NoError(t, basicDir.AddChild(ctx, "test", child))
+
+	node, err := basicDir.GetNode()
+	require.NoError(t, err)
+
+	// Verify the node actually has the negative mtime
+	fsn, err := ft.FSNodeFromBytes(node.(*mdag.ProtoNode).Data())
+	require.NoError(t, err)
+	assert.Equal(t, negativeMtime.Unix(), fsn.ModTime().Unix())
+}
+
+// TestSizeEstimationDisabledWithMaxLinksZero verifies behavior when
+// SizeEstimationDisabled is set and maxLinks is 0 (not set). This documents
+// intended behavior: without maxLinks set, there's no criterion to trigger
+// Basic<->HAMT conversion in either direction.
+func TestSizeEstimationDisabledWithMaxLinksZero(t *testing.T) {
+	ds := mdtest.Mock()
+	ctx := context.Background()
+
+	// Save and restore globals
+	oldShardingSize := HAMTShardingSize
+	oldEstimation := HAMTSizeEstimation
+	defer func() {
+		HAMTShardingSize = oldShardingSize
+		HAMTSizeEstimation = oldEstimation
+	}()
+
+	// Configure: SizeEstimationDisabled, maxLinks=0 (unset)
+	HAMTShardingSize = 100 // low threshold that would normally trigger HAMT
+	HAMTSizeEstimation = SizeEstimationDisabled
+
+	child := ft.EmptyDirNode()
+	require.NoError(t, ds.Add(ctx, child))
+
+	t.Run("BasicDirectory stays Basic when adding entries", func(t *testing.T) {
+		// Create BasicDirectory with SizeEstimationDisabled and maxLinks=0
+		basicDir, err := NewBasicDirectory(ds,
+			WithSizeEstimationMode(SizeEstimationDisabled),
+			WithMaxLinks(0))
+		require.NoError(t, err)
+
+		// Add many entries - would normally exceed size threshold
+		for i := range 50 {
+			err = basicDir.AddChild(ctx, fmt.Sprintf("file-%02d", i), child)
+			require.NoError(t, err)
+		}
+
+		// With SizeEstimationDisabled and maxLinks=0, needsToSwitchToHAMTDir
+		// should return false because there's no criterion to trigger conversion
+		needsSwitch, err := basicDir.needsToSwitchToHAMTDir("file-50", child)
+		require.NoError(t, err)
+		assert.False(t, needsSwitch,
+			"BasicDirectory with SizeEstimationDisabled and maxLinks=0 should not switch to HAMT")
+
+		// Verify via DynamicDirectory as well
+		dir, err := NewDirectory(ds,
+			WithSizeEstimationMode(SizeEstimationDisabled),
+			WithMaxLinks(0))
+		require.NoError(t, err)
+
+		for i := range 50 {
+			err = dir.AddChild(ctx, fmt.Sprintf("entry-%02d", i), child)
+			require.NoError(t, err)
+		}
+		checkBasicDirectory(t, dir, "DynamicDirectory should stay Basic with SizeEstimationDisabled and maxLinks=0")
+	})
+
+	t.Run("HAMTDirectory stays HAMT when removing entries", func(t *testing.T) {
+		// Create HAMT directory directly to test reversion behavior
+		hamtDir, err := NewHAMTDirectory(ds, 0,
+			WithSizeEstimationMode(SizeEstimationDisabled),
+			WithMaxLinks(0)) // maxLinks not set
+		require.NoError(t, err)
+
+		// Add some entries
+		for i := range 10 {
+			err = hamtDir.AddChild(ctx, fmt.Sprintf("file-%d", i), child)
+			require.NoError(t, err)
+		}
+
+		// Remove all but one entry
+		for i := range 9 {
+			err = hamtDir.RemoveChild(ctx, fmt.Sprintf("file-%d", i))
+			require.NoError(t, err)
+		}
+
+		// With SizeEstimationDisabled and maxLinks=0, needsToSwitchToBasicDir should
+		// return false because there's no maxLinks criterion to satisfy
+		needsSwitch, err := hamtDir.needsToSwitchToBasicDir(ctx, "file-9", nil)
+		require.NoError(t, err)
+		assert.False(t, needsSwitch,
+			"HAMT with SizeEstimationDisabled and maxLinks=0 should not switch to Basic")
+	})
+}
+
+// TestUnicodeFilenamesInSizeEstimation verifies that size estimation correctly
+// handles multi-byte Unicode characters in filenames.
+func TestUnicodeFilenamesInSizeEstimation(t *testing.T) {
+	ds := mdtest.Mock()
+	ctx := context.Background()
+
+	testCases := []struct {
+		name     string
+		filename string
+		byteLen  int // expected byte length of filename
+	}{
+		{"ASCII", "hello.txt", 9},
+		{"Chinese", "文件.txt", 10}, // 2 Chinese chars (3 bytes each) + 4 ASCII
+		{"Emoji", "📁folder", 10},  // 1 emoji (4 bytes) + 6 ASCII
+		{"Mixed", "日本語ファイル", 21},  // 7 Japanese chars (3 bytes each)
+		{"Combining", "café", 5},  // 'e' + combining acute accent
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Verify our expected byte length is correct
+			assert.Equal(t, tc.byteLen, len(tc.filename),
+				"test setup: filename byte length mismatch")
+
+			// Create directory with SizeEstimationBlock for accurate size tracking
+			basicDir, err := NewBasicDirectory(ds, WithSizeEstimationMode(SizeEstimationBlock))
+			require.NoError(t, err)
+
+			child := ft.EmptyDirNode()
+			require.NoError(t, ds.Add(ctx, child))
+
+			// Add child with Unicode filename
+			err = basicDir.AddChild(ctx, tc.filename, child)
+			require.NoError(t, err)
+
+			// Get the node and verify we can retrieve the entry
+			_, err = basicDir.Find(ctx, tc.filename)
+			require.NoError(t, err, "should find entry with Unicode filename")
+
+			// Verify estimated size includes full byte length of filename
+			node, err := basicDir.GetNode()
+			require.NoError(t, err)
+
+			actualSize, err := calculateBlockSize(node.(*mdag.ProtoNode))
+			require.NoError(t, err)
+
+			// The estimated size should match actual encoded size
+			assert.Equal(t, actualSize, basicDir.estimatedSize,
+				"estimated size should match actual for Unicode filename")
+		})
+	}
+}
+
+// TestConcurrentHAMTConversion verifies that concurrent reads don't corrupt
+// directory state during HAMT conversion.
+// TestSequentialHAMTConversion tests that directories handle rapid sequential
+// operations during HAMT conversion correctly.
+// Note: Directory is not thread-safe for concurrent reads and writes.
+// This test verifies that rapid sequential operations work correctly.
+func TestSequentialHAMTConversion(t *testing.T) {
+	ds := mdtest.Mock()
+	ctx := context.Background()
+
+	// Save and restore globals
+	oldShardingSize := HAMTShardingSize
+	defer func() { HAMTShardingSize = oldShardingSize }()
+
+	// Set low threshold to trigger HAMT quickly
+	HAMTShardingSize = 500
+
+	dir, err := NewDirectory(ds)
+	require.NoError(t, err)
+
+	child := ft.EmptyDirNode()
+	require.NoError(t, ds.Add(ctx, child))
+
+	// Add initial entries (but not enough to trigger HAMT)
+	for i := range 5 {
+		err = dir.AddChild(ctx, fmt.Sprintf("initial-%d", i), child)
+		require.NoError(t, err)
+	}
+
+	// Interleave reads and writes to test HAMT conversion during operations
+	for i := range 20 {
+		// Read
+		links, err := dir.Links(ctx)
+		require.NoError(t, err)
+		assert.GreaterOrEqual(t, len(links), 5+i, "should have at least %d entries", 5+i)
+
+		// Write - this may trigger HAMT conversion
+		err = dir.AddChild(ctx, fmt.Sprintf("sequential-%d", i), child)
+		require.NoError(t, err)
+	}
+
+	// Verify final state is consistent
+	links, err := dir.Links(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, 25, len(links), "should have 5 initial + 20 sequential entries")
+}
+
+// TestHAMTDirectoryModeAndMtimeAfterReload verifies that mode and mtime metadata
+// survives HAMT conversion and reload from DAG.
+func TestHAMTDirectoryModeAndMtimeAfterReload(t *testing.T) {
+	ds := mdtest.Mock()
+	ctx := context.Background()
+
+	// Save and restore globals
+	oldShardingSize := HAMTShardingSize
+	defer func() { HAMTShardingSize = oldShardingSize }()
+
+	HAMTShardingSize = 200 // low threshold
+
+	testMode := os.FileMode(0o755)
+	testMtime := time.Date(2024, 6, 15, 12, 0, 0, 0, time.UTC)
+
+	// Create directory with mode and mtime
+	dir, err := NewDirectory(ds, WithStat(testMode, testMtime))
+	require.NoError(t, err)
+
+	child := ft.EmptyDirNode()
+	require.NoError(t, ds.Add(ctx, child))
+
+	// Add entries to trigger HAMT conversion
+	for i := range 15 {
+		err = dir.AddChild(ctx, fmt.Sprintf("file-%02d", i), child)
+		require.NoError(t, err)
+	}
+
+	// Verify it became HAMT
+	checkHAMTDirectory(t, dir, "should be HAMTDirectory after many entries")
+
+	// Get the node
+	node, err := dir.GetNode()
+	require.NoError(t, err)
+
+	// Reload directory from node
+	reloadedDir, err := NewDirectoryFromNode(ds, node.(*mdag.ProtoNode))
+	require.NoError(t, err)
+
+	// Verify we can still access entries
+	links, err := reloadedDir.Links(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, 15, len(links))
+
+	// Remove entries to trigger conversion back to Basic
+	for i := range 12 {
+		err = reloadedDir.RemoveChild(ctx, fmt.Sprintf("file-%02d", i))
+		require.NoError(t, err)
+	}
+
+	// Get node again - may have converted back to Basic
+	node2, err := reloadedDir.GetNode()
+	require.NoError(t, err)
+
+	// Verify mode and mtime are preserved in the UnixFS data
+	fsn, err := ft.FSNodeFromBytes(node2.(*mdag.ProtoNode).Data())
+	require.NoError(t, err)
+
+	// Verify mode and mtime are preserved after Basic<->HAMT conversions and reload.
+	// FSNode.Mode() adds os.ModeDir for directories, so compare permission bits only.
+	if fsn.Type() == ft.TDirectory {
+		assert.Equal(t, testMode.Perm(), fsn.Mode().Perm(), "mode permissions should be preserved after reload and conversion")
+		assert.Equal(t, testMtime.Unix(), fsn.ModTime().Unix(), "mtime should be preserved after reload and conversion")
+	}
+}
+
+// TestHAMTThresholdExactBoundary verifies the exact boundary behavior:
+// directory at threshold stays Basic, threshold+1 triggers HAMT.
+func TestHAMTThresholdExactBoundary(t *testing.T) {
+	ds := mdtest.Mock()
+	ctx := context.Background()
+
+	// Save and restore globals
+	oldShardingSize := HAMTShardingSize
+	oldEstimation := HAMTSizeEstimation
+	defer func() {
+		HAMTShardingSize = oldShardingSize
+		HAMTSizeEstimation = oldEstimation
+	}()
+
+	// Use block estimation for accurate size tracking
+	HAMTSizeEstimation = SizeEstimationBlock
+
+	child := ft.EmptyDirNode()
+	require.NoError(t, ds.Add(ctx, child))
+
+	// Create a directory and measure its size with one entry
+	measureDir, err := NewBasicDirectory(ds, WithSizeEstimationMode(SizeEstimationBlock))
+	require.NoError(t, err)
+	require.NoError(t, measureDir.AddChild(ctx, "a", child))
+	oneEntrySize := measureDir.estimatedSize
+
+	// Set threshold to exactly the size of directory with N entries
+	// We want to test that N entries stays Basic, N+1 triggers HAMT
+	numEntries := 5
+	targetSize := oneEntrySize + (numEntries-1)*linkSerializedSize("a", child.Cid(), 0)
+	HAMTShardingSize = targetSize
+
+	t.Logf("threshold=%d, oneEntrySize=%d", targetSize, oneEntrySize)
+
+	// Create fresh directory
+	dir, err := NewDirectory(ds, WithSizeEstimationMode(SizeEstimationBlock))
+	require.NoError(t, err)
+
+	// Add entries up to threshold
+	for i := range numEntries {
+		name := fmt.Sprintf("%c", 'a'+i) // single char names for consistent size
+		err = dir.AddChild(ctx, name, child)
+		require.NoError(t, err)
+	}
+
+	// Should still be Basic (at threshold, not over)
+	checkBasicDirectory(t, dir, "directory at exact threshold should stay Basic")
+
+	// Add one more entry - should trigger HAMT
+	err = dir.AddChild(ctx, "z", child)
+	require.NoError(t, err)
+
+	checkHAMTDirectory(t, dir, "directory over threshold should become HAMT")
+}
+
+// TestDirectoryConversionPreservesAllSettings verifies that all configurable
+// directory settings are preserved when converting between BasicDirectory and
+// HAMTDirectory in both directions (Basic->HAMT and HAMT->Basic).
+func TestDirectoryConversionPreservesAllSettings(t *testing.T) {
+	ds := mdtest.Mock()
+	ctx := context.Background()
+
+	// Use non-default values for ALL configurable settings to ensure they propagate
+	const (
+		testMaxLinks         = 5
+		testMaxHAMTFanout    = 64 // must be power of 2 and multiple of 8
+		testHAMTShardingSize = 100
+	)
+	testSizeEstimation := SizeEstimationDisabled
+	testMode := os.FileMode(0o755)
+	testMtime := time.Date(2025, 6, 15, 12, 0, 0, 0, time.UTC)
+	testCidBuilder := cid.V1Builder{Codec: cid.DagProtobuf, MhType: 0x12}
+
+	child := ft.EmptyDirNode()
+	require.NoError(t, ds.Add(ctx, child))
+
+	// Helper to verify all settings on a directory
+	verifySettings := func(t *testing.T, dir Directory, desc string) {
+		t.Helper()
+		assert.Equal(t, testMaxLinks, dir.GetMaxLinks(), "%s: MaxLinks mismatch", desc)
+		assert.Equal(t, testMaxHAMTFanout, dir.GetMaxHAMTFanout(), "%s: MaxHAMTFanout mismatch", desc)
+		assert.Equal(t, testSizeEstimation, dir.GetSizeEstimationMode(), "%s: SizeEstimationMode mismatch", desc)
+		assert.Equal(t, testHAMTShardingSize, dir.GetHAMTShardingSize(), "%s: HAMTShardingSize mismatch", desc)
+		// CidBuilder comparison - check the resulting CID version
+		if cb := dir.GetCidBuilder(); cb != nil {
+			switch b := cb.(type) {
+			case cid.Prefix:
+				assert.Equal(t, uint64(1), b.Version, "%s: CidBuilder version mismatch", desc)
+			case cid.V1Builder:
+				// V1Builder always produces CIDv1, which is what we want
+			default:
+				t.Errorf("%s: unexpected CidBuilder type %T", desc, cb)
+			}
+		}
+	}
+
+	t.Run("Basic to HAMT conversion preserves settings", func(t *testing.T) {
+		// Create directory with all custom settings
+		dir, err := NewDirectory(ds,
+			WithMaxLinks(testMaxLinks),
+			WithMaxHAMTFanout(testMaxHAMTFanout),
+			WithSizeEstimationMode(testSizeEstimation),
+			WithStat(testMode, testMtime),
+			WithCidBuilder(testCidBuilder),
+		)
+		require.NoError(t, err)
+
+		// Set per-directory HAMTShardingSize (not a DirectoryOption)
+		dir.(*DynamicDirectory).Directory.(*BasicDirectory).hamtShardingSize = testHAMTShardingSize
+
+		// Verify initial settings
+		verifySettings(t, dir, "initial BasicDirectory")
+		checkBasicDirectory(t, dir, "should start as BasicDirectory")
+
+		// Add enough entries to trigger HAMT conversion (exceeds MaxLinks=5)
+		for i := range 6 {
+			err = dir.AddChild(ctx, fmt.Sprintf("entry%d", i), child)
+			require.NoError(t, err)
+		}
+
+		// Should now be HAMT
+		checkHAMTDirectory(t, dir, "should convert to HAMTDirectory")
+
+		// Verify all settings preserved after Basic->HAMT
+		verifySettings(t, dir, "after Basic->HAMT conversion")
+	})
+
+	t.Run("HAMT to Basic conversion via AddChild preserves settings", func(t *testing.T) {
+		// Create directory and force it to HAMT first
+		dir, err := NewDirectory(ds,
+			WithMaxLinks(testMaxLinks),
+			WithMaxHAMTFanout(testMaxHAMTFanout),
+			WithSizeEstimationMode(testSizeEstimation),
+			WithStat(testMode, testMtime),
+			WithCidBuilder(testCidBuilder),
+		)
+		require.NoError(t, err)
+		dir.(*DynamicDirectory).Directory.(*BasicDirectory).hamtShardingSize = testHAMTShardingSize
+
+		// Add entries to trigger HAMT
+		for i := range 6 {
+			err = dir.AddChild(ctx, fmt.Sprintf("entry%d", i), child)
+			require.NoError(t, err)
+		}
+		checkHAMTDirectory(t, dir, "should be HAMTDirectory")
+
+		// Remove entries to allow conversion back to Basic
+		// With SizeEstimationDisabled, conversion depends on maxLinks
+		for i := range 4 {
+			err = dir.RemoveChild(ctx, fmt.Sprintf("entry%d", i))
+			require.NoError(t, err)
+		}
+
+		// Add an entry that replaces an existing one - this triggers the
+		// HAMT->Basic path in AddChild when size is below threshold
+		err = dir.AddChild(ctx, "entry4", child)
+		require.NoError(t, err)
+
+		// Should have converted back to Basic (2 entries, below MaxLinks=5)
+		checkBasicDirectory(t, dir, "should convert back to BasicDirectory")
+
+		// Verify all settings preserved after HAMT->Basic via AddChild
+		verifySettings(t, dir, "after HAMT->Basic conversion via AddChild")
+	})
+
+	t.Run("HAMT to Basic conversion via RemoveChild preserves settings", func(t *testing.T) {
+		// Create directory and force it to HAMT first
+		dir, err := NewDirectory(ds,
+			WithMaxLinks(testMaxLinks),
+			WithMaxHAMTFanout(testMaxHAMTFanout),
+			WithSizeEstimationMode(testSizeEstimation),
+			WithStat(testMode, testMtime),
+			WithCidBuilder(testCidBuilder),
+		)
+		require.NoError(t, err)
+		dir.(*DynamicDirectory).Directory.(*BasicDirectory).hamtShardingSize = testHAMTShardingSize
+
+		// Add entries to trigger HAMT
+		for i := range 6 {
+			err = dir.AddChild(ctx, fmt.Sprintf("entry%d", i), child)
+			require.NoError(t, err)
+		}
+		checkHAMTDirectory(t, dir, "should be HAMTDirectory")
+
+		// Remove entries via RemoveChild to trigger conversion back to Basic
+		for i := range 4 {
+			err = dir.RemoveChild(ctx, fmt.Sprintf("entry%d", i))
+			require.NoError(t, err)
+		}
+
+		// Should have converted back to Basic (2 entries, below MaxLinks=5)
+		checkBasicDirectory(t, dir, "should convert back to BasicDirectory via RemoveChild")
+
+		// Verify all settings preserved after HAMT->Basic via RemoveChild
+		verifySettings(t, dir, "after HAMT->Basic conversion via RemoveChild")
+	})
 }
