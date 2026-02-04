@@ -42,6 +42,75 @@ type Record struct {
 	node datamodel.Node
 }
 
+type ErrMetadataNotFound struct {
+}
+
+func (e ErrMetadataNotFound) Error() string {
+	return "Metadata key not found in record"
+}
+
+type ErrMetadataConflict struct {
+}
+
+func (e ErrMetadataConflict) Error() string {
+	return "Metadata key uses reserved name"
+}
+
+type MetadataValue struct {
+	node ipld.Node
+}
+
+func MetadataValueFromString(value string) MetadataValue {
+	return MetadataValue{node: basicnode.NewString(value)}
+}
+
+func MetadataValueFromBytes(value []byte) MetadataValue {
+	return MetadataValue{node: basicnode.NewBytes(value)}
+}
+
+func MetadataValueFromInt(value int64) MetadataValue {
+	return MetadataValue{node: basicnode.NewInt(value)}
+}
+
+func MetadataValueFromBool(value bool) MetadataValue {
+	return MetadataValue{node: basicnode.NewBool(value)}
+}
+
+// Metadata returns a custom metadata value by key.
+// Returns ErrMetadataNotFound if the key doesn't exist.
+func (rec *Record) Metadata(key string) (MetadataValue, error) {
+	node, err := rec.node.LookupByString(key)
+	if err != nil {
+		return MetadataValue{}, fmt.Errorf("%w: %s", ErrMetadataNotFound{}, key)
+	}
+	return MetadataValue{node: node}, nil
+}
+
+func (rec *Record) MetadataExists(key string) bool {
+	_, err := rec.node.LookupByString(key)
+	return err == nil
+}
+
+// AsString returns the value as a string.
+func (mv MetadataValue) AsString() (string, error) {
+	return mv.node.AsString()
+}
+
+// AsBytes returns the value as bytes.
+func (mv MetadataValue) AsBytes() ([]byte, error) {
+	return mv.node.AsBytes()
+}
+
+// AsInt returns the value as an int64.
+func (mv MetadataValue) AsInt() (int64, error) {
+	return mv.node.AsInt()
+}
+
+// AsBool returns the value as a bool.
+func (mv MetadataValue) AsBool() (bool, error) {
+	return mv.node.AsBool()
+}
+
 // UnmarshalRecord parses the [Protobuf-serialized] IPNS Record into a usable
 // [Record] struct. Please note that this function does not perform a full
 // validation of the record. For that use [Validate].
@@ -221,6 +290,7 @@ const (
 type options struct {
 	v1Compatibility bool
 	embedPublicKey  *bool
+	metadata        map[string]ipld.Node
 }
 
 type Option func(*options)
@@ -234,6 +304,19 @@ func WithV1Compatibility(compatible bool) Option {
 func WithPublicKey(embedded bool) Option {
 	return func(o *options) {
 		o.embedPublicKey = &embedded
+	}
+}
+
+// WithMetadata sets custom metadata entries for the IPNS record.
+// Keys should be prefixed with "_" per the IPNS spec to avoid
+// collisions with future standard fields.
+func WithMetadata(metadata map[string]MetadataValue) Option {
+	return func(o *options) {
+		m := make(map[string]ipld.Node, len(metadata))
+		for k, v := range metadata {
+			m[k] = v.node
+		}
+		o.metadata = m
 	}
 }
 
@@ -263,7 +346,7 @@ func NewRecord(sk ic.PrivKey, value path.Path, seq uint64, eol time.Time, ttl ti
 func newRecord(sk ic.PrivKey, value []byte, seq uint64, eol time.Time, ttl time.Duration, opts ...Option) (*Record, error) {
 	options := processOptions(opts...)
 
-	node, err := createNode(value, seq, eol, ttl)
+	node, err := createNode(value, seq, eol, ttl, options.metadata)
 	if err != nil {
 		return nil, err
 	}
@@ -332,9 +415,21 @@ func newRecord(sk ic.PrivKey, value []byte, seq uint64, eol time.Time, ttl time.
 	}, nil
 }
 
-func createNode(value []byte, seq uint64, eol time.Time, ttl time.Duration) (datamodel.Node, error) {
+func createNode(value []byte, seq uint64, eol time.Time, ttl time.Duration, metadata map[string]ipld.Node) (datamodel.Node, error) {
 	m := make(map[string]ipld.Node)
 	var keys []string
+
+	reservedKeys := []string{cborValueKey, cborValidityKey, cborValidityTypeKey, cborSequenceKey, cborTTLKey}
+
+	for key, value := range metadata {
+
+		if slices.Contains(reservedKeys, key) {
+			return nil, fmt.Errorf("%w: %s", ErrMetadataConflict{}, key)
+		}
+
+		m[key] = value
+		keys = append(keys, key)
+	}
 
 	m[cborValueKey] = basicnode.NewBytes(value)
 	keys = append(keys, cborValueKey)

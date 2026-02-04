@@ -17,7 +17,7 @@ The following emojis are used to highlight certain changes:
 ### Added
 
 ### Changed
-
+- `ipns`: NewRecord now allows adding custom metadata (Data) entries
 - `gateway`: ✨ [IPIP-523](https://github.com/ipfs/specs/pull/523) `?format=` URL query parameter now takes precedence over `Accept` HTTP header, ensuring deterministic HTTP cache behavior and allowing browsers to use `?format=` even when they send `Accept` headers with specific content types. [#1074](https://github.com/ipfs/boxo/pull/1074)
 
 ### Removed

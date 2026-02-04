@@ -214,7 +214,12 @@ func TestCBORDataSerialization(t *testing.T) {
 	seq := uint64(1)
 	ttl := time.Hour
 
-	rec := mustNewRecord(t, sk, path, seq, eol, ttl)
+	// custom metadata - one bytes entry and one map entry
+	metadata := map[string]MetadataValue{
+		"_metadata1": MetadataValueFromString("test"),
+	}
+
+	rec := mustNewRecord(t, sk, path, seq, eol, ttl, WithMetadata(metadata))
 
 	builder := basicnode.Prototype__Map{}.NewBuilder()
 	err = dagcbor.Decode(builder, bytes.NewReader(rec.pb.GetData()))
@@ -256,12 +261,20 @@ func TestCBORDataSerialization(t *testing.T) {
 	}
 
 	// Ensure correct key order, i.e., by length then value.
-	expectedOrder := []string{"TTL", "Value", "Sequence", "Validity", "ValidityType"}
+	expectedOrder := []string{"TTL", "Value", "Sequence", "Validity", "_metadata1", "ValidityType"}
 	require.Len(t, fields, len(expectedOrder))
 	for i, f := range fields {
 		expected := expectedOrder[i]
 		assert.Equal(t, expected, f)
 	}
+
+	// basic check for metadata
+
+	mv, err := rec.Metadata("_metadata1")
+	require.NoError(t, err)
+	valueStr, err := mv.AsString()
+	require.NoError(t, err)
+	assert.Equal(t, "test", valueStr)
 }
 
 func TestUnmarshal(t *testing.T) {
@@ -361,5 +374,82 @@ func TestUnmarshal(t *testing.T) {
 		recPath, err := rec.Value()
 		require.NoError(t, err)
 		require.Equal(t, "/ipfs/"+testCid, recPath.String())
+	})
+}
+
+func TestMetadataAPI(t *testing.T) {
+	t.Parallel()
+
+	sk, _, _ := mustKeyPair(t, ic.Ed25519)
+
+	eol := time.Now().Add(time.Hour)
+	path, err := path.Join(testPath, string([]byte{0x00}))
+	require.NoError(t, err)
+	seq := uint64(1)
+	ttl := time.Hour
+
+	t.Run("Validate setting and retrieving supported types", func(t *testing.T) {
+		// custom metadata - one bytes entry and one map entry
+		metadata := map[string]MetadataValue{
+			"_metadata_str":   MetadataValueFromString("test"),
+			"_metadata_int":   MetadataValueFromInt(1212),
+			"_metadata_bytes": MetadataValueFromBytes([]byte{1, 2, 3, 4}),
+			"_metadata_bool":  MetadataValueFromBool(true),
+		}
+
+		rec := mustNewRecord(t, sk, path, seq, eol, ttl, WithMetadata(metadata))
+
+		// validate if metadata can be retrieved
+
+		require.False(t, rec.MetadataExists("non_existent_key"))
+		require.True(t, rec.MetadataExists("_metadata_str"))
+
+		_, err := rec.Metadata("_non_existent_key")
+
+		var errCheck ErrMetadataNotFound
+		require.ErrorAs(t, err, &errCheck)
+
+		mv, err := rec.Metadata("_metadata_str")
+		require.NoError(t, err)
+		valueStr, err := mv.AsString()
+		require.NoError(t, err)
+		assert.Equal(t, "test", valueStr)
+
+		mv, err = rec.Metadata("_metadata_int")
+		require.NoError(t, err)
+		valueInt, err := mv.AsInt()
+		require.NoError(t, err)
+		assert.Equal(t, int64(1212), valueInt)
+
+		mv, err = rec.Metadata("_metadata_bytes")
+		require.NoError(t, err)
+		valueBytes, err := mv.AsBytes()
+		require.NoError(t, err)
+		assert.Equal(t, []byte{1, 2, 3, 4}, valueBytes)
+
+		mv, err = rec.Metadata("_metadata_bool")
+		require.NoError(t, err)
+		valueBool, err := mv.AsBool()
+		require.NoError(t, err)
+		assert.Equal(t, true, valueBool)
+	})
+
+	t.Run("Validate conflicting type raises error", func(t *testing.T) {
+		reservedKeys := []string{cborValueKey, cborValidityKey, cborValidityTypeKey, cborSequenceKey, cborTTLKey}
+
+		for _, key := range reservedKeys {
+
+			metadata := map[string]MetadataValue{
+				key: MetadataValueFromString("test"),
+			}
+
+			rec, err := NewRecord(sk, path, seq, eol, ttl, WithMetadata(metadata))
+			require.NotNil(t, err)
+
+			var errCheck ErrMetadataConflict
+
+			require.ErrorAs(t, err, &errCheck)
+			require.Nil(t, rec)
+		}
 	})
 }
