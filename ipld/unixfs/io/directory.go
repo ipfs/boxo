@@ -1297,6 +1297,7 @@ func (d *DynamicDirectory) AddChild(ctx context.Context, name string, nd ipld.No
 				WithMaxHAMTFanout(hamtDir.maxHAMTFanout),
 				WithCidBuilder(hamtDir.GetCidBuilder()),
 				WithStat(hamtDir.mode, hamtDir.mtime),
+				WithSizeEstimationMode(hamtDir.GetSizeEstimationMode()),
 			)
 			if err != nil {
 				return err
@@ -1374,6 +1375,7 @@ func (d *DynamicDirectory) RemoveChild(ctx context.Context, name string) error {
 
 	basicDir, err := hamtDir.switchToBasic(ctx,
 		WithMaxLinks(maxLinks),
+		WithMaxHAMTFanout(hamtDir.maxHAMTFanout),
 		WithCidBuilder(hamtDir.GetCidBuilder()),
 		WithStat(hamtDir.mode, hamtDir.mtime),
 		WithSizeEstimationMode(hamtDir.GetSizeEstimationMode()),

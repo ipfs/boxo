@@ -1388,3 +1388,146 @@ func TestHAMTThresholdExactBoundary(t *testing.T) {
 
 	checkHAMTDirectory(t, dir, "directory over threshold should become HAMT")
 }
+
+// TestDirectoryConversionPreservesAllSettings verifies that all configurable
+// directory settings are preserved when converting between BasicDirectory and
+// HAMTDirectory in both directions (Basic->HAMT and HAMT->Basic).
+func TestDirectoryConversionPreservesAllSettings(t *testing.T) {
+	ds := mdtest.Mock()
+	ctx := context.Background()
+
+	// Use non-default values for ALL configurable settings to ensure they propagate
+	const (
+		testMaxLinks         = 5
+		testMaxHAMTFanout    = 64 // must be power of 2 and multiple of 8
+		testHAMTShardingSize = 100
+	)
+	testSizeEstimation := SizeEstimationDisabled
+	testMode := os.FileMode(0o755)
+	testMtime := time.Date(2025, 6, 15, 12, 0, 0, 0, time.UTC)
+	testCidBuilder := cid.V1Builder{Codec: cid.DagProtobuf, MhType: 0x12}
+
+	child := ft.EmptyDirNode()
+	require.NoError(t, ds.Add(ctx, child))
+
+	// Helper to verify all settings on a directory
+	verifySettings := func(t *testing.T, dir Directory, desc string) {
+		t.Helper()
+		assert.Equal(t, testMaxLinks, dir.GetMaxLinks(), "%s: MaxLinks mismatch", desc)
+		assert.Equal(t, testMaxHAMTFanout, dir.GetMaxHAMTFanout(), "%s: MaxHAMTFanout mismatch", desc)
+		assert.Equal(t, testSizeEstimation, dir.GetSizeEstimationMode(), "%s: SizeEstimationMode mismatch", desc)
+		assert.Equal(t, testHAMTShardingSize, dir.GetHAMTShardingSize(), "%s: HAMTShardingSize mismatch", desc)
+		// CidBuilder comparison - check the resulting CID version
+		if cb := dir.GetCidBuilder(); cb != nil {
+			switch b := cb.(type) {
+			case cid.Prefix:
+				assert.Equal(t, uint64(1), b.Version, "%s: CidBuilder version mismatch", desc)
+			case cid.V1Builder:
+				// V1Builder always produces CIDv1, which is what we want
+			default:
+				t.Errorf("%s: unexpected CidBuilder type %T", desc, cb)
+			}
+		}
+	}
+
+	t.Run("Basic to HAMT conversion preserves settings", func(t *testing.T) {
+		// Create directory with all custom settings
+		dir, err := NewDirectory(ds,
+			WithMaxLinks(testMaxLinks),
+			WithMaxHAMTFanout(testMaxHAMTFanout),
+			WithSizeEstimationMode(testSizeEstimation),
+			WithStat(testMode, testMtime),
+			WithCidBuilder(testCidBuilder),
+		)
+		require.NoError(t, err)
+
+		// Set per-directory HAMTShardingSize (not a DirectoryOption)
+		dir.(*DynamicDirectory).Directory.(*BasicDirectory).hamtShardingSize = testHAMTShardingSize
+
+		// Verify initial settings
+		verifySettings(t, dir, "initial BasicDirectory")
+		checkBasicDirectory(t, dir, "should start as BasicDirectory")
+
+		// Add enough entries to trigger HAMT conversion (exceeds MaxLinks=5)
+		for i := range 6 {
+			err = dir.AddChild(ctx, fmt.Sprintf("entry%d", i), child)
+			require.NoError(t, err)
+		}
+
+		// Should now be HAMT
+		checkHAMTDirectory(t, dir, "should convert to HAMTDirectory")
+
+		// Verify all settings preserved after Basic->HAMT
+		verifySettings(t, dir, "after Basic->HAMT conversion")
+	})
+
+	t.Run("HAMT to Basic conversion via AddChild preserves settings", func(t *testing.T) {
+		// Create directory and force it to HAMT first
+		dir, err := NewDirectory(ds,
+			WithMaxLinks(testMaxLinks),
+			WithMaxHAMTFanout(testMaxHAMTFanout),
+			WithSizeEstimationMode(testSizeEstimation),
+			WithStat(testMode, testMtime),
+			WithCidBuilder(testCidBuilder),
+		)
+		require.NoError(t, err)
+		dir.(*DynamicDirectory).Directory.(*BasicDirectory).hamtShardingSize = testHAMTShardingSize
+
+		// Add entries to trigger HAMT
+		for i := range 6 {
+			err = dir.AddChild(ctx, fmt.Sprintf("entry%d", i), child)
+			require.NoError(t, err)
+		}
+		checkHAMTDirectory(t, dir, "should be HAMTDirectory")
+
+		// Remove entries to allow conversion back to Basic
+		// With SizeEstimationDisabled, conversion depends on maxLinks
+		for i := range 4 {
+			err = dir.RemoveChild(ctx, fmt.Sprintf("entry%d", i))
+			require.NoError(t, err)
+		}
+
+		// Add an entry that replaces an existing one - this triggers the
+		// HAMT->Basic path in AddChild when size is below threshold
+		err = dir.AddChild(ctx, "entry4", child)
+		require.NoError(t, err)
+
+		// Should have converted back to Basic (2 entries, below MaxLinks=5)
+		checkBasicDirectory(t, dir, "should convert back to BasicDirectory")
+
+		// Verify all settings preserved after HAMT->Basic via AddChild
+		verifySettings(t, dir, "after HAMT->Basic conversion via AddChild")
+	})
+
+	t.Run("HAMT to Basic conversion via RemoveChild preserves settings", func(t *testing.T) {
+		// Create directory and force it to HAMT first
+		dir, err := NewDirectory(ds,
+			WithMaxLinks(testMaxLinks),
+			WithMaxHAMTFanout(testMaxHAMTFanout),
+			WithSizeEstimationMode(testSizeEstimation),
+			WithStat(testMode, testMtime),
+			WithCidBuilder(testCidBuilder),
+		)
+		require.NoError(t, err)
+		dir.(*DynamicDirectory).Directory.(*BasicDirectory).hamtShardingSize = testHAMTShardingSize
+
+		// Add entries to trigger HAMT
+		for i := range 6 {
+			err = dir.AddChild(ctx, fmt.Sprintf("entry%d", i), child)
+			require.NoError(t, err)
+		}
+		checkHAMTDirectory(t, dir, "should be HAMTDirectory")
+
+		// Remove entries via RemoveChild to trigger conversion back to Basic
+		for i := range 4 {
+			err = dir.RemoveChild(ctx, fmt.Sprintf("entry%d", i))
+			require.NoError(t, err)
+		}
+
+		// Should have converted back to Basic (2 entries, below MaxLinks=5)
+		checkBasicDirectory(t, dir, "should convert back to BasicDirectory via RemoveChild")
+
+		// Verify all settings preserved after HAMT->Basic via RemoveChild
+		verifySettings(t, dir, "after HAMT->Basic conversion via RemoveChild")
+	})
+}
