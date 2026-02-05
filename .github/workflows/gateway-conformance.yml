@@ -22,7 +22,7 @@ jobs:
     steps:
       # 1. Download the gateway-conformance fixtures
       - name: Download gateway-conformance fixtures
-        uses: ipfs/gateway-conformance/.github/actions/extract-fixtures@376504c31aae5e2d47c23cb1e131a7573a7e3a7f # TODO: switch to release tag once https://github.com/ipfs/gateway-conformance/pull/254 ships
+        uses: ipfs/gateway-conformance/.github/actions/extract-fixtures@e17586f4cccdd0f93f19a68b66a25e07e03731f6 # TODO: switch to release tag once https://github.com/ipfs/gateway-conformance/pull/254 ships
         with:
           output: fixtures
           merged: true
@@ -47,7 +47,7 @@ jobs:
 
       # 4. Run the gateway-conformance tests
       - name: Run gateway-conformance tests without IPNS and DNSLink
-        uses: ipfs/gateway-conformance/.github/actions/test@376504c31aae5e2d47c23cb1e131a7573a7e3a7f # TODO: switch to release tag once https://github.com/ipfs/gateway-conformance/pull/254 ships
+        uses: ipfs/gateway-conformance/.github/actions/test@e17586f4cccdd0f93f19a68b66a25e07e03731f6 # TODO: switch to release tag once https://github.com/ipfs/gateway-conformance/pull/254 ships
         with:
           gateway-url: http://127.0.0.1:8040
           subdomain-url: http://example.net:8040
@@ -84,7 +84,7 @@ jobs:
     steps:
       # 1. Download the gateway-conformance fixtures
       - name: Download gateway-conformance fixtures
-        uses: ipfs/gateway-conformance/.github/actions/extract-fixtures@376504c31aae5e2d47c23cb1e131a7573a7e3a7f # TODO: switch to release tag once https://github.com/ipfs/gateway-conformance/pull/254 ships
+        uses: ipfs/gateway-conformance/.github/actions/extract-fixtures@e17586f4cccdd0f93f19a68b66a25e07e03731f6 # TODO: switch to release tag once https://github.com/ipfs/gateway-conformance/pull/254 ships
         with:
           output: fixtures
           merged: true
@@ -114,7 +114,7 @@ jobs:
 
       # 4. Run the gateway-conformance tests
       - name: Run gateway-conformance tests without IPNS and DNSLink
-        uses: ipfs/gateway-conformance/.github/actions/test@376504c31aae5e2d47c23cb1e131a7573a7e3a7f # TODO: switch to release tag once https://github.com/ipfs/gateway-conformance/pull/254 ships
+        uses: ipfs/gateway-conformance/.github/actions/test@e17586f4cccdd0f93f19a68b66a25e07e03731f6 # TODO: switch to release tag once https://github.com/ipfs/gateway-conformance/pull/254 ships
         with:
           gateway-url: http://127.0.0.1:8040 # we test gateway that is backed by a remote block gateway
           subdomain-url: http://example.net:8040
@@ -152,7 +152,7 @@ jobs:
     steps:
       # 1. Download the gateway-conformance fixtures
       - name: Download gateway-conformance fixtures
-        uses: ipfs/gateway-conformance/.github/actions/extract-fixtures@376504c31aae5e2d47c23cb1e131a7573a7e3a7f # TODO: switch to release tag once https://github.com/ipfs/gateway-conformance/pull/254 ships
+        uses: ipfs/gateway-conformance/.github/actions/extract-fixtures@e17586f4cccdd0f93f19a68b66a25e07e03731f6 # TODO: switch to release tag once https://github.com/ipfs/gateway-conformance/pull/254 ships
         with:
           output: fixtures
           merged: true
@@ -182,7 +182,7 @@ jobs:
 
       # 4. Run the gateway-conformance tests
       - name: Run gateway-conformance tests without IPNS and DNSLink
-        uses: ipfs/gateway-conformance/.github/actions/test@376504c31aae5e2d47c23cb1e131a7573a7e3a7f # TODO: switch to release tag once https://github.com/ipfs/gateway-conformance/pull/254 ships
+        uses: ipfs/gateway-conformance/.github/actions/test@e17586f4cccdd0f93f19a68b66a25e07e03731f6 # TODO: switch to release tag once https://github.com/ipfs/gateway-conformance/pull/254 ships
         with:
           gateway-url: http://127.0.0.1:8040 # we test gateway that is backed by a remote car gateway
           subdomain-url: http://example.net:8040
