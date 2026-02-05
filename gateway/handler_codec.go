@@ -57,6 +57,10 @@ var contentTypeToExtension = map[string]string{
 	dagCborResponseFormat: ".cbor",
 }
 
+// errCodecConversionHint is the user-facing hint returned in 406 responses
+// when codec conversion is not allowed (IPIP-0524).
+const errCodecConversionHint = "codec conversion is not supported, fetch raw block with ?format=raw and convert client-side"
+
 func (i *handler) serveCodec(ctx context.Context, w http.ResponseWriter, r *http.Request, rq *requestData) bool {
 	ctx, span := spanTrace(ctx, "Handler.ServeCodec", trace.WithAttributes(attribute.String("path", rq.immutablePath.String()), attribute.String("requestedContentType", rq.responseFormat)))
 	defer span.End()
@@ -151,7 +155,7 @@ func (i *handler) renderCodec(ctx context.Context, w http.ResponseWriter, r *htt
 	// IPIP-0524: Check if codec conversion is allowed
 	if !i.config.AllowCodecConversion && toCodec != cidCodec {
 		// Conversion not allowed and codecs don't match - return 406
-		err := fmt.Errorf("format %q requested but block has codec %q: codec conversion is not supported", rq.responseFormat, cidCodec.String())
+		err := fmt.Errorf("format %q requested but block has codec %q: %s", rq.responseFormat, cidCodec.String(), errCodecConversionHint)
 		i.webError(w, r, err, http.StatusNotAcceptable)
 		return false
 	}
