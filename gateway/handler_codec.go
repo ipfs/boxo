@@ -214,12 +214,13 @@ func (i *handler) serveCodecHTML(ctx context.Context, w http.ResponseWriter, r *
 
 	cidCodec := mc.Code(resolvedPath.RootCid().Prefix().Codec)
 	err = assets.DagTemplate.Execute(w, assets.DagTemplateData{
-		GlobalData: i.getTemplateGlobalData(r, contentPath),
-		Path:       contentPath.String(),
-		CID:        resolvedPath.RootCid().String(),
-		CodecName:  cidCodec.String(),
-		CodecHex:   fmt.Sprintf("0x%x", uint64(cidCodec)),
-		Node:       parseNode(blockCid, blockData),
+		GlobalData:           i.getTemplateGlobalData(r, contentPath),
+		Path:                 contentPath.String(),
+		CID:                  resolvedPath.RootCid().String(),
+		CodecName:            cidCodec.String(),
+		CodecHex:             fmt.Sprintf("0x%x", uint64(cidCodec)),
+		Node:                 parseNode(blockCid, blockData),
+		AllowCodecConversion: i.config.AllowCodecConversion,
 	})
 	if err != nil {
 		_, _ = fmt.Fprintf(w, "error during body generation: %v", err)
