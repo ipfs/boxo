@@ -62,7 +62,7 @@ type Config struct {
 	//
 	// When false (default), the gateway returns 406 Not Acceptable if the
 	// requested format doesn't match the block's codec. This follows the
-	// behavior specified in IPIP-0524.
+	// behavior specified in IPIP-524.
 	//
 	// When true, the gateway attempts to convert between legacy IPLD formats.
 	// This is provided for backwards compatibility but is not required by

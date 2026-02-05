@@ -58,7 +58,7 @@ var contentTypeToExtension = map[string]string{
 }
 
 // errCodecConversionHint is the user-facing hint returned in 406 responses
-// when codec conversion is not allowed (IPIP-0524).
+// when codec conversion is not allowed (IPIP-524).
 const errCodecConversionHint = "codec conversion is not supported, fetch raw block with ?format=raw and convert client-side"
 
 func (i *handler) serveCodec(ctx context.Context, w http.ResponseWriter, r *http.Request, rq *requestData) bool {
@@ -152,7 +152,7 @@ func (i *handler) renderCodec(ctx context.Context, w http.ResponseWriter, r *htt
 		return false
 	}
 
-	// IPIP-0524: Check if codec conversion is allowed
+	// IPIP-524: Check if codec conversion is allowed
 	if !i.config.AllowCodecConversion && toCodec != cidCodec {
 		// Conversion not allowed and codecs don't match - return 406
 		err := fmt.Errorf("format %q requested but block has codec %q: %s", rq.responseFormat, cidCodec.String(), errCodecConversionHint)

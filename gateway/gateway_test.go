@@ -1255,7 +1255,7 @@ func TestAllowCodecConversion(t *testing.T) {
 		{"dag-cbor block with dag-json", cborBackend, "/ipfs/" + dagCborRoot.String(), "dag-json"},
 		{"dag-pb directory with dag-json", pbBackend, "/ipfs/" + dagPbRoot.String() + "/subdir/", "dag-json"},
 		{"dag-pb directory with dag-cbor", pbBackend, "/ipfs/" + dagPbRoot.String() + "/subdir/", "dag-cbor"},
-		{"dag-pb file with dag-json", pbBackend, "/ipfs/" + dagPbRoot.String() + "/subdir/fnord", "dag-json"},
+		{"dag-pb file with dag-json", pbBackend, "/ipfs/bafyaacqkbaeaeeqcpn6rqaq", "dag-json"},
 		{"raw block with dag-json", pbBackend, "/ipfs/" + dagPbRoot.String() + "/subdir/fnord", "dag-json"},
 	} {
 		t.Run("AllowCodecConversion=false returns 406 for "+tc.name, func(t *testing.T) {
