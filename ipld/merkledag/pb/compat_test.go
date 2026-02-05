@@ -11,7 +11,7 @@ import (
 )
 
 var (
-	dataZero   []byte = make([]byte, 0)
+	dataZero   []byte = []byte{}
 	dataSome   []byte = []byte{0, 1, 2, 3, 4}
 	cidBytes   []byte = []byte{1, 85, 0, 5, 0, 1, 2, 3, 4}
 	zeroName   string = ""
@@ -261,11 +261,11 @@ func nodeRoundTripToString(t *testing.T, n *PBNode) (string, string, error) {
 }
 
 // convert a PBLink into a map for clean JSON marshalling
-func cleanPBLink(t *testing.T, link *PBLink) map[string]interface{} {
+func cleanPBLink(t *testing.T, link *PBLink) map[string]any {
 	if link == nil {
 		return nil
 	}
-	nl := make(map[string]interface{})
+	nl := make(map[string]any)
 	if link.Hash != nil {
 		nl["Hash"] = hex.EncodeToString(link.Hash)
 	}
@@ -279,13 +279,13 @@ func cleanPBLink(t *testing.T, link *PBLink) map[string]interface{} {
 }
 
 // convert a PBNode into a map for clean JSON marshalling
-func cleanPBNode(t *testing.T, node *PBNode) map[string]interface{} {
-	nn := make(map[string]interface{})
+func cleanPBNode(t *testing.T, node *PBNode) map[string]any {
+	nn := make(map[string]any)
 	if node.Data != nil {
 		nn["Data"] = hex.EncodeToString(node.Data)
 	}
 	if node.Links != nil {
-		links := make([]map[string]interface{}, len(node.Links))
+		links := make([]map[string]any, len(node.Links))
 		for i, l := range node.Links {
 			links[i] = cleanPBLink(t, l)
 		}

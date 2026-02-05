@@ -1,3 +1,5 @@
+//go:build go1.25
+
 package client
 
 import (
@@ -9,9 +11,9 @@ import (
 	"net/http/httptest"
 	"runtime"
 	"testing"
+	"testing/synctest"
 	"time"
 
-	"github.com/filecoin-project/go-clock"
 	ipns "github.com/ipfs/boxo/ipns"
 	"github.com/ipfs/boxo/path"
 	"github.com/ipfs/boxo/routing/http/server"
@@ -466,72 +468,70 @@ func TestClient_Provide(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			deps := makeTestDeps(t, nil, nil)
-			client := deps.client
-			router := deps.router
+			synctest.Test(t, func(t *testing.T) {
+				deps := makeTestDeps(t, nil, nil)
+				client := deps.client
+				router := deps.router
 
-			if c.noIdentity {
-				client.identity = nil
-			}
-			if c.noProviderInfo {
-				client.peerID = ""
-				client.addrs = nil
-			}
+				if c.noIdentity {
+					client.identity = nil
+				}
+				if c.noProviderInfo {
+					client.peerID = ""
+					client.addrs = nil
+				}
 
-			clock := clock.NewMock()
-			clock.Set(time.Now())
-			client.clock = clock
+				ctx := context.Background()
 
-			ctx := context.Background()
+				if c.manglePath {
+					client.baseURL += "/foo"
+				}
+				if c.stopServer {
+					deps.server.Close()
+				}
+				if c.mangleSignature {
+					//nolint:staticcheck
+					//lint:ignore SA1019 // ignore staticcheck
+					client.afterSignCallback = func(req *types.WriteBitswapRecord) {
+						mh, err := multihash.Encode([]byte("boom"), multihash.SHA2_256)
+						require.NoError(t, err)
+						mb, err := multibase.Encode(multibase.Base64, mh)
+						require.NoError(t, err)
 
-			if c.manglePath {
-				client.baseURL += "/foo"
-			}
-			if c.stopServer {
-				deps.server.Close()
-			}
-			if c.mangleSignature {
+						req.Signature = mb
+					}
+				}
+
 				//nolint:staticcheck
 				//lint:ignore SA1019 // ignore staticcheck
-				client.afterSignCallback = func(req *types.WriteBitswapRecord) {
-					mh, err := multihash.Encode([]byte("boom"), multihash.SHA2_256)
-					require.NoError(t, err)
-					mb, err := multibase.Encode(multibase.Base64, mh)
-					require.NoError(t, err)
-
-					req.Signature = mb
+				expectedProvReq := &server.BitswapWriteProvideRequest{
+					Keys:        c.cids,
+					Timestamp:   time.Now().Truncate(time.Millisecond),
+					AdvisoryTTL: c.ttl,
+					Addrs:       drAddrsToAddrs(client.addrs),
+					ID:          client.peerID,
 				}
-			}
 
-			//nolint:staticcheck
-			//lint:ignore SA1019 // ignore staticcheck
-			expectedProvReq := &server.BitswapWriteProvideRequest{
-				Keys:        c.cids,
-				Timestamp:   clock.Now().Truncate(time.Millisecond),
-				AdvisoryTTL: c.ttl,
-				Addrs:       drAddrsToAddrs(client.addrs),
-				ID:          client.peerID,
-			}
+				router.On("ProvideBitswap", mock.Anything, expectedProvReq).
+					Return(c.routerAdvisoryTTL, c.routerErr)
 
-			router.On("ProvideBitswap", mock.Anything, expectedProvReq).
-				Return(c.routerAdvisoryTTL, c.routerErr)
+				advisoryTTL, err := client.ProvideBitswap(ctx, c.cids, c.ttl)
 
-			advisoryTTL, err := client.ProvideBitswap(ctx, c.cids, c.ttl)
+				var errorString string
+				if runtime.GOOS == "windows" && c.expWinErrContains != "" {
+					errorString = c.expWinErrContains
+				} else {
+					errorString = c.expErrContains
+				}
 
-			var errorString string
-			if runtime.GOOS == "windows" && c.expWinErrContains != "" {
-				errorString = c.expWinErrContains
-			} else {
-				errorString = c.expErrContains
-			}
+				if errorString != "" {
+					require.ErrorContains(t, err, errorString)
+				} else {
+					require.NoError(t, err)
+				}
 
-			if errorString != "" {
-				require.ErrorContains(t, err, errorString)
-			} else {
-				require.NoError(t, err)
-			}
-
-			assert.Equal(t, c.expAdvisoryTTL, advisoryTTL)
+				assert.Equal(t, c.expAdvisoryTTL, advisoryTTL)
+			})
 		})
 	}
 }

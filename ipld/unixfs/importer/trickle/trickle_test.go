@@ -746,7 +746,7 @@ func TestMetadata(t *testing.T) {
 }
 
 func testMetadata(t *testing.T, rawLeaves UseRawLeaves) {
-	const nbytes = 3 * chunker.DefaultBlockSize
+	nbytes := 3 * chunker.DefaultBlockSize
 	buf := new(bytes.Buffer)
 	_, err := io.CopyN(buf, random.NewRand(), nbytes)
 	if err != nil {
