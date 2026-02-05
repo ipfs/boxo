@@ -234,6 +234,7 @@ func newTestServerAndNode(t *testing.T, fixturesFile string) (*httptest.Server, 
 func newTestServer(t *testing.T, backend IPFSBackend) *httptest.Server {
 	return newTestServerWithConfig(t, backend, Config{
 		DeserializedResponses: true,
+		AllowCodecConversion:  true, // Enable for backwards compatibility in tests
 		MetricsRegistry:       prometheus.NewRegistry(),
 	})
 }

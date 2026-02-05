@@ -522,6 +522,7 @@ func TestHeaders(t *testing.T) {
 				},
 			},
 			DeserializedResponses: true,
+			AllowCodecConversion:  true, // Test tests various format conversions
 		})
 
 		runTest := func(name, path, accept, host, expectedContentLocationHdr string) {
@@ -1097,7 +1098,8 @@ func TestDeserializedResponses(t *testing.T) {
 		backend, root := newMockBackend(t, "fixtures.car")
 
 		ts := newTestServerWithConfig(t, backend, Config{
-			NoDNSLink: false,
+			NoDNSLink:            false,
+			AllowCodecConversion: true, // Test expects codec conversions to work
 			PublicGateways: map[string]*PublicGateway{
 				"trustless.com": {
 					Paths: []string{"/ipfs", "/ipns"},
@@ -1176,7 +1178,8 @@ func TestDeserializedResponses(t *testing.T) {
 		backend.namesys["/ipns/trusted.com"] = newMockNamesysItem(path.FromCid(root), 0)
 
 		ts := newTestServerWithConfig(t, backend, Config{
-			NoDNSLink: false,
+			NoDNSLink:            false,
+			AllowCodecConversion: true, // Test expects codec conversions to work
 			PublicGateways: map[string]*PublicGateway{
 				"trustless.com": {
 					Paths: []string{"/ipfs", "/ipns"},
@@ -1207,6 +1210,110 @@ func TestDeserializedResponses(t *testing.T) {
 		doRequest(t, "/", "trusted.com", http.StatusOK)
 		doRequest(t, "/empty-dir/", "trusted.com", http.StatusOK)
 		doRequest(t, "/?format=ipns-record", "trusted.com", http.StatusBadRequest)
+	})
+}
+
+func TestAllowCodecConversion(t *testing.T) {
+	t.Parallel()
+
+	cborBackend, dagCborRoot := newMockBackend(t, "path_gateway_dag/dag-cbor-traversal.car")
+	pbBackend, dagPbRoot := newMockBackend(t, "fixtures.car")
+
+	// Positive cases: matching codec or conversion enabled should return 200
+	t.Run("AllowCodecConversion=false allows matching codec", func(t *testing.T) {
+		t.Parallel()
+		ts := newTestServerWithConfig(t, cborBackend, Config{
+			DeserializedResponses: true,
+			AllowCodecConversion:  false,
+		})
+		req := mustNewRequest(t, http.MethodGet, ts.URL+"/ipfs/"+dagCborRoot.String()+"?format=dag-cbor", nil)
+		res := mustDoWithoutRedirect(t, req)
+		defer res.Body.Close()
+		assert.Equal(t, http.StatusOK, res.StatusCode)
+	})
+
+	t.Run("AllowCodecConversion=true allows codec conversion", func(t *testing.T) {
+		t.Parallel()
+		ts := newTestServerWithConfig(t, cborBackend, Config{
+			DeserializedResponses: true,
+			AllowCodecConversion:  true,
+		})
+		req := mustNewRequest(t, http.MethodGet, ts.URL+"/ipfs/"+dagCborRoot.String()+"?format=dag-json", nil)
+		res := mustDoWithoutRedirect(t, req)
+		defer res.Body.Close()
+		assert.Equal(t, http.StatusOK, res.StatusCode)
+	})
+
+	// Negative cases: requesting dag-json or dag-cbor for a block with a
+	// different codec should return 406 with an actionable error hint.
+	for _, tc := range []struct {
+		name    string
+		backend IPFSBackend
+		path    string
+		format  string
+	}{
+		{"dag-cbor block with dag-json", cborBackend, "/ipfs/" + dagCborRoot.String(), "dag-json"},
+		{"dag-pb directory with dag-json", pbBackend, "/ipfs/" + dagPbRoot.String() + "/subdir/", "dag-json"},
+		{"dag-pb directory with dag-cbor", pbBackend, "/ipfs/" + dagPbRoot.String() + "/subdir/", "dag-cbor"},
+		{"dag-pb file with dag-json", pbBackend, "/ipfs/bafyaacqkbaeaeeqcpn6rqaq", "dag-json"},
+		{"raw block with dag-json", pbBackend, "/ipfs/" + dagPbRoot.String() + "/subdir/fnord", "dag-json"},
+	} {
+		t.Run("AllowCodecConversion=false returns 406 for "+tc.name, func(t *testing.T) {
+			t.Parallel()
+			ts := newTestServerWithConfig(t, tc.backend, Config{
+				DeserializedResponses: true,
+				AllowCodecConversion:  false,
+			})
+			req := mustNewRequest(t, http.MethodGet, ts.URL+tc.path+"?format="+tc.format, nil)
+			res := mustDoWithoutRedirect(t, req)
+			defer res.Body.Close()
+
+			body, err := io.ReadAll(res.Body)
+			require.NoError(t, err)
+			assert.Equal(t, http.StatusNotAcceptable, res.StatusCode)
+			assert.Contains(t, string(body), errCodecConversionHint)
+		})
+	}
+
+	// Ensure ?format=json on dag-pb and raw content serves the default
+	// response (not 406). JSON files may be stored as dag-pb or raw (UnixFS)
+	// and ?format=json goes through serveDefaults which does not do codec
+	// conversion - it serves directory listings or file bytes as-is.
+	for _, tc := range []struct {
+		name string
+		path string
+	}{
+		{"dag-pb directory", "/ipfs/" + dagPbRoot.String() + "/subdir/"},
+		{"dag-pb file", "/ipfs/" + dagPbRoot.String() + "/subdir/fnord"},
+	} {
+		t.Run("AllowCodecConversion=false serves default response for "+tc.name+" with json format", func(t *testing.T) {
+			t.Parallel()
+			ts := newTestServerWithConfig(t, pbBackend, Config{
+				DeserializedResponses: true,
+				AllowCodecConversion:  false,
+			})
+			req := mustNewRequest(t, http.MethodGet, ts.URL+tc.path+"?format=json", nil)
+			res := mustDoWithoutRedirect(t, req)
+			defer res.Body.Close()
+			assert.NotEqual(t, http.StatusNotAcceptable, res.StatusCode)
+		})
+	}
+
+	// Ensure dag-pb file with Accept: application/json is not rejected.
+	// This guards behavior where JSON files are stored as dag-pb or raw
+	// (UnixFS) and requested by clients with Accept: application/json.
+	// Regular HTTP use must not be broken by overreaching HTTP 406 from IPIP-524.
+	t.Run("AllowCodecConversion=false allows dag-pb file with Accept application/json", func(t *testing.T) {
+		t.Parallel()
+		ts := newTestServerWithConfig(t, pbBackend, Config{
+			DeserializedResponses: true,
+			AllowCodecConversion:  false,
+		})
+		req := mustNewRequest(t, http.MethodGet, ts.URL+"/ipfs/"+dagPbRoot.String()+"/subdir/fnord", nil)
+		req.Header.Set("Accept", "application/json")
+		res := mustDoWithoutRedirect(t, req)
+		defer res.Body.Close()
+		assert.NotEqual(t, http.StatusNotAcceptable, res.StatusCode)
 	})
 }
 
