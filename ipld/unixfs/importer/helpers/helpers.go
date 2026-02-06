@@ -2,10 +2,14 @@ package helpers
 
 import (
 	"errors"
+
+	chunker "github.com/ipfs/boxo/chunker"
 )
 
 // BlockSizeLimit specifies the maximum size an imported block can have.
-var BlockSizeLimit = 1048576 // 1 MB
+// Defaults to chunker.BlockSizeLimit (2MiB), the bitswap spec maximum.
+// https://specs.ipfs.tech/bitswap-protocol/#block-sizes
+var BlockSizeLimit = chunker.BlockSizeLimit
 
 // rough estimates on expected sizes
 var (
