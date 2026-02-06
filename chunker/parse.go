@@ -15,10 +15,22 @@ import (
 var DefaultBlockSize int64 = 1024 * 256
 
 const (
-	// ChunkSizeLimit is the maximum allowed chunk size.
-	// No leaf block should contain more than 1MiB of payload data (wrapping overhead aside).
-	// See discussion at https://github.com/ipfs/go-ipfs-chunker/pull/21#discussion_r369124879
-	ChunkSizeLimit int = 1048576
+	// BlockSizeLimit is the maximum block size defined by the bitswap spec.
+	// https://specs.ipfs.tech/bitswap-protocol/#block-sizes
+	BlockSizeLimit int = 2 * 1024 * 1024 // 2MiB
+
+	// ChunkOverheadBudget is reserved for protobuf/UnixFS framing overhead
+	// when chunks are wrapped in non-raw leaves (--raw-leaves=false).
+	ChunkOverheadBudget int = 256
+
+	// ChunkSizeLimit is the maximum chunk size accepted by the chunker.
+	// It is set below BlockSizeLimit to leave room for framing overhead
+	// so that serialized blocks stay within the 2MiB wire limit.
+	//
+	// In practice this limit only matters for custom chunker sizes.
+	// The CID-deterministic profiles defined in IPIP-499 use max 1MiB
+	// chunks, well within this limit.
+	ChunkSizeLimit int = BlockSizeLimit - ChunkOverheadBudget
 )
 
 var (

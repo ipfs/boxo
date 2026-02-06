@@ -22,6 +22,7 @@ The following emojis are used to highlight certain changes:
 
 ### Changed
 
+- 🛠 `chunker`, `ipld/unixfs/importer/helpers`: block size limits raised from 1MiB to 2MiB to match the [bitswap spec](https://specs.ipfs.tech/bitswap-protocol/#block-sizes). Max chunker size is `2MiB - 256 bytes` to leave room for protobuf framing when `--raw-leaves=false`. IPIP-499 profiles use lower chunk sizes (256KiB and 1MiB) and are not affected.
 - 🛠 `chunker`: `DefaultBlockSize` changed from `const` to `var` to allow runtime configuration via global profiles. [#1088](https://github.com/ipfs/boxo/pull/1088), [IPIP-499](https://github.com/ipfs/specs/pull/499)
 - `gateway`: 🛠 ✨ [IPIP-523](https://github.com/ipfs/specs/pull/523) `?format=` URL query parameter now takes precedence over `Accept` HTTP header, ensuring deterministic HTTP cache behavior and allowing browsers to use `?format=` even when they send `Accept` headers with specific content types. [#1074](https://github.com/ipfs/boxo/pull/1074)
 - `gateway`: 🛠 ✨ [IPIP-524](https://github.com/ipfs/specs/pull/524) codec conversions (e.g., dag-pb to dag-json, dag-json to dag-cbor) are no longer performed by default. Requesting a format that differs from the block's codec now returns HTTP 406 Not Acceptable with a hint to fetch raw blocks (`?format=raw`) and convert client-side. Set `Config.AllowCodecConversion` to `true` to restore the old behavior. [#1077](https://github.com/ipfs/boxo/pull/1077)

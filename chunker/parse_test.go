@@ -10,6 +10,28 @@ const (
 	testTwoThirdsOfChunkLimit = 2 * (float32(ChunkSizeLimit) / float32(3))
 )
 
+func TestBlockSizeConstants(t *testing.T) {
+	t.Parallel()
+
+	if ChunkOverheadBudget <= 0 {
+		t.Fatal("ChunkOverheadBudget must be positive")
+	}
+	if ChunkSizeLimit <= 0 {
+		t.Fatal("ChunkSizeLimit must be positive")
+	}
+	if BlockSizeLimit <= 0 {
+		t.Fatal("BlockSizeLimit must be positive")
+	}
+	if ChunkSizeLimit+ChunkOverheadBudget != BlockSizeLimit {
+		t.Fatalf("ChunkSizeLimit (%d) + ChunkOverheadBudget (%d) != BlockSizeLimit (%d)",
+			ChunkSizeLimit, ChunkOverheadBudget, BlockSizeLimit)
+	}
+	if ChunkSizeLimit >= BlockSizeLimit {
+		t.Fatalf("ChunkSizeLimit (%d) must be less than BlockSizeLimit (%d)",
+			ChunkSizeLimit, BlockSizeLimit)
+	}
+}
+
 func TestParseRabin(t *testing.T) {
 	t.Parallel()
 
