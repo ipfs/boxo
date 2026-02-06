@@ -1232,7 +1232,7 @@ func TestAllowCodecConversion(t *testing.T) {
 		assert.Equal(t, http.StatusOK, res.StatusCode)
 	})
 
-	t.Run("AllowCodecConversion=true allows codec conversion", func(t *testing.T) {
+	t.Run("AllowCodecConversion=true allows dag-cbor to dag-json", func(t *testing.T) {
 		t.Parallel()
 		ts := newTestServerWithConfig(t, cborBackend, Config{
 			DeserializedResponses: true,
@@ -1242,6 +1242,41 @@ func TestAllowCodecConversion(t *testing.T) {
 		res := mustDoWithoutRedirect(t, req)
 		defer res.Body.Close()
 		assert.Equal(t, http.StatusOK, res.StatusCode)
+	})
+
+	t.Run("AllowCodecConversion=true allows dag-pb to dag-json", func(t *testing.T) {
+		t.Parallel()
+		ts := newTestServerWithConfig(t, pbBackend, Config{
+			DeserializedResponses: true,
+			AllowCodecConversion:  true,
+		})
+		req := mustNewRequest(t, http.MethodGet, ts.URL+"/ipfs/"+dagPbRoot.String()+"/subdir/?format=dag-json", nil)
+		res := mustDoWithoutRedirect(t, req)
+		defer res.Body.Close()
+		assert.Equal(t, http.StatusOK, res.StatusCode)
+
+		// Verify the response is the IPLD Logical Format (Data + Links)
+		// as defined in the dag-pb spec:
+		// https://web.archive.org/web/20260204204727/https://ipld.io/specs/codecs/dag-pb/spec/#logical-format
+		body, err := io.ReadAll(res.Body)
+		require.NoError(t, err)
+		assert.JSONEq(t, `{"Data":{"/":{"bytes":"CAE"}},"Links":[{"Hash":{"/":"bafyreiaocls5bt2ha5vszv5pwz34zzcdf3axk3uqa56bgsgvlkbezw67hq"},"Name":"dag-cbor-document","Tsize":664},{"Hash":{"/":"bafkreiba3vpkcqpc6xtp3hsatzcod6iwneouzjoq7ymy4m2js6gc3czt6i"},"Name":"fnord","Tsize":5}]}`, string(body))
+	})
+
+	t.Run("AllowCodecConversion=false rejects dag-pb to dag-json", func(t *testing.T) {
+		t.Parallel()
+		ts := newTestServerWithConfig(t, pbBackend, Config{
+			DeserializedResponses: true,
+			AllowCodecConversion:  false,
+		})
+		req := mustNewRequest(t, http.MethodGet, ts.URL+"/ipfs/"+dagPbRoot.String()+"/subdir/?format=dag-json", nil)
+		res := mustDoWithoutRedirect(t, req)
+		defer res.Body.Close()
+
+		body, err := io.ReadAll(res.Body)
+		require.NoError(t, err)
+		assert.Equal(t, http.StatusNotAcceptable, res.StatusCode)
+		assert.Contains(t, string(body), errCodecConversionHint)
 	})
 
 	// Negative cases: requesting dag-json or dag-cbor for a block with a
