@@ -17,7 +17,7 @@ var DefaultBlockSize int64 = 1024 * 256
 const (
 	// BlockSizeLimit is the maximum block size defined by the bitswap spec.
 	// https://specs.ipfs.tech/bitswap-protocol/#block-sizes
-	BlockSizeLimit int = 2 << 20 // 2MiB
+	BlockSizeLimit int = 2 * 1024 * 1024 // 2MiB
 
 	// ChunkOverheadBudget is reserved for protobuf/UnixFS framing overhead
 	// when chunks are wrapped in non-raw leaves (--raw-leaves=false).
