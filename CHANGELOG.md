@@ -30,6 +30,8 @@ The following emojis are used to highlight certain changes:
 
 ### Removed
 
+ - `tracing`: opentelemetry zipkin exporter (`go.opentelemetry.io/otel/exporters/zipkin`) is deprecated and has been removed. It is recommended to switch to OTLP. Configure your application to send traces using OTLP and enable [Zipkin’s OTLP ingestion support](https://github.com/openzipkin-contrib/zipkin-otel).
+
 ### Fixed
 
 - 🛠 `ipld/unixfs/io`: fixed HAMT sharding threshold comparison to use `>` instead of `>=`. A directory exactly at the threshold now stays as a basic (flat) directory, aligning behavior with code documentation and the JS implementation. This is a theoretical breaking change, but unlikely to impact real-world users as it requires a directory to be exactly at the threshold boundary. If you depend on the old behavior, adjust `HAMTShardingSize` to be 1 byte lower. [#1088](https://github.com/ipfs/boxo/pull/1088), [IPIP-499](https://github.com/ipfs/specs/pull/499)
