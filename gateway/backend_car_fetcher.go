@@ -65,7 +65,7 @@ func (ps *remoteCarFetcher) Fetch(ctx context.Context, path path.ImmutablePath, 
 		return err
 	}
 	defer resp.Body.Close()
-	defer io.Copy(ioutil.Discard, resp.Body) // read all body data so that connection can be reused
+	defer io.Copy(io.Discard, resp.Body) // read all body data so that connection can be reused
 
 	if resp.StatusCode != http.StatusOK {
 		errData, err := io.ReadAll(resp.Body)
