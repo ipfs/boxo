@@ -10,7 +10,6 @@ import (
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
 	"go.opentelemetry.io/otel/exporters/stdout/stdouttrace"
-	"go.opentelemetry.io/otel/exporters/zipkin"
 	"go.opentelemetry.io/otel/sdk/trace"
 )
 
@@ -51,12 +50,6 @@ func NewSpanExporters(ctx context.Context) ([]trace.SpanExporter, error) {
 			default:
 				return nil, fmt.Errorf("unknown or unsupported OTLP exporter '%s'", exporterStr)
 			}
-		case "zipkin":
-			exporter, err := zipkin.New("")
-			if err != nil {
-				return nil, fmt.Errorf("building Zipkin exporter: %w", err)
-			}
-			exporters = append(exporters, exporter)
 		case "file":
 			// This is not part of the spec, but provided for convenience
 			// so that you don't have to setup a collector,
