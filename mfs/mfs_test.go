@@ -131,7 +131,7 @@ func compStrArrs(a, b []string) bool {
 		return false
 	}
 
-	for i := 0; i < len(a); i++ {
+	for i := range a {
 		if a[i] != b[i] {
 			return false
 		}
@@ -232,8 +232,7 @@ func setupRoot(ctx context.Context, t testing.TB) (ipld.DAGService, *Root) {
 }
 
 func TestBasic(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	ds, rt := setupRoot(ctx, t)
 
 	rootdir := rt.GetDirectory()
@@ -262,8 +261,7 @@ func TestBasic(t *testing.T) {
 }
 
 func TestMkdir(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	_, rt := setupRoot(ctx, t)
 
 	rootdir := rt.GetDirectory()
@@ -300,8 +298,7 @@ func TestMkdir(t *testing.T) {
 }
 
 func TestDirectoryLoadFromDag(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	ds, rt := setupRoot(ctx, t)
 
 	rootdir := rt.GetDirectory()
@@ -392,8 +389,7 @@ func TestDirectoryLoadFromDag(t *testing.T) {
 }
 
 func TestMvFile(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	dagService, rt := setupRoot(ctx, t)
 	rootDir := rt.GetDirectory()
 
@@ -416,8 +412,7 @@ func TestMvFile(t *testing.T) {
 }
 
 func TestMvFileToSubdir(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	dagService, rt := setupRoot(ctx, t)
 	rootDir := rt.GetDirectory()
 
@@ -442,8 +437,7 @@ func TestMvFileToSubdir(t *testing.T) {
 }
 
 func TestMvFileToSubdirWithRename(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	dagService, rt := setupRoot(ctx, t)
 	rootDir := rt.GetDirectory()
 
@@ -468,8 +462,7 @@ func TestMvFileToSubdirWithRename(t *testing.T) {
 }
 
 func TestMvDir(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	dagService, rt := setupRoot(ctx, t)
 	rootDir := rt.GetDirectory()
 
@@ -500,8 +493,7 @@ func TestMvDir(t *testing.T) {
 }
 
 func TestMfsFile(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	ds, rt := setupRoot(ctx, t)
 
 	rootdir := rt.GetDirectory()
@@ -652,8 +644,7 @@ func TestMfsFile(t *testing.T) {
 }
 
 func TestMfsModeAndModTime(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	ds, rt := setupRoot(ctx, t)
 	rootdir := rt.GetDirectory()
@@ -803,8 +794,7 @@ func TestMfsModeAndModTime(t *testing.T) {
 }
 
 func TestMfsRawNodeSetModeAndMtime(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	_, rt := setupRoot(ctx, t)
 	rootdir := rt.GetDirectory()
@@ -879,8 +869,7 @@ func TestMfsRawNodeSetModeAndMtime(t *testing.T) {
 }
 
 func TestMfsDirListNames(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	ds, rt := setupRoot(ctx, t)
 
 	rootdir := rt.GetDirectory()
@@ -888,7 +877,7 @@ func TestMfsDirListNames(t *testing.T) {
 	total := rand.Intn(10) + 1
 	fNames := make([]string, 0, total)
 
-	for i := 0; i < total; i++ {
+	for range total {
 		fn := randomName()
 		fNames = append(fNames, fn)
 		nd := getRandFile(t, ds, rand.Int63n(1000)+1)
@@ -904,13 +893,7 @@ func TestMfsDirListNames(t *testing.T) {
 	}
 
 	for _, lName := range list {
-		found := false
-		for _, fName := range fNames {
-			if lName == fName {
-				found = true
-				break
-			}
-		}
+		found := slices.Contains(fNames, lName)
 		if !found {
 			t.Fatal(lName + " not found in directory listing")
 		}
@@ -918,7 +901,7 @@ func TestMfsDirListNames(t *testing.T) {
 }
 
 func randomWalk(d *Directory, n int) (*Directory, error) {
-	for i := 0; i < n; i++ {
+	for range n {
 		dirents, err := d.List(context.Background())
 		if err != nil {
 			return nil, err
@@ -949,12 +932,12 @@ func randomWalk(d *Directory, n int) (*Directory, error) {
 func randomName() string {
 	set := "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890_"
 	length := rand.Intn(10) + 2
-	var out string
-	for i := 0; i < length; i++ {
+	var out strings.Builder
+	for range length {
 		j := rand.Intn(len(set))
-		out += set[j : j+1]
+		out.WriteString(set[j : j+1])
 	}
-	return out
+	return out.String()
 }
 
 func actorMakeFile(d *Directory) error {
@@ -1099,7 +1082,7 @@ func actorReadFile(d *Directory) error {
 
 func testActor(rt *Root, iterations int, errs chan error) {
 	d := rt.GetDirectory()
-	for i := 0; i < iterations; i++ {
+	for range iterations {
 		switch rand.Intn(5) {
 		case 0:
 			if err := actorMkdir(d); err != nil {
@@ -1127,18 +1110,17 @@ func testActor(rt *Root, iterations int, errs chan error) {
 }
 
 func TestMfsStress(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	_, rt := setupRoot(ctx, t)
 
 	numroutines := 10
 
 	errs := make(chan error)
-	for i := 0; i < numroutines; i++ {
+	for range numroutines {
 		go testActor(rt, 50, errs)
 	}
 
-	for i := 0; i < numroutines; i++ {
+	for range numroutines {
 		err := <-errs
 		if err != nil {
 			t.Fatal(err)
@@ -1147,11 +1129,10 @@ func TestMfsStress(t *testing.T) {
 }
 
 func TestMfsHugeDir(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	_, rt := setupRoot(ctx, t)
 
-	for i := 0; i < 10000; i++ {
+	for i := range 10000 {
 		err := Mkdir(rt, fmt.Sprintf("/dir%d", i), MkdirOpts{Mkparents: false, Flush: false})
 		if err != nil {
 			t.Fatal(err)
@@ -1160,8 +1141,7 @@ func TestMfsHugeDir(t *testing.T) {
 }
 
 func TestMkdirP(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	_, rt := setupRoot(ctx, t)
 
 	err := Mkdir(rt, "/a/b/c/d/e/f", MkdirOpts{Mkparents: true, Flush: true})
@@ -1171,8 +1151,7 @@ func TestMkdirP(t *testing.T) {
 }
 
 func TestConcurrentWriteAndFlush(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	ds, rt := setupRoot(ctx, t)
 
 	d := mkdirP(t, rt.GetDirectory(), "foo/bar/baz")
@@ -1185,19 +1164,17 @@ func TestConcurrentWriteAndFlush(t *testing.T) {
 	nloops := 500
 
 	wg := new(sync.WaitGroup)
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		for i := 0; i < nloops; i++ {
+	wg.Go(func() {
+		for range nloops {
 			err := writeFile(rt, "/foo/bar/baz/file", func(_ []byte) []byte { return []byte("STUFF") })
 			if err != nil {
 				t.Error("file write failed: ", err)
 				return
 			}
 		}
-	}()
+	})
 
-	for i := 0; i < nloops; i++ {
+	for range nloops {
 		_, err := rt.GetDirectory().GetNode()
 		if err != nil {
 			t.Fatal(err)
@@ -1208,8 +1185,7 @@ func TestConcurrentWriteAndFlush(t *testing.T) {
 }
 
 func TestFlushing(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	_, rt := setupRoot(ctx, t)
 
 	dir := rt.GetDirectory()
@@ -1312,8 +1288,7 @@ func readFile(rt *Root, path string, offset int64, buf []byte) error {
 }
 
 func TestConcurrentReads(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	ds, rt := setupRoot(ctx, t)
 
@@ -1334,12 +1309,12 @@ func TestConcurrentReads(t *testing.T) {
 
 	var wg sync.WaitGroup
 	nloops := 100
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		wg.Add(1)
 		go func(me int) {
 			defer wg.Done()
 			mybuf := make([]byte, len(buf))
-			for j := 0; j < nloops; j++ {
+			for range nloops {
 				offset := rand.Intn(len(buf))
 				length := rand.Intn(len(buf) - offset)
 
@@ -1403,8 +1378,7 @@ func writeFile(rt *Root, path string, transform func([]byte) []byte) error {
 }
 
 func TestConcurrentWrites(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	ds, rt := setupRoot(ctx, t)
 
@@ -1422,12 +1396,10 @@ func TestConcurrentWrites(t *testing.T) {
 	var wg sync.WaitGroup
 	nloops := 100
 	errs := make(chan error, 1000)
-	for i := 0; i < 10; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	for range 10 {
+		wg.Go(func() {
 			var lastSeen uint64
-			for j := 0; j < nloops; j++ {
+			for range nloops {
 				err := writeFile(rt, "a/b/c/afile", func(buf []byte) []byte {
 					if len(buf) == 0 {
 						if lastSeen > 0 {
@@ -1457,7 +1429,7 @@ func TestConcurrentWrites(t *testing.T) {
 					return
 				}
 			}
-		}()
+		})
 	}
 	wg.Wait()
 	close(errs)
@@ -1476,8 +1448,7 @@ func TestConcurrentWrites(t *testing.T) {
 }
 
 func TestFileDescriptors(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	ds, rt := setupRoot(ctx, t)
 	dir := rt.GetDirectory()
@@ -1583,8 +1554,7 @@ func TestFileDescriptors(t *testing.T) {
 }
 
 func TestTruncateAtSize(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	ds, rt := setupRoot(ctx, t)
 
 	dir := rt.GetDirectory()
@@ -1609,8 +1579,7 @@ func TestTruncateAtSize(t *testing.T) {
 }
 
 func TestTruncateAndWrite(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	ds, rt := setupRoot(ctx, t)
 
 	dir := rt.GetDirectory()
@@ -1627,7 +1596,7 @@ func TestTruncateAndWrite(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer fd.Close()
-	for i := 0; i < 200; i++ {
+	for i := range 200 {
 		err = fd.Truncate(0)
 		if err != nil {
 			t.Fatal(err)
@@ -1656,8 +1625,7 @@ func TestTruncateAndWrite(t *testing.T) {
 }
 
 func TestFSNodeType(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	ds, rt := setupRoot(ctx, t)
 
 	// check for IsDir
@@ -1830,8 +1798,7 @@ func FuzzMkdirAndWriteConcurrently(f *testing.F) {
 // TestRootOptionChunker verifies that WithChunker sets the chunker factory
 // for files created in the MFS, producing the exact expected block count and sizes.
 func TestRootOptionChunker(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	ds := getDagserv(t)
 
 	// Use 512-byte chunks (non-default: default is 256KB = 262144 bytes).
@@ -1910,8 +1877,7 @@ func TestRootOptionChunker(t *testing.T) {
 // TestRootOptionMaxLinks verifies that WithMaxLinks triggers HAMT sharding
 // when directory entries exceed the configured maximum.
 func TestRootOptionMaxLinks(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	ds := getDagserv(t)
 
 	// Use MaxLinks=3 (non-default: default is ~174 from helpers.DefaultLinksPerBlock).
@@ -2005,8 +1971,7 @@ func TestRootOptionMaxLinks(t *testing.T) {
 // TestRootOptionSizeEstimationMode verifies that WithSizeEstimationMode
 // propagates correctly to child directories, including after reload from DAG.
 func TestRootOptionSizeEstimationMode(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	ds := getDagserv(t)
 
 	// Use SizeEstimationDisabled (non-default: default is SizeEstimationLinks=0).
@@ -2127,8 +2092,7 @@ func TestRootOptionSizeEstimationMode(t *testing.T) {
 // TestChunkerInheritance verifies that the chunker setting propagates
 // through nested subdirectories to files created deep in the hierarchy.
 func TestChunkerInheritance(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	ds := getDagserv(t)
 
 	// Use 256-byte chunks (non-default: default is 256KB = 262144 bytes).
@@ -2213,8 +2177,7 @@ func TestChunkerInheritance(t *testing.T) {
 // TestRootOptionMaxHAMTFanout verifies that WithMaxHAMTFanout propagates
 // to directories and affects HAMT shard width.
 func TestRootOptionMaxHAMTFanout(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	ds := getDagserv(t)
 
 	// Use custom fanout of 64 (non-default: default is 256).
@@ -2291,8 +2254,7 @@ func TestRootOptionMaxHAMTFanout(t *testing.T) {
 // TestRootOptionHAMTShardingSize verifies that WithHAMTShardingSize propagates
 // to directories and affects HAMT conversion threshold.
 func TestRootOptionHAMTShardingSize(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	ds := getDagserv(t)
 
 	// Use very small threshold of 100 bytes (non-default: default is 256KiB).
@@ -2374,8 +2336,7 @@ func TestRootOptionHAMTShardingSize(t *testing.T) {
 // TestHAMTShardingSizeInheritance verifies that HAMTShardingSize propagates
 // through nested subdirectories and after reload from DAG.
 func TestHAMTShardingSizeInheritance(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	ds := getDagserv(t)
 
 	// Use very small threshold

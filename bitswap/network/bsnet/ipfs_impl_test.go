@@ -556,7 +556,7 @@ func testNetworkCounters(t *testing.T, n1 int, n2 int) {
 
 	h1, bsnet1, h2, bsnet2, msg := prepareNetwork(t, ctx, p1, r1, p2, r2)
 
-	for n := 0; n < n1; n++ {
+	for range n1 {
 		ctx, cancel := context.WithTimeout(ctx, time.Second)
 		err := bsnet1.SendMessage(ctx, p2.ID(), msg)
 		if err != nil {
@@ -566,7 +566,7 @@ func testNetworkCounters(t *testing.T, n1 int, n2 int) {
 		case <-ctx.Done():
 			t.Fatal("p2 did not receive message sent")
 		case <-r2.messageReceived:
-			for j := 0; j < 2; j++ {
+			for range 2 {
 				err := bsnet2.SendMessage(ctx, p1.ID(), msg)
 				if err != nil {
 					t.Fatal(err)
@@ -587,7 +587,7 @@ func testNetworkCounters(t *testing.T, n1 int, n2 int) {
 			t.Fatal(err)
 		}
 		defer ms.Reset()
-		for n := 0; n < n2; n++ {
+		for range n2 {
 			ctx, cancel := context.WithTimeout(ctx, time.Second)
 			err = ms.SendMsg(ctx, msg)
 			if err != nil {
@@ -597,7 +597,7 @@ func testNetworkCounters(t *testing.T, n1 int, n2 int) {
 			case <-ctx.Done():
 				t.Fatal("p2 did not receive message sent")
 			case <-r2.messageReceived:
-				for j := 0; j < 2; j++ {
+				for range 2 {
 					err := bsnet2.SendMessage(ctx, p1.ID(), msg)
 					if err != nil {
 						t.Fatal(err)
@@ -708,7 +708,7 @@ func testNetworkCounters(t *testing.T, n1 int, n2 int) {
 }
 
 func TestNetworkCounters(t *testing.T) {
-	for n := 0; n < 11; n++ {
+	for n := range 11 {
 		testNetworkCounters(t, 10-n, n)
 	}
 }

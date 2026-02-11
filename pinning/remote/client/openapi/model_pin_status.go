@@ -203,7 +203,7 @@ func (o *PinStatus) SetInfo(v map[string]string) {
 }
 
 func (o PinStatus) MarshalJSON() ([]byte, error) {
-	toSerialize := map[string]interface{}{}
+	toSerialize := map[string]any{}
 	if true {
 		toSerialize["requestid"] = o.Requestid
 	}

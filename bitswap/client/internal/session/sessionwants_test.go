@@ -125,7 +125,7 @@ func TestPrepareBroadcast(t *testing.T) {
 	sw.GetNextWants()
 
 	// Broadcast should contain wants in order
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		ws := sw.PrepareBroadcast()
 		if len(ws) != 3 {
 			t.Fatal("should broadcast all live wants")
@@ -155,7 +155,7 @@ func TestPrepareBroadcast(t *testing.T) {
 
 	// Broadcast should contain wants in order
 	cids = cids[1:]
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		ws := sw.PrepareBroadcast()
 		if len(ws) != 3 {
 			t.Fatal("should broadcast live wants up to limit", len(ws), len(cids))

@@ -20,7 +20,7 @@ import (
 
 func shuffle(seed int64, arr []string) {
 	r := rand.New(rand.NewSource(seed))
-	for i := 0; i < len(arr); i++ {
+	for range arr {
 		a := r.Intn(len(arr))
 		b := r.Intn(len(arr))
 		arr[a], arr[b] = arr[b], arr[a]
@@ -40,7 +40,7 @@ func makeDirWidth(ds ipld.DAGService, size, width int) ([]string, *Shard, error)
 	}
 
 	var dirs []string
-	for i := 0; i < size; i++ {
+	for i := range size {
 		dirs = append(dirs, fmt.Sprintf("DIRNAME%d", i))
 	}
 
@@ -182,8 +182,7 @@ func TestDirBuilding(t *testing.T) {
 func TestShardReload(t *testing.T) {
 	ds := mdtest.Mock()
 	_, _ = NewShard(ds, 256)
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	_, s, err := makeDir(ds, 200)
 	if err != nil {
@@ -242,7 +241,7 @@ func TestRemoveElems(t *testing.T) {
 	}
 	ctx := context.Background()
 
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		err := s.Remove(ctx, fmt.Sprintf("NOTEXIST%d", rand.Int()))
 		if err != os.ErrNotExist {
 			t.Fatal("shouldnt be able to remove things that don't exist")
@@ -340,7 +339,7 @@ func TestSetAfterMarshal(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		empty := ft.EmptyDirNode()
 		err := nds.Set(ctx, fmt.Sprintf("moredirs%d", i), empty)
 		if err != nil {
@@ -504,7 +503,7 @@ func TestFindNonExisting(t *testing.T) {
 	}
 	ctx := context.Background()
 
-	for i := 0; i < 200; i++ {
+	for i := range 200 {
 		_, err := s.Find(ctx, fmt.Sprintf("notfound%d", i))
 		if err != os.ErrNotExist {
 			t.Fatal("expected ErrNotExist")
@@ -690,7 +689,7 @@ func BenchmarkHAMTWalk(b *testing.B) {
 		b.Fatal(err)
 	}
 
-	for j := 0; j < 1000; j++ {
+	for j := range 1000 {
 		err = s.Set(ctx, strconv.Itoa(j), ft.EmptyDirNode())
 		if err != nil {
 			b.Fatal(err)

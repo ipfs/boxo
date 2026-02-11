@@ -19,7 +19,7 @@ func TestHashBitsOverflow(t *testing.T) {
 	buf := []byte{255}
 	hb := hashBits{b: buf}
 
-	for i := 0; i < 8; i++ {
+	for i := range 8 {
 		bit, err := hb.Next(1)
 		if err != nil {
 			t.Fatalf("got %d bits back, expected 8: %s", i, err)

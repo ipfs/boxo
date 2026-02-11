@@ -108,7 +108,7 @@ func PrintDag(nd *mdag.ProtoNode, ds ipld.DAGService, indent int) {
 		panic(err)
 	}
 
-	for i := 0; i < indent; i++ {
+	for range indent {
 		fmt.Print(" ")
 	}
 	fmt.Printf("{size = %d, type = %s, children = %d", fsn.FileSize(), fsn.Type().String(), fsn.NumChildren())
@@ -123,7 +123,7 @@ func PrintDag(nd *mdag.ProtoNode, ds ipld.DAGService, indent int) {
 		PrintDag(child.(*mdag.ProtoNode), ds, indent+1)
 	}
 	if len(nd.Links()) > 0 {
-		for i := 0; i < indent; i++ {
+		for range indent {
 			fmt.Print(" ")
 		}
 	}

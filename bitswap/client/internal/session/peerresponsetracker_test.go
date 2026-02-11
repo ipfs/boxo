@@ -30,7 +30,7 @@ func TestPeerResponseTrackerProbabilityUnknownPeers(t *testing.T) {
 
 	choices := []int{0, 0, 0, 0}
 	count := 1000
-	for i := 0; i < count; i++ {
+	for range count {
 		p := prt.choose(peers)
 		if p == peers[0] {
 			choices[0]++
@@ -61,7 +61,7 @@ func TestPeerResponseTrackerProbabilityOneKnownOneUnknownPeer(t *testing.T) {
 
 	chooseFirst := 0
 	chooseSecond := 0
-	for i := 0; i < 1000; i++ {
+	for range 1000 {
 		p := prt.choose(peers)
 		if p == peers[0] {
 			chooseFirst++
@@ -95,7 +95,7 @@ func TestPeerResponseTrackerProbabilityProportional(t *testing.T) {
 		choices = append(choices, 0)
 	}
 
-	for i := 0; i < count; i++ {
+	for range count {
 		p := prt.choose(peers)
 		if p == peers[0] {
 			choices[0]++

@@ -1,7 +1,6 @@
 package gateway
 
 import (
-	"context"
 	"html"
 	"io"
 	"net/http"
@@ -27,8 +26,7 @@ func TestDagJsonCborPreview(t *testing.T) {
 		DeserializedResponses: true,
 	})
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	p, err := path.Join(path.FromCid(root), "subdir", "dag-cbor-document")
 	require.NoError(t, err)

@@ -308,8 +308,7 @@ func TestNewPrioritizedProvider(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			ctx, cancel := context.WithCancel(context.Background())
-			defer cancel()
+			ctx := t.Context()
 
 			stream := NewPrioritizedProvider(newMockKeyChanFunc(tc.priority), newMockKeyChanFunc(tc.all))
 			ch, err := stream(ctx)

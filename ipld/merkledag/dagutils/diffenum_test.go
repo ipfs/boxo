@@ -128,8 +128,7 @@ func TestNameMatching2(t *testing.T) {
 }
 
 func TestDiffEnumBasic(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	nds := mkGraph(tg1)
 
 	ds := mdtest.Mock()
@@ -196,8 +195,7 @@ func assertCidList(a, b []cid.Cid) error {
 }
 
 func TestDiffEnumFail(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	nds := mkGraph(tg2)
 
 	ds := mdtest.Mock()
@@ -222,8 +220,7 @@ func TestDiffEnumFail(t *testing.T) {
 }
 
 func TestDiffEnumRecurse(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	nds := mkGraph(tg3)
 
 	ds := mdtest.Mock()

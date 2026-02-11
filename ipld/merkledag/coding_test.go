@@ -19,7 +19,7 @@ func init() {
 
 	node := &merkledag.ProtoNode{}
 	node.SetData(someData)
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		node.AddRawLink(strconv.Itoa(i), &ipld.Link{
 			Size: 10,
 			Cid:  someCid,

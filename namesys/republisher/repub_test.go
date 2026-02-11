@@ -59,12 +59,11 @@ func getMockNode(t *testing.T, ctx context.Context) *mockNode {
 func TestRepublish(t *testing.T) {
 	// set cache life to zero for testing low-period repubs
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	var nsystems []namesys.NameSystem
 	var nodes []*mockNode
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		n := getMockNode(t, ctx)
 		ns, err := namesys.NewNameSystem(n.dht, namesys.WithDatastore(n.store))
 		require.NoError(t, err)
@@ -136,12 +135,11 @@ func TestRepublish(t *testing.T) {
 func TestLongEOLRepublish(t *testing.T) {
 	// set cache life to zero for testing low-period repubs
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	var nsystems []namesys.NameSystem
 	var nodes []*mockNode
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		n := getMockNode(t, ctx)
 		ns, err := namesys.NewNameSystem(n.dht, namesys.WithDatastore(n.store))
 		require.NoError(t, err)

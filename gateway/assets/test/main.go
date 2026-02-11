@@ -158,7 +158,7 @@ func runTemplate(w http.ResponseWriter, filename string, data any) {
 	}
 	err = tpl.Execute(w, data)
 	if err != nil {
-		_, _ = w.Write([]byte(fmt.Sprintf("error during body generation: %v", err)))
+		_, _ = w.Write(fmt.Appendf(nil, "error during body generation: %v", err))
 	}
 }
 

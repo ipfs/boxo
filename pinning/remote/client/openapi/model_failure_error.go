@@ -96,7 +96,7 @@ func (o *FailureError) SetDetails(v string) {
 }
 
 func (o FailureError) MarshalJSON() ([]byte, error) {
-	toSerialize := map[string]interface{}{}
+	toSerialize := map[string]any{}
 	if true {
 		toSerialize["reason"] = o.Reason
 	}

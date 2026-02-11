@@ -145,8 +145,8 @@ func TestWithRetrievalTimeout(t *testing.T) {
 	t.Run("timeout resets on data write", func(t *testing.T) {
 		handler := withRetrievalTimeout(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// Write data in chunks, each write should reset the timeout
-			for i := 0; i < 3; i++ {
-				w.Write([]byte(fmt.Sprintf("chunk%d", i)))
+			for i := range 3 {
+				w.Write(fmt.Appendf(nil, "chunk%d", i))
 				w.(http.Flusher).Flush()
 				time.Sleep(75 * time.Millisecond) // Less than timeout
 			}
@@ -169,7 +169,7 @@ func TestWithRetrievalTimeout(t *testing.T) {
 		handler := withRetrievalTimeout(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.Write([]byte("initial"))
 			// Empty writes shouldn't reset timeout
-			for i := 0; i < 5; i++ {
+			for range 5 {
 				w.Write([]byte{})
 				time.Sleep(30 * time.Millisecond)
 			}
@@ -279,7 +279,7 @@ func TestConcurrentHeaderAccessRace(t *testing.T) {
 		const timeout = 5 * time.Millisecond
 
 		handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			for i := 0; i < iterations; i++ {
+			for i := range iterations {
 				w.Header().Set("X-Test", fmt.Sprintf("value-%d", i))
 				time.Sleep(sleepPerIter)
 			}
@@ -289,7 +289,7 @@ func TestConcurrentHeaderAccessRace(t *testing.T) {
 		timeoutHandler := withRetrievalTimeout(handler, timeout, config, newTestMetrics())
 
 		// Run with race detector
-		for i := 0; i < 5; i++ {
+		for range 5 {
 			synctest.Test(t, func(t *testing.T) {
 				rec := httptest.NewRecorder()
 				req := httptest.NewRequest(http.MethodGet, "/test", nil)
@@ -331,13 +331,13 @@ func TestConcurrentHeaderAccessRace(t *testing.T) {
 
 			// Then continue modifying headers (which should be no-op after WriteHeader)
 			// and writing more data slowly to trigger timeout during response
-			for i := 0; i < 100; i++ {
+			for i := range 100 {
 				// Try to set headers after WriteHeader (should be ignored but could race)
 				w.Header().Set("X-Late-Header", fmt.Sprintf("value-%d", i))
 
 				// Write small chunks of data
 				if i%10 == 0 {
-					w.Write([]byte(fmt.Sprintf("chunk-%d", i)))
+					w.Write(fmt.Appendf(nil, "chunk-%d", i))
 					if f, ok := w.(http.Flusher); ok {
 						f.Flush()
 					}
@@ -350,7 +350,7 @@ func TestConcurrentHeaderAccessRace(t *testing.T) {
 		timeoutHandler := withRetrievalTimeout(handler, 20*time.Millisecond, config, newTestMetrics())
 
 		// Run with race detector
-		for i := 0; i < 5; i++ {
+		for range 5 {
 			synctest.Test(t, func(t *testing.T) {
 				rec := httptest.NewRecorder()
 				req := httptest.NewRequest(http.MethodGet, "/test", nil)

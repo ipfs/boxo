@@ -167,7 +167,7 @@ func testMultiWrite(t *testing.T, opts testu.NodeOpts) {
 	data := make([]byte, 4000)
 	random.NewRand().Read(data)
 
-	for i := 0; i < len(data); i++ {
+	for i := range data {
 		n, err := dagmod.WriteAt(data[i:i+1], int64(i))
 		if err != nil {
 			t.Fatal(err)
@@ -211,7 +211,7 @@ func testMultiWriteAndFlush(t *testing.T, opts testu.NodeOpts) {
 	data := make([]byte, 20)
 	random.NewRand().Read(data)
 
-	for i := 0; i < len(data); i++ {
+	for i := range data {
 		n, err := dagmod.WriteAt(data[i:i+1], int64(i))
 		if err != nil {
 			t.Fatal(err)
@@ -283,7 +283,7 @@ func testMultiWriteCoal(t *testing.T, opts testu.NodeOpts) {
 	data := make([]byte, 1000)
 	random.NewRand().Read(data)
 
-	for i := 0; i < len(data); i++ {
+	for i := range data {
 		n, err := dagmod.WriteAt(data[:i+1], 0)
 		if err != nil {
 			fmt.Println("FAIL AT ", i)
@@ -323,7 +323,7 @@ func testLargeWriteChunks(t *testing.T, opts testu.NodeOpts) {
 
 	random.NewRand().Read(data)
 
-	for i := 0; i < datasize/wrsize; i++ {
+	for i := range datasize / wrsize {
 		n, err := dagmod.WriteAt(data[i*wrsize:(i+1)*wrsize], int64(i*wrsize))
 		if err != nil {
 			t.Fatal(err)
@@ -428,8 +428,7 @@ func TestDagSync(t *testing.T) {
 	dserv := testu.GetDAGServ()
 	nd := dag.NodeWithData(unixfs.FilePBData(nil, 0))
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	dagmod, err := NewDagModifier(ctx, nd, dserv, testu.SizeSplitterGen(512))
 	if err != nil {
@@ -706,7 +705,7 @@ func testRelativeSeek(t *testing.T, opts testu.NodeOpts) {
 		dagmod.RawLeaves = true
 	}
 
-	for i := 0; i < 64; i++ {
+	for i := range 64 {
 		dagmod.Write([]byte{byte(i)})
 		if _, err := dagmod.Seek(1, io.SeekCurrent); err != nil {
 			t.Fatal(err)
@@ -843,7 +842,7 @@ func testReadAndSeek(t *testing.T, opts testu.NodeOpts) {
 		t.Fatalf("expected length of 4 got %d", c)
 	}
 
-	for i := byte(0); i < 4; i++ {
+	for i := range byte(4) {
 		if readBuf[i] != i {
 			t.Fatalf("wrong value %d [at index %d]", readBuf[i], i)
 		}
@@ -865,7 +864,7 @@ func testReadAndSeek(t *testing.T, opts testu.NodeOpts) {
 		t.Fatalf("expected length of 3 got %d", c)
 	}
 
-	for i := byte(0); i < 3; i++ {
+	for i := range byte(3) {
 		if readBuf[i] != i+5 {
 			t.Fatalf("wrong value %d [at index %d]", readBuf[i], i)
 		}
@@ -914,8 +913,7 @@ func BenchmarkDagmodWrite(b *testing.B) {
 	b.StopTimer()
 	dserv := testu.GetDAGServ()
 	n := testu.GetEmptyNode(b, dserv, testu.UseProtoBufLeaves)
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := b.Context()
 
 	const wrsize = 4096
 
@@ -1579,8 +1577,7 @@ func TestRawNodeGrowthConversion(t *testing.T) {
 
 func TestRawLeavesCollapse(t *testing.T) {
 	t.Run("single-block file collapses to RawNode when RawLeaves enabled", func(t *testing.T) {
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
+		ctx := t.Context()
 
 		dserv := testu.GetDAGServ()
 
@@ -1625,8 +1622,7 @@ func TestRawLeavesCollapse(t *testing.T) {
 	})
 
 	t.Run("multi-block file stays as ProtoNode", func(t *testing.T) {
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
+		ctx := t.Context()
 
 		dserv := testu.GetDAGServ()
 
@@ -1682,8 +1678,7 @@ func TestRawLeavesCollapse(t *testing.T) {
 
 	for _, tc := range metadataTests {
 		t.Run(tc.name, func(t *testing.T) {
-			ctx, cancel := context.WithCancel(context.Background())
-			defer cancel()
+			ctx := t.Context()
 
 			dserv := testu.GetDAGServ()
 
@@ -1754,8 +1749,7 @@ func TestRawLeavesCollapse(t *testing.T) {
 	}
 
 	t.Run("RawLeaves=false keeps ProtoNode", func(t *testing.T) {
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
+		ctx := t.Context()
 
 		dserv := testu.GetDAGServ()
 

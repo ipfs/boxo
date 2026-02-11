@@ -164,7 +164,7 @@ func (o *Pin) SetMeta(v map[string]string) {
 }
 
 func (o Pin) MarshalJSON() ([]byte, error) {
-	toSerialize := map[string]interface{}{}
+	toSerialize := map[string]any{}
 	if true {
 		toSerialize["cid"] = o.Cid
 	}

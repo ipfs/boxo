@@ -2,7 +2,6 @@ package io
 
 import (
 	"bytes"
-	context "context"
 	"io"
 	"strings"
 	"testing"
@@ -15,8 +14,7 @@ import (
 func TestBasicRead(t *testing.T) {
 	dserv := testu.GetDAGServ()
 	inbuf, node := testu.GetRandomNode(t, dserv, 1024, testu.UseProtoBufLeaves)
-	ctx, closer := context.WithCancel(context.Background())
-	defer closer()
+	ctx := t.Context()
 
 	reader, err := NewDagReader(ctx, node, dserv)
 	if err != nil {
@@ -42,8 +40,7 @@ func TestSeekAndRead(t *testing.T) {
 	}
 
 	node := testu.GetNode(t, dserv, inbuf, testu.UseProtoBufLeaves)
-	ctx, closer := context.WithCancel(context.Background())
-	defer closer()
+	ctx := t.Context()
 
 	reader, err := NewDagReader(ctx, node, dserv)
 	if err != nil {
@@ -71,12 +68,11 @@ func TestSeekAndRead(t *testing.T) {
 
 func TestSeekWithoutBlocksizes(t *testing.T) {
 	dserv := testu.GetDAGServ()
-	ctx, closer := context.WithCancel(context.Background())
-	defer closer()
+	ctx := t.Context()
 
 	inbuf := make([]byte, 1024)
 
-	for i := 0; i < 256; i++ {
+	for i := range 256 {
 		inbuf[i*4] = byte(i)
 	}
 
@@ -136,12 +132,11 @@ func TestSeekWithoutBlocksizes(t *testing.T) {
 
 func TestRelativeSeek(t *testing.T) {
 	dserv := testu.GetDAGServ()
-	ctx, closer := context.WithCancel(context.Background())
-	defer closer()
+	ctx := t.Context()
 
 	inbuf := make([]byte, 1024)
 
-	for i := 0; i < 256; i++ {
+	for i := range 256 {
 		inbuf[i*4] = byte(i)
 	}
 
@@ -153,7 +148,7 @@ func TestRelativeSeek(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	for i := 0; i < 256; i++ {
+	for i := range 256 {
 		if getOffset(reader) != int64(i*4) {
 			t.Fatalf("offset should be %d, was %d", i*4, getOffset(reader))
 		}
@@ -174,7 +169,7 @@ func TestRelativeSeek(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	for i := 0; i < 256; i++ {
+	for i := range 256 {
 		if getOffset(reader) != int64(1020-i*4) {
 			t.Fatalf("offset should be %d, was %d", 1020-i*4, getOffset(reader))
 		}
@@ -188,8 +183,7 @@ func TestRelativeSeek(t *testing.T) {
 
 func TestTypeFailures(t *testing.T) {
 	dserv := testu.GetDAGServ()
-	ctx, closer := context.WithCancel(context.Background())
-	defer closer()
+	ctx := t.Context()
 
 	node := unixfs.EmptyDirNode()
 	if _, err := NewDagReader(ctx, node, dserv); err != ErrIsDir {
@@ -209,8 +203,7 @@ func TestTypeFailures(t *testing.T) {
 
 func TestBadPBData(t *testing.T) {
 	dserv := testu.GetDAGServ()
-	ctx, closer := context.WithCancel(context.Background())
-	defer closer()
+	ctx := t.Context()
 
 	node := mdag.NodeWithData([]byte{42})
 	_, err := NewDagReader(ctx, node, dserv)
@@ -220,8 +213,7 @@ func TestBadPBData(t *testing.T) {
 }
 
 func TestMetadataNode(t *testing.T) {
-	ctx, closer := context.WithCancel(context.Background())
-	defer closer()
+	ctx := t.Context()
 
 	dserv := testu.GetDAGServ()
 	rdata, rnode := testu.GetRandomNode(t, dserv, 512, testu.UseProtoBufLeaves)
@@ -265,8 +257,7 @@ func TestMetadataNode(t *testing.T) {
 func TestWriteTo(t *testing.T) {
 	dserv := testu.GetDAGServ()
 	inbuf, node := testu.GetRandomNode(t, dserv, 1024, testu.UseProtoBufLeaves)
-	ctx, closer := context.WithCancel(context.Background())
-	defer closer()
+	ctx := t.Context()
 
 	reader, err := NewDagReader(ctx, node, dserv)
 	if err != nil {
@@ -286,8 +277,7 @@ func TestReaderSzie(t *testing.T) {
 	dserv := testu.GetDAGServ()
 	size := int64(1024)
 	_, node := testu.GetRandomNode(t, dserv, size, testu.UseProtoBufLeaves)
-	ctx, closer := context.WithCancel(context.Background())
-	defer closer()
+	ctx := t.Context()
 
 	reader, err := NewDagReader(ctx, node, dserv)
 	if err != nil {

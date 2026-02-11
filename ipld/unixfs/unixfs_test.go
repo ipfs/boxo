@@ -12,7 +12,7 @@ import (
 
 func TestFSNode(t *testing.T) {
 	fsn := NewFSNode(TFile)
-	for i := 0; i < 16; i++ {
+	for range 16 {
 		fsn.AddBlockSize(100)
 	}
 	fsn.RemoveBlockSize(15)

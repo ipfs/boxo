@@ -1,6 +1,6 @@
 module github.com/ipfs/boxo
 
-go 1.24.6
+go 1.25
 
 require (
 	github.com/alecthomas/units v0.0.0-20240927000941-0f3dac36c52b
