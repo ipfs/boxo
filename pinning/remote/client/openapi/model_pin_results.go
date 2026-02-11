@@ -89,7 +89,7 @@ func (o *PinResults) SetResults(v []PinStatus) {
 }
 
 func (o PinResults) MarshalJSON() ([]byte, error) {
-	toSerialize := map[string]interface{}{}
+	toSerialize := map[string]any{}
 	if true {
 		toSerialize["count"] = o.Count
 	}

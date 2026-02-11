@@ -857,7 +857,7 @@ func BenchmarkMessageQueue(b *testing.B) {
 
 	// Create a handful of message queues to start with
 	var qs []*MessageQueue
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		qs = append(qs, createQueue())
 	}
 

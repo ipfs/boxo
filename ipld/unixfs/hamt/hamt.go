@@ -519,7 +519,7 @@ func parallelShardWalk(ctx context.Context, root *Shard, dserv ipld.DAGService, 
 	out := make(chan *listCidsAndShards)
 	done := make(chan struct{})
 
-	for i := 0; i < concurrency; i++ {
+	for range concurrency {
 		grp.Go(func() error {
 			for feedChildren := range feed {
 				for _, nextShard := range feedChildren.shards {

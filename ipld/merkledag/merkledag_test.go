@@ -615,7 +615,7 @@ func TestFetchFailure(t *testing.T) {
 	ds_bad := dstest.Mock()
 
 	top := new(ProtoNode)
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		nd := NodeWithData([]byte{byte('a' + i)})
 		err := ds.Add(ctx, nd)
 		if err != nil {
@@ -628,7 +628,7 @@ func TestFetchFailure(t *testing.T) {
 		}
 	}
 
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		nd := NodeWithData([]byte{'f', 'a' + byte(i)})
 		err := ds_bad.Add(ctx, nd)
 		if err != nil {
@@ -1204,7 +1204,7 @@ func mkDag(ds ipld.DAGService, depth int) (cid.Cid, int, uint64) {
 		return p
 	}
 
-	for i := 0; i < depth; i++ {
+	for range depth {
 		thisf := f
 		f = func() *ProtoNode {
 			pn := mkNodeWithChildren(thisf, 10)
@@ -1234,7 +1234,7 @@ func mkDag(ds ipld.DAGService, depth int) (cid.Cid, int, uint64) {
 func mkNodeWithChildren(getChild func() *ProtoNode, width int) *ProtoNode {
 	cur := new(ProtoNode)
 
-	for i := 0; i < width; i++ {
+	for i := range width {
 		c := getChild()
 		if err := cur.AddNodeLink(strconv.Itoa(i), c); err != nil {
 			panic(err)

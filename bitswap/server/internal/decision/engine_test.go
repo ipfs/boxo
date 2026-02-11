@@ -129,7 +129,7 @@ func TestConsistentAccounting(t *testing.T) {
 	defer receiver.Engine.Close()
 
 	// Send messages from Ernie to Bert
-	for i := 0; i < 1000; i++ {
+	for range 1000 {
 		m := message.New(false)
 		content := []string{"this", "is", "message", "i"}
 		m.AddBlock(blocks.NewBlock([]byte(strings.Join(content, " "))))
@@ -203,13 +203,11 @@ func TestOutboxClosedWhenEngineClosed(t *testing.T) {
 	e := newEngineForTesting(blockstore.NewBlockstore(dssync.MutexWrap(ds.NewMapDatastore())), &fakePeerTagger{}, "localhost", 0, WithScoreLedger(NewTestScoreLedger(shortTerm, nil)), WithBlockstoreWorkerCount(4))
 	defer e.Close()
 	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
+	wg.Go(func() {
 		for nextEnvelope := range e.Outbox() {
 			<-nextEnvelope
 		}
-		wg.Done()
-	}()
+	})
 	// e.Close()
 	wg.Wait()
 	if _, ok := <-e.Outbox(); ok {
@@ -222,7 +220,7 @@ func TestPartnerWantHaveWantBlockNonActive(t *testing.T) {
 	const vowels = "aeiou"
 
 	bs := blockstore.NewBlockstore(dssync.MutexWrap(ds.NewMapDatastore()))
-	for _, letter := range strings.Split(alphabet, "") {
+	for letter := range strings.SplitSeq(alphabet, "") {
 		block := blocks.NewBlock([]byte(letter))
 		if err := bs.Put(context.Background(), block); err != nil {
 			t.Fatal(err)
@@ -560,7 +558,7 @@ func TestPartnerWantHaveWantBlockActive(t *testing.T) {
 	const alphabet = "abcdefghijklmnopqrstuvwxyz"
 
 	bs := blockstore.NewBlockstore(dssync.MutexWrap(ds.NewMapDatastore()))
-	for _, letter := range strings.Split(alphabet, "") {
+	for letter := range strings.SplitSeq(alphabet, "") {
 		block := blocks.NewBlock([]byte(letter))
 		if err := bs.Put(context.Background(), block); err != nil {
 			t.Fatal(err)
@@ -1455,7 +1453,7 @@ func TestTaggingUseful(t *testing.T) {
 		msg := message.New(false)
 		msg.AddBlock(block)
 
-		for i := 0; i < 3; i++ {
+		for range 3 {
 			if untagged := me.PeerTagger.count(me.Engine.tagUseful); untagged != 0 {
 				t.Fatalf("%d peers should be untagged but weren't", untagged)
 			}
@@ -1470,7 +1468,7 @@ func TestTaggingUseful(t *testing.T) {
 				t.Fatalf("1 peer should be tagged, but %d were", tagged)
 			}
 
-			for j := 0; j < longTermRatio; j++ {
+			for range longTermRatio {
 				time.Sleep(peerSampleIntervalHalf * 2)
 				<-sampleCh
 			}
@@ -1480,7 +1478,7 @@ func TestTaggingUseful(t *testing.T) {
 			t.Fatal("peers should still be tagged due to long-term usefulness")
 		}
 
-		for j := 0; j < longTermRatio; j++ {
+		for range longTermRatio {
 			time.Sleep(peerSampleIntervalHalf * 2)
 			<-sampleCh
 		}
@@ -1489,7 +1487,7 @@ func TestTaggingUseful(t *testing.T) {
 			t.Fatal("peers should still be tagged due to long-term usefulness")
 		}
 
-		for j := 0; j < longTermRatio; j++ {
+		for range longTermRatio {
 			time.Sleep(peerSampleIntervalHalf * 2)
 			<-sampleCh
 		}
@@ -1606,7 +1604,7 @@ func TestWantlistDoesNotGrowPastLimit(t *testing.T) {
 	for i := 2; i != 0; i-- {
 		m := message.New(false)
 		for j := limit * 3 / 4; j != 0; j-- {
-			m.AddEntry(blocks.NewBlock([]byte(fmt.Sprint(i, j))).Cid(), 0, pb.Message_Wantlist_Block, true)
+			m.AddEntry(blocks.NewBlock(fmt.Append(nil, i, j)).Cid(), 0, pb.Message_Wantlist_Block, true)
 		}
 		warsaw.Engine.MessageReceived(context.Background(), riga.Peer, m)
 	}
@@ -1725,7 +1723,7 @@ func TestWantlistBlocked(t *testing.T) {
 	haveCids := make([]cid.Cid, limit)
 	var blockNum int
 	for blockNum < limit {
-		block := blocks.NewBlock([]byte(fmt.Sprint(blockNum)))
+		block := blocks.NewBlock(fmt.Append(nil, blockNum))
 		if blockNum != 0 { // do not put first block in blockstore.
 			if err := bs.Put(context.Background(), block); err != nil {
 				t.Fatal(err)
@@ -1753,8 +1751,8 @@ func TestWantlistBlocked(t *testing.T) {
 
 	m := message.New(false)
 	dontHaveCids := make([]cid.Cid, limit)
-	for i := 0; i < limit; i++ {
-		c := blocks.NewBlock([]byte(fmt.Sprint(blockNum))).Cid()
+	for i := range limit {
+		c := blocks.NewBlock(fmt.Append(nil, blockNum)).Cid()
 		blockNum++
 		m.AddEntry(c, 1, pb.Message_Wantlist_Block, true)
 		dontHaveCids[i] = c
@@ -1784,8 +1782,8 @@ func TestWantlistBlocked(t *testing.T) {
 	t.Log("All", len(wl), "new have CIDs are now on wantlist")
 
 	m = message.New(false)
-	for i := 0; i < limit; i++ {
-		c := blocks.NewBlock([]byte(fmt.Sprint(blockNum))).Cid()
+	for i := range limit {
+		c := blocks.NewBlock(fmt.Append(nil, blockNum)).Cid()
 		blockNum++
 		m.AddEntry(c, 1, pb.Message_Wantlist_Block, true)
 		dontHaveCids[i] = c
@@ -1809,7 +1807,7 @@ func TestWantlistOverflow(t *testing.T) {
 	var blockNum int
 	m := message.New(false)
 	for blockNum < limit {
-		block := blocks.NewBlock([]byte(fmt.Sprint(blockNum)))
+		block := blocks.NewBlock(fmt.Append(nil, blockNum))
 		if blockNum != 0 { // do not put first block in blockstore.
 			if err := bs.Put(context.Background(), block); err != nil {
 				t.Fatal(err)
@@ -1846,7 +1844,7 @@ func TestWantlistOverflow(t *testing.T) {
 	m = message.New(false)
 	lowPrioCids := make([]cid.Cid, 5)
 	for i := 0; i < cap(lowPrioCids); i++ {
-		c := blocks.NewBlock([]byte(fmt.Sprint(blockNum))).Cid()
+		c := blocks.NewBlock(fmt.Append(nil, blockNum)).Cid()
 		blockNum++
 		m.AddEntry(c, 0, pb.Message_Wantlist_Block, true)
 		lowPrioCids[i] = c
@@ -1872,7 +1870,7 @@ func TestWantlistOverflow(t *testing.T) {
 	m = message.New(false)
 	highPrioCids := make([]cid.Cid, 5)
 	for i := 0; i < cap(highPrioCids); i++ {
-		c := blocks.NewBlock([]byte(fmt.Sprint(blockNum))).Cid()
+		c := blocks.NewBlock(fmt.Append(nil, blockNum)).Cid()
 		blockNum++
 		m.AddEntry(c, 10, pb.Message_Wantlist_Block, true)
 		highPrioCids[i] = c
@@ -1897,7 +1895,7 @@ func TestWantlistOverflow(t *testing.T) {
 	m = message.New(false)
 	blockCids := make([]cid.Cid, len(highPrioCids)+2)
 	for i := 0; i < cap(blockCids); i++ {
-		c := blocks.NewBlock([]byte(fmt.Sprint(blockNum))).Cid()
+		c := blocks.NewBlock(fmt.Append(nil, blockNum)).Cid()
 		blockNum++
 		m.AddEntry(c, 0, pb.Message_Wantlist_Block, true)
 		blockCids[i] = c

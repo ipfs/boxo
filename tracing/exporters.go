@@ -23,7 +23,7 @@ import (
 // - https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/protocol/exporter.md
 func NewSpanExporters(ctx context.Context) ([]trace.SpanExporter, error) {
 	var exporters []trace.SpanExporter
-	for _, exporterStr := range strings.Split(os.Getenv("OTEL_TRACES_EXPORTER"), ",") {
+	for exporterStr := range strings.SplitSeq(os.Getenv("OTEL_TRACES_EXPORTER"), ",") {
 		switch exporterStr {
 		case "otlp":
 			protocol := "http/protobuf"

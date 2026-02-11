@@ -26,8 +26,7 @@ import (
 func TestGatewayGet(t *testing.T) {
 	ts, backend, root := newTestServerAndNode(t, "fixtures.car")
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	p, err := path.Join(path.FromCid(root), "subdir", "fnord")
 	require.NoError(t, err)
@@ -1551,8 +1550,7 @@ func TestMaxRangeRequestFileSize(t *testing.T) {
 	p, err := path.Join(path.FromCid(root), "subdir", "fnord")
 	require.NoError(t, err)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	k, err := backend.resolvePathNoRootsReturned(ctx, p)
 	require.NoError(t, err)

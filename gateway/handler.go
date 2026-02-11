@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"mime"
 	"net/http"
 	"net/textproto"
@@ -697,7 +698,7 @@ func customResponseFormat(r *http.Request) (mediaType string, params map[string]
 	var acceptMediaType string
 	var acceptParams map[string]string
 	for _, header := range r.Header.Values("Accept") {
-		for _, value := range strings.Split(header, ",") {
+		for value := range strings.SplitSeq(header, ",") {
 			accept := strings.TrimSpace(value)
 			// respond to the very first matching content type
 			if strings.HasPrefix(accept, "application/vnd.ipld") ||
@@ -765,9 +766,7 @@ func addContentLocation(r *http.Request, w http.ResponseWriter, rq *requestData)
 
 	// Copy all existing query parameters.
 	query := url.Values{}
-	for k, v := range r.URL.Query() {
-		query[k] = v
-	}
+	maps.Copy(query, r.URL.Query())
 	query.Set("format", format)
 
 	// Set response params as query elements, but only if URL doesn't already

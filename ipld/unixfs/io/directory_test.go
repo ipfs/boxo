@@ -68,7 +68,7 @@ func TestDirectoryGrowth(t *testing.T) {
 		require.True(t, l.Cid.Equals(dirc), "link wasnt correct")
 	}
 
-	for i := 0; i < nelems; i++ {
+	for i := range nelems {
 		dn := fmt.Sprintf("dir%d", i)
 		if !names[dn] {
 			t.Fatal("didnt find directory: ", dn)
@@ -216,7 +216,7 @@ func TestProductionLinkSize(t *testing.T) {
 	ds := mdtest.Mock()
 	basicDir, err := NewBasicDirectory(ds)
 	assert.NoError(t, err)
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		basicDir.AddChild(context.Background(), strconv.FormatUint(uint64(i), 10), ft.EmptyFileNode())
 	}
 	basicDirNode, err := basicDir.GetNode()
@@ -292,7 +292,7 @@ func TestIntegrityOfDirectorySwitch(t *testing.T) {
 	assert.NoError(t, err)
 	hamtDir, err := NewHAMTDirectory(ds, 0, WithMaxLinks(DefaultShardWidth))
 	assert.NoError(t, err)
-	for i := 0; i < 1000; i++ {
+	for i := range 1000 {
 		basicDir.AddChild(ctx, strconv.FormatUint(uint64(i), 10), child)
 		hamtDir.AddChild(ctx, strconv.FormatUint(uint64(i), 10), child)
 	}
@@ -446,7 +446,7 @@ func TestDirBuilder(t *testing.T) {
 
 	count := 5000
 
-	for i := 0; i < count; i++ {
+	for i := range count {
 		err = dir.AddChild(ctx, fmt.Sprintf("entry %d", i), child)
 		require.NoError(t, err)
 	}
@@ -490,7 +490,7 @@ func TestDirBuilder(t *testing.T) {
 		asyncLinks = append(asyncLinks, linkResult.Link)
 	}
 
-	for i := 0; i < count; i++ {
+	for i := range count {
 		n := fmt.Sprintf("entry %d", i)
 		if !asyncNames[n] {
 			t.Fatal("COULDNT FIND: ", n)
@@ -581,7 +581,7 @@ func TestHAMTDirectoryWithMaxLinks(t *testing.T) {
 	require.NoError(t, err)
 
 	// Ensure we have at least 2 levels of HAMT by adding many nodes
-	for i := 0; i < 300; i++ {
+	for i := range 300 {
 		child := ft.EmptyDirNode()
 		require.NoError(t, ds.Add(ctx, child))
 		err := dir.AddChild(ctx, fmt.Sprintf("entry%d", i), child)
@@ -612,7 +612,7 @@ func TestDynamicDirectoryWithMaxLinks(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	for i := 0; i < 8; i++ {
+	for i := range 8 {
 		child := ft.EmptyDirNode()
 		require.NoError(t, ds.Add(ctx, child))
 		err := dir.AddChild(ctx, fmt.Sprintf("entry%d", i), child)
