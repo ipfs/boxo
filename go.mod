@@ -9,8 +9,8 @@ require (
 	github.com/cskr/pubsub v1.0.2
 	github.com/dustin/go-humanize v1.0.1
 	github.com/gabriel-vasile/mimetype v1.4.13
-	github.com/gammazero/chanqueue v1.1.1
-	github.com/gammazero/deque v1.2.0
+	github.com/gammazero/chanqueue v1.1.2
+	github.com/gammazero/deque v1.2.1
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/mux v1.8.1
 	github.com/hashicorp/golang-lru/v2 v2.0.7
@@ -21,7 +21,7 @@ require (
 	github.com/ipfs/go-cidutil v0.1.1
 	github.com/ipfs/go-datastore v0.9.0
 	github.com/ipfs/go-detect-race v0.0.1
-	github.com/ipfs/go-dsqueue v0.1.2
+	github.com/ipfs/go-dsqueue v0.2.0
 	github.com/ipfs/go-ipfs-delay v0.0.1
 	github.com/ipfs/go-ipfs-redirects-file v0.1.2
 	github.com/ipfs/go-ipld-format v0.6.3
