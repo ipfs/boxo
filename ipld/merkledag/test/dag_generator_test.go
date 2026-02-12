@@ -43,7 +43,7 @@ func TestNodesAreDifferent(t *testing.T) {
 
 	const nbDag = 5
 
-	for i := 0; i < nbDag; i++ {
+	for range nbDag {
 		c, cids, err := gen.MakeDagNode(dserv.Add, 5, 3)
 		if err != nil {
 			t.Fatal(err)

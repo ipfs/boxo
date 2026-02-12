@@ -18,6 +18,7 @@ import (
 	"github.com/ipfs/go-cid"
 	ipld "github.com/ipfs/go-ipld-format"
 	mh "github.com/multiformats/go-multihash"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -25,8 +26,7 @@ import (
 func TestGatewayGet(t *testing.T) {
 	ts, backend, root := newTestServerAndNode(t, "fixtures.car")
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	p, err := path.Join(path.FromCid(root), "subdir", "fnord")
 	require.NoError(t, err)
@@ -521,6 +521,7 @@ func TestHeaders(t *testing.T) {
 				},
 			},
 			DeserializedResponses: true,
+			AllowCodecConversion:  true, // Test tests various format conversions
 		})
 
 		runTest := func(name, path, accept, host, expectedContentLocationHdr string) {
@@ -574,7 +575,30 @@ func TestHeaders(t *testing.T) {
 			runTest("DNSLink gateway with ?format="+formatParam, "/empty-dir/?format="+formatParam, "", dnslinkGatewayHost, "")
 		}
 
-		runTest("Accept: application/vnd.ipld.car overrides ?format=raw in Content-Location", contentPath+"?format=raw", "application/vnd.ipld.car", "", contentPath+"?format=car")
+		// IPIP-523: Test that matching ?format and Accept work together (Accept params are used)
+		runTest("Matching ?format=car and Accept: application/vnd.ipld.car;version=1;order=dfs;dups=n", contentPath+"?format=car", "application/vnd.ipld.car;version=1;order=dfs;dups=n", "", "")
+
+		// IPIP-523: Test that conflicting ?format and Accept uses ?format (URL wins)
+		t.Run("Conflicting ?format and Accept uses ?format from URL", func(t *testing.T) {
+			t.Parallel()
+			req := mustNewRequest(t, http.MethodGet, ts.URL+contentPath+"?format=raw", nil)
+			req.Header.Set("Accept", "application/vnd.ipld.car")
+			resp := mustDoWithoutRedirect(t, req)
+			defer resp.Body.Close()
+			require.Equal(t, http.StatusOK, resp.StatusCode)
+			require.Equal(t, rawResponseFormat, resp.Header.Get("Content-Type"))
+		})
+
+		// IPIP-523: Browser Accept header with wildcards should not interfere with ?format
+		t.Run("Browser Accept header does not interfere with ?format=raw", func(t *testing.T) {
+			t.Parallel()
+			req := mustNewRequest(t, http.MethodGet, ts.URL+contentPath+"?format=raw", nil)
+			req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+			resp := mustDoWithoutRedirect(t, req)
+			defer resp.Body.Close()
+			require.Equal(t, http.StatusOK, resp.StatusCode)
+			require.Equal(t, rawResponseFormat, resp.Header.Get("Content-Type"))
+		})
 	})
 }
 
@@ -1073,7 +1097,8 @@ func TestDeserializedResponses(t *testing.T) {
 		backend, root := newMockBackend(t, "fixtures.car")
 
 		ts := newTestServerWithConfig(t, backend, Config{
-			NoDNSLink: false,
+			NoDNSLink:            false,
+			AllowCodecConversion: true, // Test expects codec conversions to work
 			PublicGateways: map[string]*PublicGateway{
 				"trustless.com": {
 					Paths: []string{"/ipfs", "/ipns"},
@@ -1152,7 +1177,8 @@ func TestDeserializedResponses(t *testing.T) {
 		backend.namesys["/ipns/trusted.com"] = newMockNamesysItem(path.FromCid(root), 0)
 
 		ts := newTestServerWithConfig(t, backend, Config{
-			NoDNSLink: false,
+			NoDNSLink:            false,
+			AllowCodecConversion: true, // Test expects codec conversions to work
 			PublicGateways: map[string]*PublicGateway{
 				"trustless.com": {
 					Paths: []string{"/ipfs", "/ipns"},
@@ -1183,6 +1209,145 @@ func TestDeserializedResponses(t *testing.T) {
 		doRequest(t, "/", "trusted.com", http.StatusOK)
 		doRequest(t, "/empty-dir/", "trusted.com", http.StatusOK)
 		doRequest(t, "/?format=ipns-record", "trusted.com", http.StatusBadRequest)
+	})
+}
+
+func TestAllowCodecConversion(t *testing.T) {
+	t.Parallel()
+
+	cborBackend, dagCborRoot := newMockBackend(t, "path_gateway_dag/dag-cbor-traversal.car")
+	pbBackend, dagPbRoot := newMockBackend(t, "fixtures.car")
+
+	// Positive cases: matching codec or conversion enabled should return 200
+	t.Run("AllowCodecConversion=false allows matching codec", func(t *testing.T) {
+		t.Parallel()
+		ts := newTestServerWithConfig(t, cborBackend, Config{
+			DeserializedResponses: true,
+			AllowCodecConversion:  false,
+		})
+		req := mustNewRequest(t, http.MethodGet, ts.URL+"/ipfs/"+dagCborRoot.String()+"?format=dag-cbor", nil)
+		res := mustDoWithoutRedirect(t, req)
+		defer res.Body.Close()
+		assert.Equal(t, http.StatusOK, res.StatusCode)
+	})
+
+	t.Run("AllowCodecConversion=true allows dag-cbor to dag-json", func(t *testing.T) {
+		t.Parallel()
+		ts := newTestServerWithConfig(t, cborBackend, Config{
+			DeserializedResponses: true,
+			AllowCodecConversion:  true,
+		})
+		req := mustNewRequest(t, http.MethodGet, ts.URL+"/ipfs/"+dagCborRoot.String()+"?format=dag-json", nil)
+		res := mustDoWithoutRedirect(t, req)
+		defer res.Body.Close()
+		assert.Equal(t, http.StatusOK, res.StatusCode)
+	})
+
+	t.Run("AllowCodecConversion=true allows dag-pb to dag-json", func(t *testing.T) {
+		t.Parallel()
+		ts := newTestServerWithConfig(t, pbBackend, Config{
+			DeserializedResponses: true,
+			AllowCodecConversion:  true,
+		})
+		req := mustNewRequest(t, http.MethodGet, ts.URL+"/ipfs/"+dagPbRoot.String()+"/subdir/?format=dag-json", nil)
+		res := mustDoWithoutRedirect(t, req)
+		defer res.Body.Close()
+		assert.Equal(t, http.StatusOK, res.StatusCode)
+
+		// Verify the response is the IPLD Logical Format (Data + Links)
+		// as defined in the dag-pb spec:
+		// https://web.archive.org/web/20260204204727/https://ipld.io/specs/codecs/dag-pb/spec/#logical-format
+		body, err := io.ReadAll(res.Body)
+		require.NoError(t, err)
+		assert.JSONEq(t, `{"Data":{"/":{"bytes":"CAE"}},"Links":[{"Hash":{"/":"bafyreiaocls5bt2ha5vszv5pwz34zzcdf3axk3uqa56bgsgvlkbezw67hq"},"Name":"dag-cbor-document","Tsize":664},{"Hash":{"/":"bafkreiba3vpkcqpc6xtp3hsatzcod6iwneouzjoq7ymy4m2js6gc3czt6i"},"Name":"fnord","Tsize":5}]}`, string(body))
+	})
+
+	t.Run("AllowCodecConversion=false rejects dag-pb to dag-json", func(t *testing.T) {
+		t.Parallel()
+		ts := newTestServerWithConfig(t, pbBackend, Config{
+			DeserializedResponses: true,
+			AllowCodecConversion:  false,
+		})
+		req := mustNewRequest(t, http.MethodGet, ts.URL+"/ipfs/"+dagPbRoot.String()+"/subdir/?format=dag-json", nil)
+		res := mustDoWithoutRedirect(t, req)
+		defer res.Body.Close()
+
+		body, err := io.ReadAll(res.Body)
+		require.NoError(t, err)
+		assert.Equal(t, http.StatusNotAcceptable, res.StatusCode)
+		assert.Contains(t, string(body), errCodecConversionHint)
+	})
+
+	// Negative cases: requesting dag-json or dag-cbor for a block with a
+	// different codec should return 406 with an actionable error hint.
+	for _, tc := range []struct {
+		name    string
+		backend IPFSBackend
+		path    string
+		format  string
+	}{
+		{"dag-cbor block with dag-json", cborBackend, "/ipfs/" + dagCborRoot.String(), "dag-json"},
+		{"dag-pb directory with dag-json", pbBackend, "/ipfs/" + dagPbRoot.String() + "/subdir/", "dag-json"},
+		{"dag-pb directory with dag-cbor", pbBackend, "/ipfs/" + dagPbRoot.String() + "/subdir/", "dag-cbor"},
+		{"dag-pb file with dag-json", pbBackend, "/ipfs/bafyaacqkbaeaeeqcpn6rqaq", "dag-json"},
+		{"raw block with dag-json", pbBackend, "/ipfs/" + dagPbRoot.String() + "/subdir/fnord", "dag-json"},
+	} {
+		t.Run("AllowCodecConversion=false returns 406 for "+tc.name, func(t *testing.T) {
+			t.Parallel()
+			ts := newTestServerWithConfig(t, tc.backend, Config{
+				DeserializedResponses: true,
+				AllowCodecConversion:  false,
+			})
+			req := mustNewRequest(t, http.MethodGet, ts.URL+tc.path+"?format="+tc.format, nil)
+			res := mustDoWithoutRedirect(t, req)
+			defer res.Body.Close()
+
+			body, err := io.ReadAll(res.Body)
+			require.NoError(t, err)
+			assert.Equal(t, http.StatusNotAcceptable, res.StatusCode)
+			assert.Contains(t, string(body), errCodecConversionHint)
+		})
+	}
+
+	// Ensure ?format=json on dag-pb and raw content serves the default
+	// response (not 406). JSON files may be stored as dag-pb or raw (UnixFS)
+	// and ?format=json goes through serveDefaults which does not do codec
+	// conversion - it serves directory listings or file bytes as-is.
+	for _, tc := range []struct {
+		name string
+		path string
+	}{
+		{"dag-pb directory", "/ipfs/" + dagPbRoot.String() + "/subdir/"},
+		{"dag-pb file", "/ipfs/" + dagPbRoot.String() + "/subdir/fnord"},
+	} {
+		t.Run("AllowCodecConversion=false serves default response for "+tc.name+" with json format", func(t *testing.T) {
+			t.Parallel()
+			ts := newTestServerWithConfig(t, pbBackend, Config{
+				DeserializedResponses: true,
+				AllowCodecConversion:  false,
+			})
+			req := mustNewRequest(t, http.MethodGet, ts.URL+tc.path+"?format=json", nil)
+			res := mustDoWithoutRedirect(t, req)
+			defer res.Body.Close()
+			assert.NotEqual(t, http.StatusNotAcceptable, res.StatusCode)
+		})
+	}
+
+	// Ensure dag-pb file with Accept: application/json is not rejected.
+	// This guards behavior where JSON files are stored as dag-pb or raw
+	// (UnixFS) and requested by clients with Accept: application/json.
+	// Regular HTTP use must not be broken by overreaching HTTP 406 from IPIP-524.
+	t.Run("AllowCodecConversion=false allows dag-pb file with Accept application/json", func(t *testing.T) {
+		t.Parallel()
+		ts := newTestServerWithConfig(t, pbBackend, Config{
+			DeserializedResponses: true,
+			AllowCodecConversion:  false,
+		})
+		req := mustNewRequest(t, http.MethodGet, ts.URL+"/ipfs/"+dagPbRoot.String()+"/subdir/fnord", nil)
+		req.Header.Set("Accept", "application/json")
+		res := mustDoWithoutRedirect(t, req)
+		defer res.Body.Close()
+		assert.NotEqual(t, http.StatusNotAcceptable, res.StatusCode)
 	})
 }
 
@@ -1385,8 +1550,7 @@ func TestMaxRangeRequestFileSize(t *testing.T) {
 	p, err := path.Join(path.FromCid(root), "subdir", "fnord")
 	require.NoError(t, err)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	k, err := backend.resolvePathNoRootsReturned(ctx, p)
 	require.NoError(t, err)
@@ -1473,5 +1637,112 @@ func TestMaxRangeRequestFileSize(t *testing.T) {
 		body, err := io.ReadAll(res.Body)
 		require.NoError(t, err)
 		require.Equal(t, "fnord", string(body))
+	})
+}
+
+func TestValidateConfig_MaxRequestDuration(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		input    time.Duration
+		expected time.Duration
+	}{
+		{"zero uses default", 0, DefaultMaxRequestDuration},
+		{"negative uses default", -1 * time.Second, DefaultMaxRequestDuration},
+		{"positive value preserved", 30 * time.Minute, 30 * time.Minute},
+		{"very short duration preserved", 1 * time.Millisecond, 1 * time.Millisecond},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			c := validateConfig(Config{MaxRequestDuration: tc.input})
+			assert.Equal(t, tc.expected, c.MaxRequestDuration)
+		})
+	}
+}
+
+// slowMockBackend is a backend that waits before responding, respecting context cancellation.
+type slowMockBackend struct {
+	delay time.Duration
+}
+
+func (mb *slowMockBackend) Get(ctx context.Context, path path.ImmutablePath, getRange ...ByteRange) (ContentPathMetadata, *GetResponse, error) {
+	return mb.waitAndReturnError(ctx)
+}
+
+func (mb *slowMockBackend) GetAll(ctx context.Context, path path.ImmutablePath) (ContentPathMetadata, files.Node, error) {
+	_, _, err := mb.waitAndReturnError(ctx)
+	return ContentPathMetadata{}, nil, err
+}
+
+func (mb *slowMockBackend) GetBlock(ctx context.Context, path path.ImmutablePath) (ContentPathMetadata, files.File, error) {
+	_, _, err := mb.waitAndReturnError(ctx)
+	return ContentPathMetadata{}, nil, err
+}
+
+func (mb *slowMockBackend) Head(ctx context.Context, path path.ImmutablePath) (ContentPathMetadata, *HeadResponse, error) {
+	_, _, err := mb.waitAndReturnError(ctx)
+	return ContentPathMetadata{}, nil, err
+}
+
+func (mb *slowMockBackend) GetCAR(ctx context.Context, path path.ImmutablePath, params CarParams) (ContentPathMetadata, io.ReadCloser, error) {
+	_, _, err := mb.waitAndReturnError(ctx)
+	return ContentPathMetadata{}, nil, err
+}
+
+func (mb *slowMockBackend) ResolveMutable(ctx context.Context, p path.Path) (path.ImmutablePath, time.Duration, time.Time, error) {
+	_, _, err := mb.waitAndReturnError(ctx)
+	return path.ImmutablePath{}, 0, time.Time{}, err
+}
+
+func (mb *slowMockBackend) GetIPNSRecord(ctx context.Context, c cid.Cid) ([]byte, error) {
+	_, _, err := mb.waitAndReturnError(ctx)
+	return nil, err
+}
+
+func (mb *slowMockBackend) GetDNSLinkRecord(ctx context.Context, hostname string) (path.Path, error) {
+	_, _, err := mb.waitAndReturnError(ctx)
+	return nil, err
+}
+
+func (mb *slowMockBackend) IsCached(ctx context.Context, p path.Path) bool {
+	return false
+}
+
+func (mb *slowMockBackend) ResolvePath(ctx context.Context, path path.ImmutablePath) (ContentPathMetadata, error) {
+	_, _, err := mb.waitAndReturnError(ctx)
+	return ContentPathMetadata{}, err
+}
+
+func (mb *slowMockBackend) waitAndReturnError(ctx context.Context) (ContentPathMetadata, *GetResponse, error) {
+	select {
+	case <-time.After(mb.delay):
+		return ContentPathMetadata{}, nil, errors.New("backend completed but should have timed out")
+	case <-ctx.Done():
+		return ContentPathMetadata{}, nil, ctx.Err()
+	}
+}
+
+func TestMaxRequestDuration(t *testing.T) {
+	t.Parallel()
+
+	t.Run("request times out when backend is slow", func(t *testing.T) {
+		t.Parallel()
+
+		backend := &slowMockBackend{delay: 500 * time.Millisecond}
+		ts := newTestServerWithConfig(t, backend, Config{
+			DeserializedResponses: true,
+			MaxRequestDuration:    50 * time.Millisecond,
+			MetricsRegistry:       prometheus.NewRegistry(),
+		})
+
+		req := mustNewRequest(t, http.MethodGet, ts.URL+"/ipfs/bafkreifzjut3te2nhyekklss27nh3k72ysco7y32koao5eei66wof36n5e", nil)
+		res := mustDo(t, req)
+		defer res.Body.Close()
+
+		// context.DeadlineExceeded from backend results in 504 Gateway Timeout
+		require.Equal(t, http.StatusGatewayTimeout, res.StatusCode)
 	})
 }

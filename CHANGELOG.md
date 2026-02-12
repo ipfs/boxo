@@ -16,23 +16,82 @@ The following emojis are used to highlight certain changes:
 
 ### Added
 
-- `routing/http`: ✨ Support for HTTP(S) URLs alongside multiaddrs in Delegated Routing API ([IPIP-518](https://github.com/ipfs/specs/pull/518))
-  - The `Addrs` field in the Peer schema now accepts both multiaddr strings (starting with `/`) and HTTP(S) URLs
-  - Addresses are parsed with defensive programming: unsupported addresses are skipped, and processing continues with remaining addresses
-  - Special protocol filtering logic: `tls` filter matches both `/tls` multiaddrs and `https://` URLs, `http` filter matches both multiaddrs and URLs with HTTP semantics
-  - Schema-agnostic implementation allows any URI scheme (not just http/https) for future extensibility
-  - Includes `ToMultiaddr()` method for backward compatibility during transition period: converts HTTP(S) URLs to multiaddrs using `/https` (matching IPNI convention) and `/dns` (for dual-stack support)
+- `routing/http`: ✨ added `generic` schema support per [IPIP-518](https://github.com/ipfs/specs/pull/518)
+  - new `GenericRecord` type with duck-typed `Addrs` (multiaddrs and URIs) and arbitrary string `ID` (not limited to PeerIDs)
+  - `contentrouter` converts GenericRecord to `peer.AddrInfo` for backward compatibility: HTTP(S) URLs become `/dns/host/tcp/port/https` multiaddrs; PeerID is derived from `did:key:` or generated as a deterministic placeholder when the ID is not a native libp2p PeerID
+  - `filter-addrs` extended to match URI schemes (e.g. `?filter-addrs=https`) in addition to multiaddr protocol names
+  - generic records are capped at 10 KiB per IPIP-518 spec
+- `ipld/unixfs/io`: added `SizeEstimationMode` for configurable HAMT sharding threshold decisions. Supports legacy link-based estimation (`SizeEstimationLinks`), accurate block-based estimation (`SizeEstimationBlock`), or disabling size-based thresholds (`SizeEstimationDisabled`). [#1088](https://github.com/ipfs/boxo/pull/1088), [IPIP-499](https://github.com/ipfs/specs/pull/499)
+- `ipld/unixfs/io`: added `UnixFSProfile` with `UnixFS_v0_2015` and `UnixFS_v1_2025` presets for CID-deterministic file and directory DAG construction. [#1088](https://github.com/ipfs/boxo/pull/1088), [IPIP-499](https://github.com/ipfs/specs/pull/499)
+- `files`: `NewSerialFileWithOptions` now supports controlling whether symlinks are preserved or dereferenced before being added to IPFS. See `SerialFileOptions.DereferenceSymlinks`. [#1088](https://github.com/ipfs/boxo/pull/1088), [IPIP-499](https://github.com/ipfs/specs/pull/499)
 
 ### Changed
 
-- upgrade to `go-libp2p` [v0.44.0](https://github.com/libp2p/go-libp2p/releases/tag/v0.44.0)
-- upgrade to `go-dsqueue` [v0.1.0](https://github.com/ipfs/go-dsqueue/releases/tag/v0.1.0) - Fixes batch reuse that could cause panic.
+- 🛠 `chunker`, `ipld/unixfs/importer/helpers`: block size limits raised from 1MiB to 2MiB to match the [bitswap spec](https://specs.ipfs.tech/bitswap-protocol/#block-sizes). Max chunker size is `2MiB - 256 bytes` to leave room for protobuf framing when `--raw-leaves=false`. IPIP-499 profiles use lower chunk sizes (256KiB and 1MiB) and are not affected.
+- 🛠 `chunker`: `DefaultBlockSize` changed from `const` to `var` to allow runtime configuration via global profiles. [#1088](https://github.com/ipfs/boxo/pull/1088), [IPIP-499](https://github.com/ipfs/specs/pull/499)
+- `gateway`: 🛠 ✨ [IPIP-523](https://github.com/ipfs/specs/pull/523) `?format=` URL query parameter now takes precedence over `Accept` HTTP header, ensuring deterministic HTTP cache behavior and allowing browsers to use `?format=` even when they send `Accept` headers with specific content types. [#1074](https://github.com/ipfs/boxo/pull/1074)
+- `gateway`: 🛠 ✨ [IPIP-524](https://github.com/ipfs/specs/pull/524) codec conversions (e.g., dag-pb to dag-json, dag-json to dag-cbor) are no longer performed by default. Requesting a format that differs from the block's codec now returns HTTP 406 Not Acceptable with a hint to fetch raw blocks (`?format=raw`) and convert client-side. Set `Config.AllowCodecConversion` to `true` to restore the old behavior. [#1077](https://github.com/ipfs/boxo/pull/1077)
+- `gateway`: compliance with gateway-conformance [v0.10.0](https://github.com/ipfs/gateway-conformance/releases/tag/v0.10.0) (since v0.8: relaxed DAG-CBOR HTML preview cache headers, relaxed CAR 200/404 for missing paths, [IPIP-523](https://github.com/ipfs/specs/pull/523) format query precedence, [IPIP-524](https://github.com/ipfs/specs/pull/524) codec mismatch returns 406)
 
 ### Removed
 
+ - `tracing`: opentelemetry zipkin exporter (`go.opentelemetry.io/otel/exporters/zipkin`) is deprecated and has been removed. It is recommended to switch to OTLP. Configure your application to send traces using OTLP and enable [Zipkin’s OTLP ingestion support](https://github.com/openzipkin-contrib/zipkin-otel).
+
 ### Fixed
 
+- 🛠 `ipld/unixfs/io`: fixed HAMT sharding threshold comparison to use `>` instead of `>=`. A directory exactly at the threshold now stays as a basic (flat) directory, aligning behavior with code documentation and the JS implementation. This is a theoretical breaking change, but unlikely to impact real-world users as it requires a directory to be exactly at the threshold boundary. If you depend on the old behavior, adjust `HAMTShardingSize` to be 1 byte lower. [#1088](https://github.com/ipfs/boxo/pull/1088), [IPIP-499](https://github.com/ipfs/specs/pull/499)
+- `ipld/unixfs/mod`: fixed sparse file writes in MFS. Writing past the end of a file (e.g., `ipfs files write --offset 1000 /file` on a smaller file) would lose data because `expandSparse` created the zero-padding node but didn't update the internal pointer. Subsequent writes went to the old unexpanded node.
+- `ipld/unixfs/io`: fixed mode/mtime metadata loss during Basic<->HAMT directory conversions. Previously, directories with `WithStat(mode, mtime)` would lose this metadata when converting between basic and sharded formats, or when reloading a HAMT directory from disk.
+
 ### Security
+
+
+## [v0.36.0]
+
+### Added
+- `routing/http`: `GET /routing/v1/dht/closest/peers/{key}` per [IPIP-476](https://github.com/ipfs/specs/pull/476)
+- `ipld/merkledag`: Added fetched node size reporting to the progress tracker. See [kubo#8915](https://github.com/ipfs/kubo/issues/8915)
+- `gateway`: Added a configurable fallback timeout for the gateway handler, defaulting to 1 hour. Configurable via `MaxRequestDuration` in the gateway config.
+
+### Changed
+
+- `keystore`: improve error messages and include key file name [#1080](https://github.com/ipfs/boxo/pull/1080)
+- upgrade to `go-libp2p-kad-dht` [v0.37.1](https://github.com/libp2p/go-libp2p-kad-dht/releases/tag/v0.37.1)
+- upgrade to `go-libp2p` [v0.47.0](https://github.com/libp2p/go-libp2p/releases/tag/v0.47.0)
+
+### Fixed
+
+- `bitswap/network`: Fixed goroutine leak that could cause bitswap to stop serving blocks after extended uptime. The root cause is `stream.Close()` blocking indefinitely when remote peers are unresponsive during multistream handshake ([go-libp2p#3448](https://github.com/libp2p/go-libp2p/pull/3448)). This PR ([#1083](https://github.com/ipfs/boxo/pull/1083)) adds a localized fix specific to bitswap's `SendMessage` by setting a read deadline before closing streams.
+
+
+## [v0.35.2]
+
+### Changed
+
+- upgrade to `go-libp2p` [v0.45.0](https://github.com/libp2p/go-libp2p/releases/tag/v0.45.0)
+- upgrade to `go-log/v2` [v2.9.0](https://github.com/ipfs/go-log/releases/tag/v2.9.0)
+  - Applications using go-log (>=2.9)+go-libp2p(>=0.45) may need to initialize their application to bridge slog-based libraries to into go-log. See documentation for go-log [release](https://github.com/ipfs/go-log/releases/tag/v2.9.0) and [slog integration](https://github.com/ipfs/go-log/blob/master/README.md#slog-integration).
+
+
+## [v0.35.1]
+
+### Added
+
+- new span for the `handleIncoming` bitswap client `getter` plus events when blocks are received.
+- mark opentelemetry spans, span attributes, and span events as being used by ProbeLab's analysis scripts
+
+### Changed
+
+- upgrade to `go-dsqueue` [v0.1.0](https://github.com/ipfs/go-dsqueue/releases/tag/v0.1.0) - Fixes batch reuse that could cause panic.
+
+### Fixed
+
+- `gateway`: Fixed duplicate peer IDs appearing in retrieval timeout error messages
+- `bitswap/client`: fix tracing by using context to pass trace and retrieval state to session [#1059](https://github.com/ipfs/boxo/pull/1059)
+  - `bitswap/client`: propagate trace state when calling GetBlocks [#1060](https://github.com/ipfs/boxo/pull/1060)
+- `bitswap/network/httpnet`: improved error detection on HTTP and block fetches:
+  - Do not attempt to GET a test CID if the endpoint returns 429 to the test HEAD request.
+  - Unify error parsing and handling of http statues and content.
 
 
 ## [v0.35.0]

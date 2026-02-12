@@ -1,3 +1,5 @@
+//go:build go1.25
+
 package decision
 
 import (
@@ -11,9 +13,9 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
 
-	"github.com/filecoin-project/go-clock"
 	wl "github.com/ipfs/boxo/bitswap/client/wantlist"
 	message "github.com/ipfs/boxo/bitswap/message"
 	pb "github.com/ipfs/boxo/bitswap/message/pb"
@@ -27,6 +29,16 @@ import (
 	libp2ptest "github.com/libp2p/go-libp2p/core/test"
 	mh "github.com/multiformats/go-multihash"
 )
+
+// numBytesSentTo returns the total bytes sent to peer p according to the ledger.
+func (e *Engine) numBytesSentTo(p peer.ID) uint64 {
+	return e.LedgerForPeer(p).Sent
+}
+
+// numBytesReceivedFrom returns the total bytes received from peer p according to the ledger.
+func (e *Engine) numBytesReceivedFrom(p peer.ID) uint64 {
+	return e.LedgerForPeer(p).Recv
+}
 
 type peerTag struct {
 	done  chan struct{}
@@ -95,13 +107,13 @@ type engineSet struct {
 }
 
 func newTestEngine(idStr string, opts ...Option) engineSet {
-	return newTestEngineWithSampling(idStr, shortTerm, nil, clock.New(), opts...)
+	return newTestEngineWithSampling(idStr, shortTerm, nil, opts...)
 }
 
-func newTestEngineWithSampling(idStr string, peerSampleInterval time.Duration, sampleCh chan struct{}, clock clock.Clock, opts ...Option) engineSet {
+func newTestEngineWithSampling(idStr string, peerSampleInterval time.Duration, sampleCh chan struct{}, opts ...Option) engineSet {
 	fpt := &fakePeerTagger{}
 	bs := blockstore.NewBlockstore(dssync.MutexWrap(ds.NewMapDatastore()))
-	e := newEngineForTesting(bs, fpt, "localhost", 0, append(opts[:len(opts):len(opts)], WithScoreLedger(NewTestScoreLedger(peerSampleInterval, sampleCh, clock)), WithBlockstoreWorkerCount(4))...)
+	e := newEngineForTesting(bs, fpt, "localhost", 0, append(opts[:len(opts):len(opts)], WithScoreLedger(NewTestScoreLedger(peerSampleInterval, sampleCh)), WithBlockstoreWorkerCount(4))...)
 	return engineSet{
 		Peer:       peer.ID(idStr),
 		PeerTagger: fpt,
@@ -117,7 +129,7 @@ func TestConsistentAccounting(t *testing.T) {
 	defer receiver.Engine.Close()
 
 	// Send messages from Ernie to Bert
-	for i := 0; i < 1000; i++ {
+	for range 1000 {
 		m := message.New(false)
 		content := []string{"this", "is", "message", "i"}
 		m.AddBlock(blocks.NewBlock([]byte(strings.Join(content, " "))))
@@ -188,16 +200,14 @@ func newEngineForTesting(
 
 func TestOutboxClosedWhenEngineClosed(t *testing.T) {
 	t.SkipNow() // TODO implement *Engine.Close
-	e := newEngineForTesting(blockstore.NewBlockstore(dssync.MutexWrap(ds.NewMapDatastore())), &fakePeerTagger{}, "localhost", 0, WithScoreLedger(NewTestScoreLedger(shortTerm, nil, clock.New())), WithBlockstoreWorkerCount(4))
+	e := newEngineForTesting(blockstore.NewBlockstore(dssync.MutexWrap(ds.NewMapDatastore())), &fakePeerTagger{}, "localhost", 0, WithScoreLedger(NewTestScoreLedger(shortTerm, nil)), WithBlockstoreWorkerCount(4))
 	defer e.Close()
 	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
+	wg.Go(func() {
 		for nextEnvelope := range e.Outbox() {
 			<-nextEnvelope
 		}
-		wg.Done()
-	}()
+	})
 	// e.Close()
 	wg.Wait()
 	if _, ok := <-e.Outbox(); ok {
@@ -210,7 +220,7 @@ func TestPartnerWantHaveWantBlockNonActive(t *testing.T) {
 	const vowels = "aeiou"
 
 	bs := blockstore.NewBlockstore(dssync.MutexWrap(ds.NewMapDatastore()))
-	for _, letter := range strings.Split(alphabet, "") {
+	for letter := range strings.SplitSeq(alphabet, "") {
 		block := blocks.NewBlock([]byte(letter))
 		if err := bs.Put(context.Background(), block); err != nil {
 			t.Fatal(err)
@@ -516,7 +526,7 @@ func TestPartnerWantHaveWantBlockNonActive(t *testing.T) {
 		testCases = onlyTestCases
 	}
 
-	e := newEngineForTesting(bs, &fakePeerTagger{}, "localhost", 0, WithScoreLedger(NewTestScoreLedger(shortTerm, nil, clock.New())), WithBlockstoreWorkerCount(4))
+	e := newEngineForTesting(bs, &fakePeerTagger{}, "localhost", 0, WithScoreLedger(NewTestScoreLedger(shortTerm, nil)), WithBlockstoreWorkerCount(4))
 	defer e.Close()
 	for i, testCase := range testCases {
 		t.Logf("Test case %d:", i)
@@ -548,7 +558,7 @@ func TestPartnerWantHaveWantBlockActive(t *testing.T) {
 	const alphabet = "abcdefghijklmnopqrstuvwxyz"
 
 	bs := blockstore.NewBlockstore(dssync.MutexWrap(ds.NewMapDatastore()))
-	for _, letter := range strings.Split(alphabet, "") {
+	for letter := range strings.SplitSeq(alphabet, "") {
 		block := blocks.NewBlock([]byte(letter))
 		if err := bs.Put(context.Background(), block); err != nil {
 			t.Fatal(err)
@@ -672,7 +682,7 @@ func TestPartnerWantHaveWantBlockActive(t *testing.T) {
 		testCases = onlyTestCases
 	}
 
-	e := newEngineForTesting(bs, &fakePeerTagger{}, "localhost", 0, WithScoreLedger(NewTestScoreLedger(shortTerm, nil, clock.New())), WithBlockstoreWorkerCount(4))
+	e := newEngineForTesting(bs, &fakePeerTagger{}, "localhost", 0, WithScoreLedger(NewTestScoreLedger(shortTerm, nil)), WithBlockstoreWorkerCount(4))
 	defer e.Close()
 
 	var next envChan
@@ -856,7 +866,7 @@ func TestPartnerWantsThenCancels(t *testing.T) {
 
 	for i := 0; i < numRounds; i++ {
 		expected := make([][]string, 0, len(testcases))
-		e := newEngineForTesting(bs, &fakePeerTagger{}, "localhost", 0, WithScoreLedger(NewTestScoreLedger(shortTerm, nil, clock.New())), WithBlockstoreWorkerCount(4))
+		e := newEngineForTesting(bs, &fakePeerTagger{}, "localhost", 0, WithScoreLedger(NewTestScoreLedger(shortTerm, nil)), WithBlockstoreWorkerCount(4))
 		defer e.Close()
 		for _, testcase := range testcases {
 			set := testcase[0]
@@ -881,7 +891,7 @@ func TestSendReceivedBlocksToPeersThatWantThem(t *testing.T) {
 	partner := libp2ptest.RandPeerIDFatal(t)
 	otherPeer := libp2ptest.RandPeerIDFatal(t)
 
-	e := newEngineForTesting(bs, &fakePeerTagger{}, "localhost", 0, WithScoreLedger(NewTestScoreLedger(shortTerm, nil, clock.New())), WithBlockstoreWorkerCount(4))
+	e := newEngineForTesting(bs, &fakePeerTagger{}, "localhost", 0, WithScoreLedger(NewTestScoreLedger(shortTerm, nil)), WithBlockstoreWorkerCount(4))
 	defer e.Close()
 
 	blks := random.BlocksOfSize(4, 8*1024)
@@ -925,7 +935,7 @@ func TestSendDontHave(t *testing.T) {
 	partner := libp2ptest.RandPeerIDFatal(t)
 	otherPeer := libp2ptest.RandPeerIDFatal(t)
 
-	e := newEngineForTesting(bs, &fakePeerTagger{}, "localhost", 0, WithScoreLedger(NewTestScoreLedger(shortTerm, nil, clock.New())), WithBlockstoreWorkerCount(4))
+	e := newEngineForTesting(bs, &fakePeerTagger{}, "localhost", 0, WithScoreLedger(NewTestScoreLedger(shortTerm, nil)), WithBlockstoreWorkerCount(4))
 	defer e.Close()
 
 	blks := random.BlocksOfSize(4, 8*1024)
@@ -988,7 +998,7 @@ func TestWantlistForPeer(t *testing.T) {
 	partner := libp2ptest.RandPeerIDFatal(t)
 	otherPeer := libp2ptest.RandPeerIDFatal(t)
 
-	e := newEngineForTesting(bs, &fakePeerTagger{}, "localhost", 0, WithScoreLedger(NewTestScoreLedger(shortTerm, nil, clock.New())), WithBlockstoreWorkerCount(4))
+	e := newEngineForTesting(bs, &fakePeerTagger{}, "localhost", 0, WithScoreLedger(NewTestScoreLedger(shortTerm, nil)), WithBlockstoreWorkerCount(4))
 	defer e.Close()
 
 	blks := random.BlocksOfSize(4, 8*1024)
@@ -1030,7 +1040,7 @@ func TestTaskComparator(t *testing.T) {
 	}
 
 	fpt := &fakePeerTagger{}
-	sl := NewTestScoreLedger(shortTerm, nil, clock.New())
+	sl := NewTestScoreLedger(shortTerm, nil)
 	bs := blockstore.NewBlockstore(dssync.MutexWrap(ds.NewMapDatastore()))
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel()
@@ -1090,7 +1100,7 @@ func TestPeerBlockFilter(t *testing.T) {
 
 	// Setup the main peer
 	fpt := &fakePeerTagger{}
-	sl := NewTestScoreLedger(shortTerm, nil, clock.New())
+	sl := NewTestScoreLedger(shortTerm, nil)
 	bs := blockstore.NewBlockstore(dssync.MutexWrap(ds.NewMapDatastore()))
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel()
@@ -1245,7 +1255,7 @@ func TestPeerBlockFilterMutability(t *testing.T) {
 
 	// Setup the main peer
 	fpt := &fakePeerTagger{}
-	sl := NewTestScoreLedger(shortTerm, nil, clock.New())
+	sl := NewTestScoreLedger(shortTerm, nil)
 	bs := blockstore.NewBlockstore(dssync.MutexWrap(ds.NewMapDatastore()))
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel()
@@ -1432,58 +1442,60 @@ func TestTaggingPeers(t *testing.T) {
 func TestTaggingUseful(t *testing.T) {
 	const peerSampleIntervalHalf = 10 * time.Millisecond
 
-	sampleCh := make(chan struct{})
-	mockClock := clock.NewMock()
-	me := newTestEngineWithSampling("engine", peerSampleIntervalHalf*2, sampleCh, mockClock)
-	defer me.Engine.Close()
-	mockClock.Add(1 * time.Millisecond)
-	friend := peer.ID("friend")
+	synctest.Test(t, func(t *testing.T) {
+		sampleCh := make(chan struct{})
+		me := newTestEngineWithSampling("engine", peerSampleIntervalHalf*2, sampleCh)
+		defer me.Engine.Close()
+		time.Sleep(1 * time.Millisecond)
+		friend := peer.ID("friend")
 
-	block := blocks.NewBlock([]byte("foobar"))
-	msg := message.New(false)
-	msg.AddBlock(block)
+		block := blocks.NewBlock([]byte("foobar"))
+		msg := message.New(false)
+		msg.AddBlock(block)
 
-	for i := 0; i < 3; i++ {
-		if untagged := me.PeerTagger.count(me.Engine.tagUseful); untagged != 0 {
-			t.Fatalf("%d peers should be untagged but weren't", untagged)
+		for range 3 {
+			if untagged := me.PeerTagger.count(me.Engine.tagUseful); untagged != 0 {
+				t.Fatalf("%d peers should be untagged but weren't", untagged)
+			}
+			time.Sleep(peerSampleIntervalHalf)
+			synctest.Wait()
+			me.Engine.MessageSent(friend, msg)
+
+			time.Sleep(peerSampleIntervalHalf)
+			<-sampleCh
+
+			if tagged := me.PeerTagger.count(me.Engine.tagUseful); tagged != 1 {
+				t.Fatalf("1 peer should be tagged, but %d were", tagged)
+			}
+
+			for range longTermRatio {
+				time.Sleep(peerSampleIntervalHalf * 2)
+				<-sampleCh
+			}
 		}
-		mockClock.Add(peerSampleIntervalHalf)
-		me.Engine.MessageSent(friend, msg)
 
-		mockClock.Add(peerSampleIntervalHalf)
-		<-sampleCh
-
-		if tagged := me.PeerTagger.count(me.Engine.tagUseful); tagged != 1 {
-			t.Fatalf("1 peer should be tagged, but %d were", tagged)
+		if me.PeerTagger.count(me.Engine.tagUseful) == 0 {
+			t.Fatal("peers should still be tagged due to long-term usefulness")
 		}
 
-		for j := 0; j < longTermRatio; j++ {
-			mockClock.Add(peerSampleIntervalHalf * 2)
+		for range longTermRatio {
+			time.Sleep(peerSampleIntervalHalf * 2)
 			<-sampleCh
 		}
-	}
 
-	if me.PeerTagger.count(me.Engine.tagUseful) == 0 {
-		t.Fatal("peers should still be tagged due to long-term usefulness")
-	}
+		if me.PeerTagger.count(me.Engine.tagUseful) == 0 {
+			t.Fatal("peers should still be tagged due to long-term usefulness")
+		}
 
-	for j := 0; j < longTermRatio; j++ {
-		mockClock.Add(peerSampleIntervalHalf * 2)
-		<-sampleCh
-	}
+		for range longTermRatio {
+			time.Sleep(peerSampleIntervalHalf * 2)
+			<-sampleCh
+		}
 
-	if me.PeerTagger.count(me.Engine.tagUseful) == 0 {
-		t.Fatal("peers should still be tagged due to long-term usefulness")
-	}
-
-	for j := 0; j < longTermRatio; j++ {
-		mockClock.Add(peerSampleIntervalHalf * 2)
-		<-sampleCh
-	}
-
-	if me.PeerTagger.count(me.Engine.tagUseful) != 0 {
-		t.Fatal("peers should finally be untagged")
-	}
+		if me.PeerTagger.count(me.Engine.tagUseful) != 0 {
+			t.Fatal("peers should finally be untagged")
+		}
+	})
 }
 
 func partnerWantBlocks(e *Engine, wantBlocks []string, partner peer.ID) {
@@ -1592,7 +1604,7 @@ func TestWantlistDoesNotGrowPastLimit(t *testing.T) {
 	for i := 2; i != 0; i-- {
 		m := message.New(false)
 		for j := limit * 3 / 4; j != 0; j-- {
-			m.AddEntry(blocks.NewBlock([]byte(fmt.Sprint(i, j))).Cid(), 0, pb.Message_Wantlist_Block, true)
+			m.AddEntry(blocks.NewBlock(fmt.Append(nil, i, j)).Cid(), 0, pb.Message_Wantlist_Block, true)
 		}
 		warsaw.Engine.MessageReceived(context.Background(), riga.Peer, m)
 	}
@@ -1711,7 +1723,7 @@ func TestWantlistBlocked(t *testing.T) {
 	haveCids := make([]cid.Cid, limit)
 	var blockNum int
 	for blockNum < limit {
-		block := blocks.NewBlock([]byte(fmt.Sprint(blockNum)))
+		block := blocks.NewBlock(fmt.Append(nil, blockNum))
 		if blockNum != 0 { // do not put first block in blockstore.
 			if err := bs.Put(context.Background(), block); err != nil {
 				t.Fatal(err)
@@ -1722,7 +1734,7 @@ func TestWantlistBlocked(t *testing.T) {
 	}
 
 	fpt := &fakePeerTagger{}
-	e := newEngineForTesting(bs, fpt, "localhost", 0, WithScoreLedger(NewTestScoreLedger(shortTerm, nil, clock.New())), WithBlockstoreWorkerCount(4), WithMaxQueuedWantlistEntriesPerPeer(limit))
+	e := newEngineForTesting(bs, fpt, "localhost", 0, WithScoreLedger(NewTestScoreLedger(shortTerm, nil)), WithBlockstoreWorkerCount(4), WithMaxQueuedWantlistEntriesPerPeer(limit))
 	defer e.Close()
 
 	warsaw := engineSet{
@@ -1739,8 +1751,8 @@ func TestWantlistBlocked(t *testing.T) {
 
 	m := message.New(false)
 	dontHaveCids := make([]cid.Cid, limit)
-	for i := 0; i < limit; i++ {
-		c := blocks.NewBlock([]byte(fmt.Sprint(blockNum))).Cid()
+	for i := range limit {
+		c := blocks.NewBlock(fmt.Append(nil, blockNum)).Cid()
 		blockNum++
 		m.AddEntry(c, 1, pb.Message_Wantlist_Block, true)
 		dontHaveCids[i] = c
@@ -1770,8 +1782,8 @@ func TestWantlistBlocked(t *testing.T) {
 	t.Log("All", len(wl), "new have CIDs are now on wantlist")
 
 	m = message.New(false)
-	for i := 0; i < limit; i++ {
-		c := blocks.NewBlock([]byte(fmt.Sprint(blockNum))).Cid()
+	for i := range limit {
+		c := blocks.NewBlock(fmt.Append(nil, blockNum)).Cid()
 		blockNum++
 		m.AddEntry(c, 1, pb.Message_Wantlist_Block, true)
 		dontHaveCids[i] = c
@@ -1795,7 +1807,7 @@ func TestWantlistOverflow(t *testing.T) {
 	var blockNum int
 	m := message.New(false)
 	for blockNum < limit {
-		block := blocks.NewBlock([]byte(fmt.Sprint(blockNum)))
+		block := blocks.NewBlock(fmt.Append(nil, blockNum))
 		if blockNum != 0 { // do not put first block in blockstore.
 			if err := bs.Put(context.Background(), block); err != nil {
 				t.Fatal(err)
@@ -1807,7 +1819,7 @@ func TestWantlistOverflow(t *testing.T) {
 	}
 
 	fpt := &fakePeerTagger{}
-	e := newEngineForTesting(bs, fpt, "localhost", 0, WithScoreLedger(NewTestScoreLedger(shortTerm, nil, clock.New())), WithBlockstoreWorkerCount(4), WithMaxQueuedWantlistEntriesPerPeer(limit))
+	e := newEngineForTesting(bs, fpt, "localhost", 0, WithScoreLedger(NewTestScoreLedger(shortTerm, nil)), WithBlockstoreWorkerCount(4), WithMaxQueuedWantlistEntriesPerPeer(limit))
 	defer e.Close()
 	warsaw := engineSet{
 		Peer:       peer.ID("warsaw"),
@@ -1832,7 +1844,7 @@ func TestWantlistOverflow(t *testing.T) {
 	m = message.New(false)
 	lowPrioCids := make([]cid.Cid, 5)
 	for i := 0; i < cap(lowPrioCids); i++ {
-		c := blocks.NewBlock([]byte(fmt.Sprint(blockNum))).Cid()
+		c := blocks.NewBlock(fmt.Append(nil, blockNum)).Cid()
 		blockNum++
 		m.AddEntry(c, 0, pb.Message_Wantlist_Block, true)
 		lowPrioCids[i] = c
@@ -1858,7 +1870,7 @@ func TestWantlistOverflow(t *testing.T) {
 	m = message.New(false)
 	highPrioCids := make([]cid.Cid, 5)
 	for i := 0; i < cap(highPrioCids); i++ {
-		c := blocks.NewBlock([]byte(fmt.Sprint(blockNum))).Cid()
+		c := blocks.NewBlock(fmt.Append(nil, blockNum)).Cid()
 		blockNum++
 		m.AddEntry(c, 10, pb.Message_Wantlist_Block, true)
 		highPrioCids[i] = c
@@ -1883,7 +1895,7 @@ func TestWantlistOverflow(t *testing.T) {
 	m = message.New(false)
 	blockCids := make([]cid.Cid, len(highPrioCids)+2)
 	for i := 0; i < cap(blockCids); i++ {
-		c := blocks.NewBlock([]byte(fmt.Sprint(blockNum))).Cid()
+		c := blocks.NewBlock(fmt.Append(nil, blockNum)).Cid()
 		blockNum++
 		m.AddEntry(c, 0, pb.Message_Wantlist_Block, true)
 		blockCids[i] = c

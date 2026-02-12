@@ -12,7 +12,7 @@ import (
 )
 
 func sequence(n int) (items []int) {
-	for i := 0; i < n; i++ {
+	for i := range n {
 		items = append(items, i+1)
 	}
 	return

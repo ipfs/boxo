@@ -149,7 +149,7 @@ func init() {
 	loadDagTestData()
 }
 
-func runTemplate(w http.ResponseWriter, filename string, data interface{}) {
+func runTemplate(w http.ResponseWriter, filename string, data any) {
 	fs := os.DirFS(".")
 	tpl, err := assets.BuildTemplate(fs, filename)
 	if err != nil {
@@ -158,7 +158,7 @@ func runTemplate(w http.ResponseWriter, filename string, data interface{}) {
 	}
 	err = tpl.Execute(w, data)
 	if err != nil {
-		_, _ = w.Write([]byte(fmt.Sprintf("error during body generation: %v", err)))
+		_, _ = w.Write(fmt.Appendf(nil, "error during body generation: %v", err))
 	}
 }
 

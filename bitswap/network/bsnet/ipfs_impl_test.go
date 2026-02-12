@@ -73,18 +73,22 @@ var errMockNetErr = errors.New("network err")
 
 type ErrStream struct {
 	p2pnet.Stream
-	lk        sync.Mutex
-	err       error
-	timingOut bool
-	closed    bool
+	lk              sync.Mutex
+	err             error
+	timingOut       bool
+	closed          bool
+	blockOnClose    bool      // if true, Close() will block until deadline
+	readDeadlineSet bool      // tracks if SetReadDeadline was called
+	readDeadline    time.Time // the deadline that was set
 }
 
 type ErrHost struct {
 	host.Host
-	lk        sync.Mutex
-	err       error
-	timingOut bool
-	streams   []*ErrStream
+	lk           sync.Mutex
+	err          error
+	timingOut    bool
+	blockOnClose bool
+	streams      []*ErrStream
 }
 
 func (es *ErrStream) Write(b []byte) (int, error) {
@@ -100,10 +104,35 @@ func (es *ErrStream) Write(b []byte) (int, error) {
 	return es.Stream.Write(b)
 }
 
+func (es *ErrStream) SetReadDeadline(t time.Time) error {
+	es.lk.Lock()
+	defer es.lk.Unlock()
+	es.readDeadlineSet = true
+	es.readDeadline = t
+	return es.Stream.SetReadDeadline(t)
+}
+
 func (es *ErrStream) Close() error {
 	es.lk.Lock()
+	blockOnClose := es.blockOnClose
+	readDeadlineSet := es.readDeadlineSet
+	readDeadline := es.readDeadline
 	es.closed = true
 	es.lk.Unlock()
+
+	if blockOnClose {
+		if readDeadlineSet && !readDeadline.IsZero() {
+			// Simulate blocking until deadline (the fix sets a deadline, so this will timeout)
+			waitTime := time.Until(readDeadline)
+			if waitTime > 0 {
+				time.Sleep(waitTime)
+			}
+		} else {
+			// No deadline set - would block forever (demonstrates the bug without fix)
+			// In test, we use a channel to avoid actually blocking forever
+			select {}
+		}
+	}
 
 	return es.Stream.Close()
 }
@@ -140,7 +169,7 @@ func (eh *ErrHost) NewStream(ctx context.Context, p peer.ID, pids ...protocol.ID
 		return nil, context.DeadlineExceeded
 	}
 	stream, err := eh.Host.NewStream(ctx, p, pids...)
-	estrm := &ErrStream{Stream: stream, err: eh.err, timingOut: eh.timingOut}
+	estrm := &ErrStream{Stream: stream, err: eh.err, timingOut: eh.timingOut, blockOnClose: eh.blockOnClose}
 
 	eh.streams = append(eh.streams, estrm)
 	return estrm, err
@@ -166,6 +195,18 @@ func (eh *ErrHost) setTimeoutState(timingOut bool) {
 	for _, s := range eh.streams {
 		s.lk.Lock()
 		s.timingOut = timingOut
+		s.lk.Unlock()
+	}
+}
+
+func (eh *ErrHost) setBlockOnClose(block bool) {
+	eh.lk.Lock()
+	defer eh.lk.Unlock()
+
+	eh.blockOnClose = block
+	for _, s := range eh.streams {
+		s.lk.Lock()
+		s.blockOnClose = block
 		s.lk.Unlock()
 	}
 }
@@ -515,7 +556,7 @@ func testNetworkCounters(t *testing.T, n1 int, n2 int) {
 
 	h1, bsnet1, h2, bsnet2, msg := prepareNetwork(t, ctx, p1, r1, p2, r2)
 
-	for n := 0; n < n1; n++ {
+	for range n1 {
 		ctx, cancel := context.WithTimeout(ctx, time.Second)
 		err := bsnet1.SendMessage(ctx, p2.ID(), msg)
 		if err != nil {
@@ -525,7 +566,7 @@ func testNetworkCounters(t *testing.T, n1 int, n2 int) {
 		case <-ctx.Done():
 			t.Fatal("p2 did not receive message sent")
 		case <-r2.messageReceived:
-			for j := 0; j < 2; j++ {
+			for range 2 {
 				err := bsnet2.SendMessage(ctx, p1.ID(), msg)
 				if err != nil {
 					t.Fatal(err)
@@ -546,7 +587,7 @@ func testNetworkCounters(t *testing.T, n1 int, n2 int) {
 			t.Fatal(err)
 		}
 		defer ms.Reset()
-		for n := 0; n < n2; n++ {
+		for range n2 {
 			ctx, cancel := context.WithTimeout(ctx, time.Second)
 			err = ms.SendMsg(ctx, msg)
 			if err != nil {
@@ -556,7 +597,7 @@ func testNetworkCounters(t *testing.T, n1 int, n2 int) {
 			case <-ctx.Done():
 				t.Fatal("p2 did not receive message sent")
 			case <-r2.messageReceived:
-				for j := 0; j < 2; j++ {
+				for range 2 {
 					err := bsnet2.SendMessage(ctx, p1.ID(), msg)
 					if err != nil {
 						t.Fatal(err)
@@ -667,7 +708,53 @@ func testNetworkCounters(t *testing.T, n1 int, n2 int) {
 }
 
 func TestNetworkCounters(t *testing.T) {
-	for n := 0; n < 11; n++ {
+	for n := range 11 {
 		testNetworkCounters(t, 10-n, n)
 	}
+}
+
+// TestSendMessageCloseDoesNotHang verifies that SendMessage calls SetReadDeadline
+// before Close(), preventing indefinite blocking when the remote peer is
+// unresponsive during multistream handshake completion.
+//
+// This test uses ErrStream to simulate a blocking Close() that only unblocks
+// when SetReadDeadline has been called. This proves the fix works without
+// relying on real network timeouts.
+func TestSendMessageCloseDoesNotHang(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	p1 := tnet.RandIdentityOrFatal(t)
+	r1 := newReceiver()
+	p2 := tnet.RandIdentityOrFatal(t)
+	r2 := newReceiver()
+
+	// Use prepareNetwork but we'll configure blocking after
+	eh1, bsnet1, _, _, msg := prepareNetwork(t, ctx, p1, r1, p2, r2)
+
+	// Configure h1's streams to block on Close() - this simulates the scenario
+	// where multistream handshake read would block indefinitely.
+	// With the fix, SetReadDeadline is called before Close(), so the simulated
+	// blocking will respect the deadline and unblock.
+	eh1.setBlockOnClose(true)
+
+	// SendMessage should complete because the fix sets a read deadline before
+	// calling Close(). The ErrStream.Close() will block until the deadline,
+	// simulating the real-world scenario where Close() would hang without
+	// a deadline.
+	start := time.Now()
+	err := bsnet1.SendMessage(ctx, p2.ID(), msg)
+	elapsed := time.Since(start)
+
+	// The sendTimeout for a small message is minSendTimeout (10s).
+	// With the fix, Close() should return after waiting until the deadline.
+	// Without the fix, it would hang forever (ErrStream.Close blocks indefinitely
+	// when blockOnClose=true and no deadline is set).
+	maxExpected := 15 * time.Second // minSendTimeout + margin
+	if elapsed > maxExpected {
+		t.Fatalf("SendMessage took %v, expected < %v (should timeout via SetReadDeadline)", elapsed, maxExpected)
+	}
+
+	// Error is expected because the simulated blocking causes the deadline to be reached
+	t.Logf("SendMessage returned in %v with error: %v", elapsed, err)
 }

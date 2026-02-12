@@ -1,3 +1,5 @@
+//go:build go1.25
+
 package client
 
 import (
@@ -9,9 +11,9 @@ import (
 	"net/http/httptest"
 	"runtime"
 	"testing"
+	"testing/synctest"
 	"time"
 
-	"github.com/filecoin-project/go-clock"
 	ipns "github.com/ipfs/boxo/ipns"
 	"github.com/ipfs/boxo/path"
 	"github.com/ipfs/boxo/routing/http/server"
@@ -45,6 +47,11 @@ func (m *mockContentRouter) ProvideBitswap(ctx context.Context, req *server.Bits
 
 func (m *mockContentRouter) FindPeers(ctx context.Context, pid peer.ID, limit int) (iter.ResultIter[*types.PeerRecord], error) {
 	args := m.Called(ctx, pid, limit)
+	return args.Get(0).(iter.ResultIter[*types.PeerRecord]), args.Error(1)
+}
+
+func (m *mockContentRouter) GetClosestPeers(ctx context.Context, key cid.Cid) (iter.ResultIter[*types.PeerRecord], error) {
+	args := m.Called(ctx, key)
 	return args.Get(0).(iter.ResultIter[*types.PeerRecord]), args.Error(1)
 }
 
@@ -550,72 +557,70 @@ func TestClient_Provide(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			deps := makeTestDeps(t, nil, nil)
-			client := deps.client
-			router := deps.router
+			synctest.Test(t, func(t *testing.T) {
+				deps := makeTestDeps(t, nil, nil)
+				client := deps.client
+				router := deps.router
 
-			if c.noIdentity {
-				client.identity = nil
-			}
-			if c.noProviderInfo {
-				client.peerID = ""
-				client.addrs = nil
-			}
+				if c.noIdentity {
+					client.identity = nil
+				}
+				if c.noProviderInfo {
+					client.peerID = ""
+					client.addrs = nil
+				}
 
-			clock := clock.NewMock()
-			clock.Set(time.Now())
-			client.clock = clock
+				ctx := context.Background()
 
-			ctx := context.Background()
+				if c.manglePath {
+					client.baseURL += "/foo"
+				}
+				if c.stopServer {
+					deps.server.Close()
+				}
+				if c.mangleSignature {
+					//nolint:staticcheck
+					//lint:ignore SA1019 // ignore staticcheck
+					client.afterSignCallback = func(req *types.WriteBitswapRecord) {
+						mh, err := multihash.Encode([]byte("boom"), multihash.SHA2_256)
+						require.NoError(t, err)
+						mb, err := multibase.Encode(multibase.Base64, mh)
+						require.NoError(t, err)
 
-			if c.manglePath {
-				client.baseURL += "/foo"
-			}
-			if c.stopServer {
-				deps.server.Close()
-			}
-			if c.mangleSignature {
+						req.Signature = mb
+					}
+				}
+
 				//nolint:staticcheck
 				//lint:ignore SA1019 // ignore staticcheck
-				client.afterSignCallback = func(req *types.WriteBitswapRecord) {
-					mh, err := multihash.Encode([]byte("boom"), multihash.SHA2_256)
-					require.NoError(t, err)
-					mb, err := multibase.Encode(multibase.Base64, mh)
-					require.NoError(t, err)
-
-					req.Signature = mb
+				expectedProvReq := &server.BitswapWriteProvideRequest{
+					Keys:        c.cids,
+					Timestamp:   time.Now().Truncate(time.Millisecond),
+					AdvisoryTTL: c.ttl,
+					Addrs:       drAddrsToAddrs(client.addrs),
+					ID:          client.peerID,
 				}
-			}
 
-			//nolint:staticcheck
-			//lint:ignore SA1019 // ignore staticcheck
-			expectedProvReq := &server.BitswapWriteProvideRequest{
-				Keys:        c.cids,
-				Timestamp:   clock.Now().Truncate(time.Millisecond),
-				AdvisoryTTL: c.ttl,
-				Addrs:       drAddrsToAddrs(client.addrs),
-				ID:          client.peerID,
-			}
+				router.On("ProvideBitswap", mock.Anything, expectedProvReq).
+					Return(c.routerAdvisoryTTL, c.routerErr)
 
-			router.On("ProvideBitswap", mock.Anything, expectedProvReq).
-				Return(c.routerAdvisoryTTL, c.routerErr)
+				advisoryTTL, err := client.ProvideBitswap(ctx, c.cids, c.ttl)
 
-			advisoryTTL, err := client.ProvideBitswap(ctx, c.cids, c.ttl)
+				var errorString string
+				if runtime.GOOS == "windows" && c.expWinErrContains != "" {
+					errorString = c.expWinErrContains
+				} else {
+					errorString = c.expErrContains
+				}
 
-			var errorString string
-			if runtime.GOOS == "windows" && c.expWinErrContains != "" {
-				errorString = c.expWinErrContains
-			} else {
-				errorString = c.expErrContains
-			}
+				if errorString != "" {
+					require.ErrorContains(t, err, errorString)
+				} else {
+					require.NoError(t, err)
+				}
 
-			if errorString != "" {
-				require.ErrorContains(t, err, errorString)
-			} else {
-				require.NoError(t, err)
-			}
-
-			assert.Equal(t, c.expAdvisoryTTL, advisoryTTL)
+				assert.Equal(t, c.expAdvisoryTTL, advisoryTTL)
+			})
 		})
 	}
 }
@@ -921,6 +926,132 @@ func TestClient_EmptyResponses(t *testing.T) {
 			server := makeTestServer(tc.handler)
 			defer server.Close()
 			tc.testFunc(t, server.URL)
+		})
+	}
+}
+
+func TestClient_GetClosestPeers(t *testing.T) {
+	bitswapPeerRecord := makePeerRecord([]string{"transport-bitswap"})
+	httpPeerRecord := makePeerRecord([]string{"transport-ipfs-gateway-http"})
+
+	peerRecords := []iter.Result[*types.PeerRecord]{
+		{Val: &bitswapPeerRecord},
+		{Val: &httpPeerRecord},
+	}
+
+	key := peer.ToCid(*bitswapPeerRecord.ID)
+
+	cases := []struct {
+		name                    string
+		httpStatusCode          int
+		stopServer              bool
+		routerResult            []iter.Result[*types.PeerRecord]
+		routerErr               error
+		clientRequiresStreaming bool
+		serverStreamingDisabled bool
+
+		expErrContains       osErrContains
+		expResult            []iter.Result[*types.PeerRecord]
+		expStreamingResponse bool
+		expJSONResponse      bool
+	}{
+		{
+			name:                 "happy case",
+			routerResult:         peerRecords,
+			expResult:            peerRecords,
+			expStreamingResponse: true,
+		},
+		{
+			name:                    "server doesn't support streaming",
+			routerResult:            peerRecords,
+			expResult:               peerRecords,
+			serverStreamingDisabled: true,
+			expJSONResponse:         true,
+		},
+		{
+			name:                    "client requires streaming but server doesn't support it",
+			serverStreamingDisabled: true,
+			clientRequiresStreaming: true,
+			expErrContains:          osErrContains{expContains: "HTTP error with StatusCode=400: no supported content types"},
+		},
+		{
+			name:           "returns an error if there's a non-200 response",
+			httpStatusCode: 500,
+			expErrContains: osErrContains{expContains: "HTTP error with StatusCode=500"},
+		},
+		{
+			name:       "returns an error if the HTTP client returns a non-HTTP error",
+			stopServer: true,
+			expErrContains: osErrContains{
+				expContains:    "connect: connection refused",
+				expContainsWin: "connectex: No connection could be made because the target machine actively refused it.",
+			},
+		},
+		{
+			name:           "returns no providers if the HTTP server returns a 404 response",
+			httpStatusCode: 404,
+			expResult:      nil,
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			var clientOpts []Option
+			var serverOpts []server.Option
+			var onRespReceived []func(*http.Response)
+			var onReqReceived []func(*http.Request)
+
+			if c.serverStreamingDisabled {
+				serverOpts = append(serverOpts, server.WithStreamingResultsDisabled())
+			}
+
+			if c.clientRequiresStreaming {
+				clientOpts = append(clientOpts, WithStreamResultsRequired())
+				onReqReceived = append(onReqReceived, func(r *http.Request) {
+					assert.Equal(t, mediaTypeNDJSON, r.Header.Get("Accept"))
+				})
+			}
+
+			if c.expStreamingResponse {
+				onRespReceived = append(onRespReceived, func(r *http.Response) {
+					assert.Equal(t, mediaTypeNDJSON, r.Header.Get("Content-Type"))
+				})
+			}
+
+			if c.expJSONResponse {
+				onRespReceived = append(onRespReceived, func(r *http.Response) {
+					assert.Equal(t, mediaTypeJSON, r.Header.Get("Content-Type"))
+				})
+			}
+
+			deps := makeTestDeps(t, clientOpts, serverOpts)
+
+			deps.recordingHTTPClient.f = append(deps.recordingHTTPClient.f, onRespReceived...)
+			deps.recordingHandler.f = append(deps.recordingHandler.f, onReqReceived...)
+
+			client := deps.client
+			router := deps.router
+
+			ctx, cancel := context.WithCancel(context.Background())
+			t.Cleanup(cancel)
+
+			if c.httpStatusCode != 0 {
+				deps.server.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					w.WriteHeader(c.httpStatusCode)
+				})
+			}
+
+			if c.stopServer {
+				deps.server.Close()
+			}
+
+			routerResultIter := iter.FromSlice(c.routerResult)
+			router.On("GetClosestPeers", mock.Anything, key).Return(routerResultIter, c.routerErr)
+
+			resultIter, err := client.GetClosestPeers(ctx, key)
+			c.expErrContains.errContains(t, err)
+
+			results := iter.ReadAll(resultIter)
+			assert.Equal(t, c.expResult, results)
 		})
 	}
 }

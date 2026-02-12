@@ -66,7 +66,7 @@ func (g *InstanceGenerator) Next() Instance {
 // them to each other
 func (g *InstanceGenerator) Instances(n int) []Instance {
 	var instances []Instance
-	for j := 0; j < n; j++ {
+	for range n {
 		inst := g.Next()
 		instances = append(instances, inst)
 	}

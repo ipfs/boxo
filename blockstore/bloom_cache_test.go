@@ -98,8 +98,8 @@ func TestHasIsBloomCached(t *testing.T) {
 	cd := &callbackDatastore{f: func() {}, ds: ds.NewMapDatastore()}
 	bs := NewBlockstore(syncds.MutexWrap(cd))
 
-	for i := 0; i < 1000; i++ {
-		bs.Put(bg, blocks.NewBlock([]byte(fmt.Sprintf("data: %d", i))))
+	for i := range 1000 {
+		bs.Put(bg, blocks.NewBlock(fmt.Appendf(nil, "data: %d", i)))
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel()
@@ -118,8 +118,8 @@ func TestHasIsBloomCached(t *testing.T) {
 		cacheFails++
 	})
 
-	for i := 0; i < 1000; i++ {
-		cachedbs.Has(bg, blocks.NewBlock([]byte(fmt.Sprintf("data: %d", i+2000))).Cid())
+	for i := range 1000 {
+		cachedbs.Has(bg, blocks.NewBlock(fmt.Appendf(nil, "data: %d", i+2000)).Cid())
 	}
 
 	if float64(cacheFails)/float64(1000) > float64(0.05) {

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 	"time"
 
 	"github.com/ipfs/boxo/pinning/remote/client/openapi"
@@ -82,13 +83,7 @@ func (pinLsOpts) FilterName(name string) LsOption {
 func (pinLsOpts) FilterStatus(statuses ...Status) LsOption {
 	return func(options *lsSettings) error {
 		for _, s := range statuses {
-			valid := false
-			for _, existing := range validStatuses {
-				if existing == s {
-					valid = true
-					break
-				}
-			}
+			valid := slices.Contains(validStatuses, s)
 			if !valid {
 				return fmt.Errorf("invalid status %s", s)
 			}
@@ -263,7 +258,7 @@ func (c *Client) lsInternal(ctx context.Context, settings *lsSettings) (pinResul
 	}
 	if len(settings.status) > 0 {
 		statuses := make([]openapi.Status, len(settings.status))
-		for i := 0; i < len(statuses); i++ {
+		for i := range statuses {
 			statuses[i] = openapi.Status(settings.status[i])
 		}
 		getter = getter.Status(statuses)

@@ -273,7 +273,7 @@ func TestRateLimitingRequests(t *testing.T) {
 	sessionCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	var requestChannels []<-chan peer.AddrInfo
-	for i := 0; i < maxInProcessRequests+1; i++ {
+	for i := range maxInProcessRequests + 1 {
 		requestChannels = append(requestChannels, providerQueryManager.FindProvidersAsync(sessionCtx, keys[i], 0))
 	}
 	time.Sleep(20 * time.Millisecond)
@@ -283,7 +283,7 @@ func TestRateLimitingRequests(t *testing.T) {
 		t.Fatal("Did not limit parallel requests to rate limit")
 	}
 	fpn.queriesMadeMutex.Unlock()
-	for i := 0; i < maxInProcessRequests+1; i++ {
+	for i := range maxInProcessRequests + 1 {
 		for range requestChannels[i] {
 		}
 	}
@@ -314,7 +314,7 @@ func TestUnlimitedRequests(t *testing.T) {
 	sessionCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	var requestChannels []<-chan peer.AddrInfo
-	for i := 0; i < inProcessRequests; i++ {
+	for i := range inProcessRequests {
 		requestChannels = append(requestChannels, providerQueryManager.FindProvidersAsync(sessionCtx, keys[i], 0))
 	}
 	time.Sleep(20 * time.Millisecond)
@@ -324,7 +324,7 @@ func TestUnlimitedRequests(t *testing.T) {
 		t.Fatal("Parallel requests appear to be rate limited")
 	}
 	fpn.queriesMadeMutex.Unlock()
-	for i := 0; i < inProcessRequests; i++ {
+	for i := range inProcessRequests {
 		for range requestChannels[i] {
 		}
 	}

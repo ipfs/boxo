@@ -276,6 +276,36 @@ func TestState(t *testing.T) {
 		assert.True(t, hasID1 || hasID2, "Summary should contain at least one of the peer IDs")
 	})
 
+	t.Run("Duplicate peer IDs are filtered out", func(t *testing.T) {
+		rs := NewState()
+		peerID1 := test.RandPeerIDFatal(t)
+		peerID2 := test.RandPeerIDFatal(t)
+
+		// Add the same peer ID multiple times
+		rs.AddFailedProvider(peerID1)
+		rs.AddFailedProvider(peerID1)
+		rs.AddFailedProvider(peerID2)
+		rs.AddFailedProvider(peerID1) // Add peerID1 again
+
+		// Should only contain unique peer IDs
+		failedProviders := rs.GetFailedProviders()
+		assert.Len(t, failedProviders, 2, "Should only contain 2 unique peer IDs")
+		assert.Contains(t, failedProviders, peerID1)
+		assert.Contains(t, failedProviders, peerID2)
+
+		// Also test for found providers
+		rs.AddFoundProvider(peerID1)
+		rs.AddFoundProvider(peerID1)
+		rs.AddFoundProvider(peerID2)
+		rs.AddFoundProvider(peerID1) // Add peerID1 again
+		rs.AddFoundProvider(peerID2) // Add peerID2 again
+
+		foundProviders := rs.GetFoundProviders()
+		assert.Len(t, foundProviders, 2, "Should only contain 2 unique peer IDs")
+		assert.Contains(t, foundProviders, peerID1)
+		assert.Contains(t, foundProviders, peerID2)
+	})
+
 	t.Run("SetPhase is thread-safe and maintains monotonic ordering", func(t *testing.T) {
 		rs := NewState()
 		stages := []RetrievalPhase{
@@ -287,7 +317,7 @@ func TestState(t *testing.T) {
 
 		// Run multiple goroutines trying to set stages in various orders
 		var wg sync.WaitGroup
-		for i := 0; i < 100; i++ {
+		for i := range 100 {
 			wg.Add(1)
 			go func(i int) {
 				defer wg.Done()

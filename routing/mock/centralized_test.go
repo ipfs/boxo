@@ -57,7 +57,7 @@ func TestClientOverMax(t *testing.T) {
 	rs := NewServer()
 	k := cid.NewCidV0(u.Hash([]byte("hello")))
 	numProvidersForHelloKey := 100
-	for i := 0; i < numProvidersForHelloKey; i++ {
+	for range numProvidersForHelloKey {
 		pi := tnet.RandIdentityOrFatal(t)
 		err := rs.Client(pi).Provide(context.Background(), k, true)
 		if err != nil {
@@ -144,8 +144,7 @@ func TestCanceledContext(t *testing.T) {
 }
 
 func TestValidAfter(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	pi := tnet.RandIdentityOrFatal(t)
 	key := cid.NewCidV0(u.Hash([]byte("mock key")))

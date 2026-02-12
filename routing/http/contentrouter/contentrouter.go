@@ -50,12 +50,15 @@ func filterAddrs(in []types.Multiaddr) []multiaddr.Multiaddr {
 
 const ttl = 24 * time.Hour
 
+// A Client provides HTTP Delegated Routing methods. See also [server.DelegatedRouter].
 type Client interface {
 	FindProviders(ctx context.Context, key cid.Cid) (iter.ResultIter[types.Record], error)
 	ProvideBitswap(ctx context.Context, keys []cid.Cid, ttl time.Duration) (time.Duration, error)
 	FindPeers(ctx context.Context, pid peer.ID) (peers iter.ResultIter[*types.PeerRecord], err error)
 	GetIPNS(ctx context.Context, name ipns.Name) (*ipns.Record, error)
 	PutIPNS(ctx context.Context, name ipns.Name, record *ipns.Record) error
+	// GetClosestPeers returns the DHT closest peers to the given key (CID or Peer ID).
+	GetClosestPeers(ctx context.Context, key cid.Cid) (iter.ResultIter[*types.PeerRecord], error)
 }
 
 type contentRouter struct {
@@ -64,12 +67,17 @@ type contentRouter struct {
 	maxProvideBatchSize   int
 }
 
+type DHTRouter interface {
+	GetClosestPeers(context.Context, cid.Cid) (<-chan peer.AddrInfo, error)
+}
+
 var (
 	_ routing.ContentRouting           = (*contentRouter)(nil)
 	_ routing.PeerRouting              = (*contentRouter)(nil)
 	_ routing.ValueStore               = (*contentRouter)(nil)
 	_ routinghelpers.ProvideManyRouter = (*contentRouter)(nil)
 	_ routinghelpers.ReadyAbleRouter   = (*contentRouter)(nil)
+	_ DHTRouter                        = (*contentRouter)(nil)
 )
 
 type option func(c *contentRouter)
@@ -86,6 +94,8 @@ func WithMaxProvideBatchSize(max int) option {
 	}
 }
 
+// NewContentRoutingClient returns a client that conforms to the
+// ContentRouting interfaces.
 func NewContentRoutingClient(c Client, opts ...option) *contentRouter {
 	cr := &contentRouter{
 		client:                c,
@@ -453,4 +463,41 @@ func (c *contentRouter) SearchValue(ctx context.Context, key string, opts ...rou
 	}()
 
 	return ch, nil
+}
+
+func (c *contentRouter) GetClosestPeers(ctx context.Context, key cid.Cid) (<-chan peer.AddrInfo, error) {
+	iter, err := c.client.GetClosestPeers(ctx, key)
+	if err != nil {
+		return nil, err
+	}
+	infos := make(chan peer.AddrInfo)
+	go func() {
+		defer iter.Close()
+		defer close(infos)
+		for iter.Next() {
+			res := iter.Val()
+			if res.Err != nil {
+				logger.Warnf("error iterating peer responses: %s", res.Err)
+				continue
+			}
+
+			addrs := filterAddrs(res.Val.Addrs)
+			// If there are no addresses there's nothing of value to return
+			if len(addrs) == 0 {
+				continue
+			}
+
+			select {
+			case <-ctx.Done():
+				logger.Warnf("aborting GetClosestPeers: %s", ctx.Err())
+				return
+			case infos <- peer.AddrInfo{
+				ID:    *res.Val.ID,
+				Addrs: addrs,
+			}:
+			}
+		}
+	}()
+
+	return infos, nil
 }

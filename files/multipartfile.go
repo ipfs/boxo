@@ -25,6 +25,8 @@ const (
 	contentDispositionHeader = "Content-Disposition"
 )
 
+var _ Directory = (*multipartDirectory)(nil)
+
 // multiPartFileInfo implements the `fs.FileInfo` interface for a file or
 // directory received in a `multipart.part`.
 type multiPartFileInfo struct {
@@ -37,7 +39,7 @@ func (fi *multiPartFileInfo) Name() string       { return fi.name }
 func (fi *multiPartFileInfo) Mode() os.FileMode  { return fi.mode }
 func (fi *multiPartFileInfo) ModTime() time.Time { return fi.mtime }
 func (fi *multiPartFileInfo) IsDir() bool        { return fi.mode.IsDir() }
-func (fi *multiPartFileInfo) Sys() interface{}   { return nil }
+func (fi *multiPartFileInfo) Sys() any           { return nil }
 func (fi *multiPartFileInfo) Size() int64        { panic("size for multipart file info is not supported") }
 
 type multipartDirectory struct {
@@ -214,12 +216,12 @@ func fileInfo(name string, part *multipart.Part) os.FileInfo {
 	fi := multiPartFileInfo{name: filepath.Base(name)}
 	formName := part.FormName()
 
-	i := strings.IndexByte(formName, '?')
-	if i == -1 {
+	_, after, ok := strings.Cut(formName, "?")
+	if !ok {
 		return &fi
 	}
 
-	params, err := url.ParseQuery(formName[i+1:])
+	params, err := url.ParseQuery(after)
 	if err != nil {
 		return nil
 	}
@@ -275,8 +277,8 @@ func (it *multipartIterator) Next() bool {
 
 		// Check if we need to create a fake directory (more than one
 		// path component).
-		if idx := strings.IndexByte(name, '/'); idx >= 0 {
-			it.curName = name[:idx]
+		if before, _, ok := strings.Cut(name, "/"); ok {
+			it.curName = before
 			it.curFile = &multipartDirectory{
 				path:   path.Join(it.f.path, it.curName),
 				walker: it.f.walker,
@@ -315,5 +317,3 @@ func (f *multipartDirectory) Close() error {
 func (f *multipartDirectory) Size() (int64, error) {
 	return 0, ErrNotSupported
 }
-
-var _ Directory = &multipartDirectory{}

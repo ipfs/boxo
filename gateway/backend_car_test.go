@@ -33,8 +33,7 @@ import (
 var dirWithMultiblockHAMTandFiles []byte
 
 func TestCarBackendTar(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	// Map of expected requests to their response blocks
 	// This allows requests to arrive in any order, fixing race conditions
@@ -208,8 +207,7 @@ func TestCarBackendTar(t *testing.T) {
 }
 
 func TestCarBackendTarAtEndOfPath(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	requestNum := 0
 	s := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
@@ -397,8 +395,7 @@ func sendBlocks(ctx context.Context, carFixture []byte, writer io.Writer, cidStr
 }
 
 func TestCarBackendGetFile(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	requestNum := 0
 	s := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
@@ -505,8 +502,7 @@ func TestCarBackendGetFile(t *testing.T) {
 }
 
 func TestCarBackendGetFileRangeRequest(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	requestNum := 0
 	s := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
@@ -617,8 +613,7 @@ func TestCarBackendGetFileRangeRequest(t *testing.T) {
 }
 
 func TestCarBackendGetFileWithBadBlockReturned(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	requestNum := 0
 	s := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
@@ -719,8 +714,7 @@ func TestCarBackendGetFileWithBadBlockReturned(t *testing.T) {
 }
 
 func TestCarBackendGetHAMTDirectory(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	requestNum := 0
 	s := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
@@ -819,8 +813,7 @@ func TestCarBackendGetHAMTDirectory(t *testing.T) {
 }
 
 func TestCarBackendGetCAR(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	requestNum := 0
 	s := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
@@ -942,7 +935,7 @@ func TestCarBackendGetCAR(t *testing.T) {
 		"bafkreidqhbqn5htm5qejxpb3hps7dookudo3nncfn6al6niqibi5lq6fee", // exampleC
 	}
 
-	for i := 0; i < len(responseCarBlock); i++ {
+	for i := range responseCarBlock {
 		expectedCid := cid.MustParse(responseCarBlock[i])
 		blk, err := blkReader.Next()
 		require.NoError(t, err)

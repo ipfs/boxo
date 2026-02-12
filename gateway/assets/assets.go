@@ -40,7 +40,6 @@ func init() {
 	wg.Add(len(tmpls))
 
 	for _, tmpl := range tmpls {
-		tmpl := tmpl
 		go func() {
 			defer wg.Done()
 			var err error
@@ -97,11 +96,12 @@ type GlobalData struct {
 
 type DagTemplateData struct {
 	GlobalData
-	Path      string
-	CID       string
-	CodecName string
-	CodecHex  string
-	Node      *ParsedNode
+	Path                 string
+	CID                  string
+	CodecName            string
+	CodecHex             string
+	Node                 *ParsedNode
+	AllowCodecConversion bool
 }
 
 type ErrorTemplateData struct {
@@ -195,8 +195,8 @@ func HasDNSLinkOrigin(gwURL string, path string) bool {
 
 func stripPort(hostname string) string {
 	host, _, err := net.SplitHostPort(hostname)
-	if err == nil {
-		return host
+	if err != nil {
+		return hostname
 	}
-	return hostname
+	return host
 }

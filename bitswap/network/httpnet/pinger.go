@@ -52,7 +52,7 @@ func (pngr *pinger) ping(ctx context.Context, p peer.ID) ping.Result {
 	for _, u := range urls {
 		go func(u network.ParsedURL) {
 			start := time.Now()
-			err := pngr.ht.connectToURL(ctx, p, u, method)
+			_, err := pngr.ht.connectToURL(ctx, p, u, method)
 			if err != nil {
 				log.Debug(err)
 				results <- ping.Result{Error: err}
@@ -66,7 +66,7 @@ func (pngr *pinger) ping(ctx context.Context, p peer.ID) ping.Result {
 
 	var result ping.Result
 	var errs []error
-	for i := 0; i < len(urls); i++ {
+	for range urls {
 		r := <-results
 		if r.Error != nil {
 			errs = append(errs, r.Error)
