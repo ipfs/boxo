@@ -2,6 +2,7 @@ package ndjson
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 
 	"github.com/ipfs/boxo/routing/http/types"
@@ -20,6 +21,18 @@ func NewRecordsIter(r io.Reader) iter.Iter[iter.Result[types.Record]] {
 		switch upr.Val.Schema {
 		case types.SchemaPeer:
 			var prov types.PeerRecord
+			err := json.Unmarshal(upr.Val.Bytes, &prov)
+			if err != nil {
+				result.Err = err
+				return result
+			}
+			result.Val = &prov
+		case types.SchemaGeneric:
+			if len(upr.Val.Bytes) > types.MaxGenericRecordSize {
+				result.Err = fmt.Errorf("generic record too large: %d bytes (max %d)", len(upr.Val.Bytes), types.MaxGenericRecordSize)
+				return result
+			}
+			var prov types.GenericRecord
 			err := json.Unmarshal(upr.Val.Bytes, &prov)
 			if err != nil {
 				result.Err = err

@@ -16,6 +16,11 @@ The following emojis are used to highlight certain changes:
 
 ### Added
 
+- `routing/http`: ✨ added `generic` schema support per [IPIP-518](https://github.com/ipfs/specs/pull/518)
+  - new `GenericRecord` type with duck-typed `Addrs` (multiaddrs and URIs) and arbitrary string `ID` (not limited to PeerIDs)
+  - `contentrouter` converts GenericRecord to `peer.AddrInfo` for backward compatibility: HTTP(S) URLs become `/dns/host/tcp/port/https` multiaddrs; PeerID is derived from `did:key:` or generated as a deterministic placeholder when the ID is not a native libp2p PeerID
+  - `filter-addrs` extended to match URI schemes (e.g. `?filter-addrs=https`) in addition to multiaddr protocol names
+  - generic records are capped at 10 KiB per IPIP-518 spec
 - `ipld/unixfs/io`: added `SizeEstimationMode` for configurable HAMT sharding threshold decisions. Supports legacy link-based estimation (`SizeEstimationLinks`), accurate block-based estimation (`SizeEstimationBlock`), or disabling size-based thresholds (`SizeEstimationDisabled`). [#1088](https://github.com/ipfs/boxo/pull/1088), [IPIP-499](https://github.com/ipfs/specs/pull/499)
 - `ipld/unixfs/io`: added `UnixFSProfile` with `UnixFS_v0_2015` and `UnixFS_v1_2025` presets for CID-deterministic file and directory DAG construction. [#1088](https://github.com/ipfs/boxo/pull/1088), [IPIP-499](https://github.com/ipfs/specs/pull/499)
 - `files`: `NewSerialFileWithOptions` now supports controlling whether symlinks are preserved or dereferenced before being added to IPFS. See `SerialFileOptions.DereferenceSymlinks`. [#1088](https://github.com/ipfs/boxo/pull/1088), [IPIP-499](https://github.com/ipfs/specs/pull/499)

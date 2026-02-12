@@ -3,6 +3,7 @@ package contentrouter
 import (
 	"context"
 	"reflect"
+	"slices"
 	"strings"
 	"time"
 
@@ -142,8 +143,21 @@ func (c *contentRouter) Ready() bool {
 	return true
 }
 
-// readProviderResponses reads peer records (and bitswap records for legacy
-// compatibility) from the iterator into the given channel.
+// readProviderResponses reads provider records from the iterator into the given
+// channel. PeerRecord and BitswapRecord are converted directly. GenericRecord
+// is converted on a best-effort basis:
+//   - If the ID is a valid libp2p PeerID, the record is always converted
+//     regardless of Protocols. This supports the legacy pattern where a
+//     PeerID + /https multiaddr was used as a hint to probe for a Trustless
+//     IPFS HTTP Gateway (even without explicit protocol declaration).
+//   - If the ID is not a PeerID but the record advertises
+//     transport-ipfs-gateway-http with HTTP(S) URLs, a PeerID is derived
+//     from did:key: or generated as a placeholder.
+//   - Other records with non-PeerID identifiers are skipped.
+//
+// Addresses are converted via [types.Address.ToMultiaddr]; HTTPS URLs
+// become /dns/host/tcp/443/https multiaddrs. Non-convertible addresses
+// are dropped.
 func readProviderResponses(ctx context.Context, iter iter.ResultIter[types.Record], ch chan<- peer.AddrInfo) {
 	defer close(ch)
 	defer iter.Close()
@@ -172,6 +186,60 @@ func readProviderResponses(ctx context.Context, iter iter.ResultIter[types.Recor
 			case ch <- peer.AddrInfo{
 				ID:    *result.ID,
 				Addrs: filterAddrs(result.Addrs),
+			}:
+			}
+
+		case types.SchemaGeneric:
+			result, ok := v.(*types.GenericRecord)
+			if !ok {
+				logger.Errorw(
+					"problem casting find providers result",
+					"Schema", v.GetSchema(),
+					"Type", reflect.TypeOf(v).String(),
+				)
+				continue
+			}
+
+			pid, err := peer.Decode(result.ID)
+			if err != nil {
+				// For HTTP gateway providers, try harder to derive a PeerID.
+				// Kubo and Rainbow need a PeerID to pass multiaddr addresses
+				// over legacy routing APIs even when the provider uses
+				// non-PeerID identifiers like did:key:.
+				if slices.Contains(result.Protocols, "transport-ipfs-gateway-http") && hasHTTPURL(result.Addrs) {
+					pid, err = peerIDFromDIDKey(result.ID)
+					if err != nil {
+						pid = peerIDPlaceholderFromArbitraryID(result.ID)
+					}
+				} else {
+					// Records with non-PeerID identifiers and no recognized
+					// protocol are skipped: without a protocol hint we cannot
+					// determine how to use the addresses in legacy routing APIs.
+					logger.Debugw("skipping generic record with non-PeerID identifier", "ID", result.ID)
+					continue
+				}
+			}
+
+			// Convert addresses to multiaddrs. URLs are converted via
+			// ToMultiaddr (e.g. https://host -> /dns/host/tcp/443/https).
+			// Addresses that cannot be converted are dropped.
+			var addrs []multiaddr.Multiaddr
+			for i := range result.Addrs {
+				if ma := result.Addrs[i].ToMultiaddr(); ma != nil {
+					addrs = append(addrs, ma)
+				}
+			}
+			if len(addrs) == 0 {
+				logger.Debugw("skipping generic record with no convertible addresses", "ID", result.ID)
+				continue
+			}
+
+			select {
+			case <-ctx.Done():
+				return
+			case ch <- peer.AddrInfo{
+				ID:    pid,
+				Addrs: addrs,
 			}:
 			}
 

@@ -180,8 +180,9 @@ func WithUserAgent(ua string) Option {
 func WithProviderInfo(peerID peer.ID, addrs []multiaddr.Multiaddr) Option {
 	return func(c *Client) error {
 		c.peerID = peerID
-		for _, a := range addrs {
-			c.addrs = append(c.addrs, types.Multiaddr{Multiaddr: a})
+		c.addrs = make([]types.Multiaddr, len(addrs))
+		for i, a := range addrs {
+			c.addrs[i] = types.Multiaddr{Multiaddr: a}
 		}
 		return nil
 	}

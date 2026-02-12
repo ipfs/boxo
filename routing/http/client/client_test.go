@@ -153,18 +153,19 @@ func makeCID() cid.Cid {
 	return c
 }
 
-func drAddrsToAddrs(drmas []types.Multiaddr) (addrs []multiaddr.Multiaddr) {
-	for _, a := range drmas {
+func drAddrsToAddrs(draddrs []types.Multiaddr) (addrs []multiaddr.Multiaddr) {
+	for _, a := range draddrs {
 		addrs = append(addrs, a.Multiaddr)
 	}
 	return
 }
 
-func addrsToDRAddrs(addrs []multiaddr.Multiaddr) (drmas []types.Multiaddr) {
-	for _, a := range addrs {
-		drmas = append(drmas, types.Multiaddr{Multiaddr: a})
+func addrsToDRAddrs(addrs []multiaddr.Multiaddr) []types.Multiaddr {
+	draddrs := make([]types.Multiaddr, len(addrs))
+	for i, a := range addrs {
+		draddrs[i] = types.Multiaddr{Multiaddr: a}
 	}
-	return
+	return draddrs
 }
 
 func makePeerRecord(protocols []string) types.PeerRecord {
@@ -408,6 +409,94 @@ func TestClient_FindProviders(t *testing.T) {
 			assert.Equal(t, c.expResult, results)
 		})
 	}
+}
+
+// TestClient_FindProvidersWithGenericRecord verifies that a client correctly
+// receives and deserializes GenericRecord from a FindProviders response.
+// This is an end-to-end test through the real server handler and HTTP client.
+func TestClient_FindProvidersWithGenericRecord(t *testing.T) {
+	peerRecord := makePeerRecord([]string{"transport-bitswap"})
+	genericRecord := types.GenericRecord{
+		Schema:    types.SchemaGeneric,
+		ID:        "did:key:z6Mkm1example",
+		Protocols: []string{"transport-ipfs-gateway-http"},
+		Addrs: types.Addresses{
+			mustAddr(t, "https://trustless-gateway.example.com"),
+			mustAddr(t, "/ip4/1.2.3.4/tcp/5000"),
+		},
+	}
+
+	routerResults := []iter.Result[types.Record]{
+		{Val: &peerRecord},
+		{Val: &genericRecord},
+	}
+
+	t.Run("streaming NDJSON response", func(t *testing.T) {
+		deps := makeTestDeps(t, []Option{WithProtocolFilter([]string{})}, nil)
+		client := deps.client
+		router := deps.router
+
+		cid := makeCID()
+		router.On("FindProviders", mock.Anything, cid, 0).
+			Return(iter.FromSlice(routerResults), nil)
+
+		resultIter, err := client.FindProviders(context.Background(), cid)
+		require.NoError(t, err)
+
+		results := iter.ReadAll[iter.Result[types.Record]](resultIter)
+		require.Len(t, results, 2)
+
+		// First result: PeerRecord
+		require.NoError(t, results[0].Err)
+		_, ok := results[0].Val.(*types.PeerRecord)
+		require.True(t, ok, "first result should be PeerRecord")
+
+		// Second result: GenericRecord
+		require.NoError(t, results[1].Err)
+		gr, ok := results[1].Val.(*types.GenericRecord)
+		require.True(t, ok, "second result should be GenericRecord")
+		assert.Equal(t, types.SchemaGeneric, gr.Schema)
+		assert.Equal(t, "did:key:z6Mkm1example", gr.ID)
+		assert.Equal(t, []string{"transport-ipfs-gateway-http"}, gr.Protocols)
+		require.Len(t, gr.Addrs, 2)
+		assert.Equal(t, "https://trustless-gateway.example.com", gr.Addrs[0].String())
+		assert.Equal(t, "/ip4/1.2.3.4/tcp/5000", gr.Addrs[1].String())
+	})
+
+	t.Run("non-streaming JSON response", func(t *testing.T) {
+		deps := makeTestDeps(t,
+			[]Option{WithProtocolFilter([]string{})},
+			[]server.Option{server.WithStreamingResultsDisabled()},
+		)
+		client := deps.client
+		router := deps.router
+
+		cid := makeCID()
+		router.On("FindProviders", mock.Anything, cid, 20).
+			Return(iter.FromSlice(routerResults), nil)
+
+		resultIter, err := client.FindProviders(context.Background(), cid)
+		require.NoError(t, err)
+
+		results := iter.ReadAll[iter.Result[types.Record]](resultIter)
+		require.Len(t, results, 2)
+
+		// Verify GenericRecord survived the JSON (non-streaming) path
+		require.NoError(t, results[1].Err)
+		gr, ok := results[1].Val.(*types.GenericRecord)
+		require.True(t, ok, "second result should be GenericRecord")
+		assert.Equal(t, "did:key:z6Mkm1example", gr.ID)
+		require.Len(t, gr.Addrs, 2)
+		assert.True(t, gr.Addrs[0].IsURL())
+		assert.True(t, gr.Addrs[1].IsMultiaddr())
+	})
+}
+
+func mustAddr(t *testing.T, s string) types.Address {
+	t.Helper()
+	a, err := types.NewAddress(s)
+	require.NoError(t, err)
+	return a
 }
 
 func TestClient_Provide(t *testing.T) {
