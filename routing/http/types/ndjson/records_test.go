@@ -146,6 +146,7 @@ func TestNewRecordsIter_MixedSchemaStream(t *testing.T) {
 	}
 	//nolint:staticcheck
 	bitswapRec := map[string]any{
+		//lint:ignore SA1019 // ignore staticcheck
 		"Schema":   types.SchemaBitswap,
 		"ID":       "12D3KooWM8sovaEGU1bmiWGWAzvs47DEcXKZZTuJnpQyVTkRs2Vn",
 		"Protocol": "transport-bitswap",

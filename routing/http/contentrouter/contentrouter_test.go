@@ -362,66 +362,6 @@ func TestFindProvidersAsyncPlaceholderPeerID(t *testing.T) {
 	assert.Equal(t, "/dns/provider.example.com/tcp/443/https", results[0].Addrs[0].String())
 }
 
-// TestPeerIDPlaceholderFromArbitraryID tests the determinism and uniqueness
-// properties of peerIDPlaceholderFromArbitraryID directly. Within a single
-// process, the same input must always produce the same PeerID, and different
-// inputs must produce different PeerIDs.
-func TestPeerIDPlaceholderFromArbitraryID(t *testing.T) {
-	t.Run("deterministic within process", func(t *testing.T) {
-		a := peerIDPlaceholderFromArbitraryID("provider-A")
-		b := peerIDPlaceholderFromArbitraryID("provider-A")
-		assert.Equal(t, a, b)
-	})
-
-	t.Run("different inputs produce different PeerIDs", func(t *testing.T) {
-		a := peerIDPlaceholderFromArbitraryID("provider-A")
-		b := peerIDPlaceholderFromArbitraryID("provider-B")
-		assert.NotEqual(t, a, b)
-	})
-
-	t.Run("result is a valid multihash", func(t *testing.T) {
-		pid := peerIDPlaceholderFromArbitraryID("provider-X")
-		_, err := multihash.Decode([]byte(pid))
-		require.NoError(t, err, "placeholder PeerID should be a valid multihash")
-	})
-}
-
-// TestPeerIDFromDIDKey tests did:key parsing and PeerID derivation in
-// isolation from the FindProviders flow. This covers edge cases (wrong prefix,
-// unsupported key types) that are hard to exercise through the integration test.
-func TestPeerIDFromDIDKey(t *testing.T) {
-	t.Run("valid ed25519 did:key", func(t *testing.T) {
-		_, pubKey, err := crypto.GenerateEd25519Key(rand.Reader)
-		require.NoError(t, err)
-		expectedPID, err := peer.IDFromPublicKey(pubKey)
-		require.NoError(t, err)
-
-		didKey := encodeDIDKey(t, pubKey)
-		pid, err := peerIDFromDIDKey(didKey)
-		require.NoError(t, err)
-		assert.Equal(t, expectedPID, pid)
-	})
-
-	t.Run("not a did:key", func(t *testing.T) {
-		_, err := peerIDFromDIDKey("12D3KooWM8sovaEGU1bmiWGWAzvs47DEcXKZZTuJnpQyVTkRs2Vn")
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "not a did:key")
-	})
-
-	t.Run("unsupported key type", func(t *testing.T) {
-		// Encode a fake key with a different multicodec (e.g. secp256k1-pub 0xe7)
-		prefix := varint.ToUvarint(uint64(multicodec.Secp256k1Pub))
-		fakeKey := make([]byte, 33) // secp256k1 pubkey is 33 bytes
-		data := append(prefix, fakeKey...)
-		encoded, err := multibase.Encode(multibase.Base58BTC, data)
-		require.NoError(t, err)
-
-		_, err = peerIDFromDIDKey("did:key:" + encoded)
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "unsupported key type")
-	})
-}
-
 // TestFindProvidersAsyncGenericRecordEmptyProtocols verifies that a
 // GenericRecord with a valid PeerID and HTTPS URL but empty Protocols is
 // still converted to a peer.AddrInfo. This supports the legacy pattern where

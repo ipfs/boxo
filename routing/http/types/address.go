@@ -244,6 +244,13 @@ func (a *Address) ToMultiaddr() multiaddr.Multiaddr {
 	// Build multiaddr string using scheme directly (http or https)
 	maStr := fmt.Sprintf("/%s/%s/tcp/%s/%s", addrProto, host, port, scheme)
 
+	// Preserve URL path as http-path component.
+	// Leading "/" is stripped per examples in the http-path spec:
+	// https://github.com/multiformats/multiaddr/blob/master/protocols/http-path.md
+	if p := strings.TrimPrefix(a.url.Path, "/"); p != "" {
+		maStr += "/http-path/" + url.PathEscape(p)
+	}
+
 	// Create and return multiaddr
 	ma, err := multiaddr.NewMultiaddr(maStr)
 	if err != nil {

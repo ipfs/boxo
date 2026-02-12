@@ -371,14 +371,14 @@ func TestAddressToMultiaddr(t *testing.T) {
 			expected: "/ip6/::1/tcp/8443/https",
 		},
 		{
-			name:     "http URL with path - path portion ignored",
+			name:     "http URL with path preserved",
 			input:    "http://example.com/path/to/resource",
-			expected: "/dns/example.com/tcp/80/http",
+			expected: "/dns/example.com/tcp/80/http/http-path/path%2Fto%2Fresource",
 		},
 		{
-			name:     "https URL with query - path and query portions ignored",
+			name:     "https URL with query - path preserved, query dropped",
 			input:    "https://example.com:8443/path?query=value",
-			expected: "/dns/example.com/tcp/8443/https",
+			expected: "/dns/example.com/tcp/8443/https/http-path/path",
 		},
 		{
 			name:     "non-HTTP scheme not converted",

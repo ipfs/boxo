@@ -51,6 +51,7 @@ require (
 	github.com/multiformats/go-multicodec v0.10.0
 	github.com/multiformats/go-multihash v0.2.3
 	github.com/multiformats/go-multistream v0.6.1
+	github.com/multiformats/go-varint v0.1.0
 	github.com/polydawn/refmt v0.89.0
 	github.com/prometheus/client_golang v1.23.2
 	github.com/prometheus/client_model v0.6.2
@@ -115,7 +116,6 @@ require (
 	github.com/minio/sha256-simd v1.0.1 // indirect
 	github.com/multiformats/go-base36 v0.2.0 // indirect
 	github.com/multiformats/go-multiaddr-fmt v0.1.0 // indirect
-	github.com/multiformats/go-varint v0.1.0 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/pbnjay/memory v0.0.0-20210728143218-7b4eea64cf58 // indirect
 	github.com/petar/GoLLRB v0.0.0-20210522233825-ae3b015fd3e9 // indirect
