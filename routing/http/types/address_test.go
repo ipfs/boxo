@@ -21,64 +21,48 @@ func TestNewAddress(t *testing.T) {
 		{
 			name:        "valid multiaddr",
 			input:       "/ip4/127.0.0.1/tcp/4001",
-			wantErr:     false,
-			isURL:       false,
 			isMultiaddr: true,
 			protocols:   []string{"ip4", "tcp"},
 		},
 		{
-			name:        "valid https URL",
-			input:       "https://example.com",
-			wantErr:     false,
-			isURL:       true,
-			isMultiaddr: false,
-			protocols:   []string{"https"},
+			name:      "valid https URL",
+			input:     "https://example.com",
+			isURL:     true,
+			protocols: []string{"https"},
 		},
 		{
-			name:        "valid http URL",
-			input:       "http://example.com:8080",
-			wantErr:     false,
-			isURL:       true,
-			isMultiaddr: false,
-			protocols:   []string{"http"},
+			name:      "valid http URL",
+			input:     "http://example.com:8080",
+			isURL:     true,
+			protocols: []string{"http"},
 		},
 		{
-			name:        "valid http URL with path",
-			input:       "http://example.com:8080/path",
-			wantErr:     false,
-			isURL:       true,
-			isMultiaddr: false,
-			protocols:   []string{"http"},
+			name:      "valid http URL with path",
+			input:     "http://example.com:8080/path",
+			isURL:     true,
+			protocols: []string{"http"},
 		},
 		{
-			name:        "other URI scheme foo",
-			input:       "foo://example.com/path",
-			wantErr:     false,
-			isURL:       true,
-			isMultiaddr: false,
-			protocols:   []string{"foo"},
+			name:      "other URI scheme foo",
+			input:     "foo://example.com/path",
+			isURL:     true,
+			protocols: []string{"foo"},
 		},
 		{
-			name:        "other URI scheme bar",
-			input:       "bar://something",
-			wantErr:     false,
-			isURL:       true,
-			isMultiaddr: false,
-			protocols:   []string{"bar"},
+			name:      "other URI scheme bar",
+			input:     "bar://something",
+			isURL:     true,
+			protocols: []string{"bar"},
 		},
 		{
-			name:        "relative URL",
-			input:       "example.com",
-			wantErr:     true,
-			isURL:       false,
-			isMultiaddr: false,
+			name:    "relative URL",
+			input:   "example.com",
+			wantErr: true,
 		},
 		{
-			name:        "invalid multiaddr",
-			input:       "/invalid",
-			wantErr:     true,
-			isURL:       false,
-			isMultiaddr: false,
+			name:    "invalid multiaddr",
+			input:   "/invalid",
+			wantErr: true,
 		},
 	}
 
@@ -156,12 +140,6 @@ func TestAddressHasProtocol(t *testing.T) {
 			expected: true,
 		},
 		{
-			name:     "https URL matches tls",
-			address:  "https://example.com",
-			protocol: "tls",
-			expected: true,
-		},
-		{
 			name:     "http URL matches http",
 			address:  "http://example.com",
 			protocol: "http",
@@ -171,12 +149,6 @@ func TestAddressHasProtocol(t *testing.T) {
 			name:     "http URL doesn't match https",
 			address:  "http://example.com",
 			protocol: "https",
-			expected: false,
-		},
-		{
-			name:     "http URL doesn't match tls",
-			address:  "http://example.com",
-			protocol: "tls",
 			expected: false,
 		},
 	}
@@ -215,7 +187,7 @@ func TestAddressJSON(t *testing.T) {
 			require.NoError(t, err)
 
 			// Marshal to JSON
-			data, err := json.Marshal(addr)
+			data, err := json.Marshal(&addr)
 			require.NoError(t, err)
 
 			// Should be a JSON string
@@ -291,18 +263,16 @@ func TestNewAddressFromMultiaddr(t *testing.T) {
 	assert.Nil(t, addr.URL())
 }
 
-func TestPeerRecordWithMixedAddresses(t *testing.T) {
-	// Test that PeerRecord can handle mixed addresses
+func TestPeerRecordMultiaddrsOnly(t *testing.T) {
+	// PeerRecord Addrs field is []Multiaddr (multiaddrs only, no URLs)
 	jsonData := `{
 		"Schema": "peer",
 		"ID": "12D3KooWM8sovaEGU1bmiWGWAzvs47DEcXKZZTuJnpQyVTkRs2Vn",
 		"Addrs": [
 			"/ip4/192.168.1.1/tcp/4001",
-			"https://trustless-gateway.example.com",
-			"http://example.org:8080",
 			"/dns4/libp2p.example.com/tcp/443/wss"
 		],
-		"Protocols": ["transport-bitswap", "transport-ipfs-gateway-http"]
+		"Protocols": ["transport-bitswap"]
 	}`
 
 	var pr PeerRecord
@@ -310,26 +280,43 @@ func TestPeerRecordWithMixedAddresses(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, "peer", pr.Schema)
-	assert.Len(t, pr.Addrs, 4)
-
-	// Check each address
-	assert.True(t, pr.Addrs[0].IsMultiaddr())
-	assert.True(t, pr.Addrs[1].IsURL())
-	assert.True(t, pr.Addrs[2].IsURL())
-	assert.True(t, pr.Addrs[3].IsMultiaddr())
+	assert.Len(t, pr.Addrs, 2)
+	assert.Equal(t, "/ip4/192.168.1.1/tcp/4001", pr.Addrs[0].String())
+	assert.Equal(t, "/dns4/libp2p.example.com/tcp/443/wss", pr.Addrs[1].String())
 
 	// Marshal back
 	data, err := json.Marshal(pr)
 	require.NoError(t, err)
 
-	// Check it's valid JSON
 	var check map[string]interface{}
 	err = json.Unmarshal(data, &check)
 	require.NoError(t, err)
 
 	addrs, ok := check["Addrs"].([]interface{})
 	require.True(t, ok)
-	assert.Len(t, addrs, 4)
+	assert.Len(t, addrs, 2)
+}
+
+func TestPeerRecordURLsInAddrs(t *testing.T) {
+	// PeerRecord.Addrs is []Multiaddr. The Multiaddr UnmarshalJSON returns
+	// an error for non-multiaddr strings, so a PeerRecord with a URL in
+	// Addrs fails to deserialize entirely. This documents why URLs belong
+	// in GenericRecord (which uses Addresses), not PeerRecord.
+	jsonData := `{
+		"Schema": "peer",
+		"ID": "12D3KooWM8sovaEGU1bmiWGWAzvs47DEcXKZZTuJnpQyVTkRs2Vn",
+		"Addrs": [
+			"/ip4/192.168.1.1/tcp/4001",
+			"https://example.com",
+			"/dns4/libp2p.example.com/tcp/443/wss"
+		],
+		"Protocols": ["transport-bitswap"]
+	}`
+
+	var pr PeerRecord
+	err := json.Unmarshal([]byte(jsonData), &pr)
+	require.Error(t, err, "PeerRecord should fail to unmarshal when Addrs contains a URL")
+	assert.Contains(t, err.Error(), "must begin with /")
 }
 
 func TestAddressToMultiaddr(t *testing.T) {
@@ -377,6 +364,11 @@ func TestAddressToMultiaddr(t *testing.T) {
 			name:     "https URL with IPv6",
 			input:    "https://[::1]",
 			expected: "/ip6/::1/tcp/443/https",
+		},
+		{
+			name:     "https URL with IPv6 and custom port",
+			input:    "https://[::1]:8443",
+			expected: "/ip6/::1/tcp/8443/https",
 		},
 		{
 			name:     "http URL with path - path portion ignored",

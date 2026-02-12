@@ -414,17 +414,9 @@ func (s *server) provide(w http.ResponseWriter, httpReq *http.Request) {
 			for i, k := range v.Payload.Keys {
 				keys[i] = k.Cid
 			}
-			// Convert addresses to multiaddrs for ProvideBitswap
-			// TODO: Similar to contentrouter, we may need to handle URLs specially here
-			addrs := make([]multiaddr.Multiaddr, 0, len(v.Payload.Addrs))
-			for _, a := range v.Payload.Addrs {
-				if a.IsMultiaddr() {
-					addrs = append(addrs, a.Multiaddr())
-				}
-				// TODO: if URL is https:// or http://, special-case it and convert
-				// to multiaddr (e.g., /dns4/example.com/tcp/443/tls/http) to ensure
-				// smooth transition during the period when existing software expects
-				// /ip.../http multiaddrs as a way of signaling HTTP retrieval is supported
+			addrs := make([]multiaddr.Multiaddr, len(v.Payload.Addrs))
+			for i, a := range v.Payload.Addrs {
+				addrs[i] = a.Multiaddr
 			}
 			advisoryTTL, err := s.svc.ProvideBitswap(httpReq.Context(), &BitswapWriteProvideRequest{
 				Keys:        keys,

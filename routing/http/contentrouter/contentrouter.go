@@ -2,7 +2,11 @@ package contentrouter
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
+	"fmt"
 	"reflect"
+	"slices"
 	"strings"
 	"time"
 
@@ -13,13 +17,36 @@ import (
 	"github.com/ipfs/go-cid"
 	logging "github.com/ipfs/go-log/v2"
 	routinghelpers "github.com/libp2p/go-libp2p-routing-helpers"
+	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/routing"
 	"github.com/multiformats/go-multiaddr"
+	"github.com/multiformats/go-multibase"
+	"github.com/multiformats/go-multicodec"
 	"github.com/multiformats/go-multihash"
+	"github.com/multiformats/go-varint"
 )
 
 var logger = logging.Logger("routing/http/contentrouter")
+
+// filterAddrs extracts multiaddrs from types.Multiaddr slice, filtering out nil
+// entries as a defensive measure against corrupted data.
+// See: https://github.com/ipfs/kubo/issues/11116
+func filterAddrs(in []types.Multiaddr) []multiaddr.Multiaddr {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]multiaddr.Multiaddr, 0, len(in))
+	for _, a := range in {
+		if a.Multiaddr != nil {
+			out = append(out, a.Multiaddr)
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
 
 const ttl = 24 * time.Hour
 
@@ -113,8 +140,95 @@ func (c *contentRouter) Ready() bool {
 	return true
 }
 
-// readProviderResponses reads peer records (and bitswap records for legacy
-// compatibility) from the iterator into the given channel.
+// peerIDFromDIDKey attempts to derive a libp2p PeerID from a did:key: identifier.
+// Currently supports ed25519 public keys (multicodec 0xed).
+func peerIDFromDIDKey(id string) (peer.ID, error) {
+	if !strings.HasPrefix(id, "did:key:") {
+		return "", fmt.Errorf("not a did:key identifier")
+	}
+	encoded := strings.TrimPrefix(id, "did:key:")
+
+	// Decode the multibase-encoded part (z prefix = base58btc)
+	_, data, err := multibase.Decode(encoded)
+	if err != nil {
+		return "", fmt.Errorf("multibase decode: %w", err)
+	}
+
+	// Read the multicodec varint
+	codec, n, err := varint.FromUvarint(data)
+	if err != nil {
+		return "", fmt.Errorf("varint decode: %w", err)
+	}
+
+	// Only handle ed25519-pub (0xed) for now
+	if multicodec.Code(codec) != multicodec.Ed25519Pub {
+		return "", fmt.Errorf("unsupported key type: 0x%x", codec)
+	}
+
+	keyBytes := data[n:]
+	pubKey, err := crypto.UnmarshalEd25519PublicKey(keyBytes)
+	if err != nil {
+		return "", fmt.Errorf("unmarshal ed25519: %w", err)
+	}
+
+	return peer.IDFromPublicKey(pubKey)
+}
+
+// peerIDPlaceholderNonce is a random value generated once per process,
+// mixed into placeholder PeerID hashes to ensure different processes
+// produce different placeholders for the same provider ID.
+// TODO: make this configurable or find a better way to ensure uniqueness
+// across processes while keeping determinism within one process.
+var peerIDPlaceholderNonce = func() string {
+	var buf [16]byte
+	_, _ = rand.Read(buf[:])
+	return hex.EncodeToString(buf[:])
+}()
+
+// peerIDPlaceholderFromArbitraryID generates a placeholder PeerID by hashing
+// the given identifier with a per-process nonce and domain-specific salt.
+//
+// The resulting PeerID is deterministic within a single process (same input
+// always produces the same PeerID) but differs across processes. This is a
+// compatibility stub for providers that use identifiers which are not
+// parseable as PeerIDs or did:key: values. The resulting PeerID is only
+// used to pass addresses through legacy libp2p routing APIs (like Kubo and
+// Rainbow) that require a PeerID. It does not represent a real libp2p
+// identity: no valid private key exists for this PeerID because it is a
+// SHA-256 multihash of arbitrary data, not a key-derived identity.
+func peerIDPlaceholderFromArbitraryID(id string) peer.ID {
+	mh, _ := multihash.Sum([]byte("contentrouter/peerIDPlaceholder:"+peerIDPlaceholderNonce+":"+id), multihash.SHA2_256, -1)
+	return peer.ID(mh)
+}
+
+// hasHTTPURL returns true if any address is an http:// or https:// URL.
+func hasHTTPURL(addrs types.Addresses) bool {
+	for i := range addrs {
+		if u := addrs[i].URL(); u != nil {
+			s := strings.ToLower(u.Scheme)
+			if s == "http" || s == "https" {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// readProviderResponses reads provider records from the iterator into the given
+// channel. PeerRecord and BitswapRecord are converted directly. GenericRecord
+// is converted on a best-effort basis:
+//   - If the ID is a valid libp2p PeerID, the record is always converted
+//     regardless of Protocols. This supports the legacy pattern where a
+//     PeerID + /https multiaddr was used as a hint to probe for a Trustless
+//     IPFS HTTP Gateway (even without explicit protocol declaration).
+//   - If the ID is not a PeerID but the record advertises
+//     transport-ipfs-gateway-http with HTTP(S) URLs, a PeerID is derived
+//     from did:key: or generated as a placeholder.
+//   - Other records with non-PeerID identifiers are skipped.
+//
+// Addresses are converted via [types.Address.ToMultiaddr]; HTTPS URLs
+// become /dns/host/tcp/443/https multiaddrs. Non-convertible addresses
+// are dropped.
 func readProviderResponses(ctx context.Context, iter iter.ResultIter[types.Record], ch chan<- peer.AddrInfo) {
 	defer close(ch)
 	defer iter.Close()
@@ -137,20 +251,65 @@ func readProviderResponses(ctx context.Context, iter iter.ResultIter[types.Recor
 				continue
 			}
 
+			select {
+			case <-ctx.Done():
+				return
+			case ch <- peer.AddrInfo{
+				ID:    *result.ID,
+				Addrs: filterAddrs(result.Addrs),
+			}:
+			}
+
+		case types.SchemaGeneric:
+			result, ok := v.(*types.GenericRecord)
+			if !ok {
+				logger.Errorw(
+					"problem casting find providers result",
+					"Schema", v.GetSchema(),
+					"Type", reflect.TypeOf(v).String(),
+				)
+				continue
+			}
+
+			pid, err := peer.Decode(result.ID)
+			if err != nil {
+				// For HTTP gateway providers, try harder to derive a PeerID.
+				// Kubo and Rainbow need a PeerID to pass multiaddr addresses
+				// over legacy routing APIs even when the provider uses
+				// non-PeerID identifiers like did:key:.
+				if slices.Contains(result.Protocols, "transport-ipfs-gateway-http") && hasHTTPURL(result.Addrs) {
+					pid, err = peerIDFromDIDKey(result.ID)
+					if err != nil {
+						pid = peerIDPlaceholderFromArbitraryID(result.ID)
+					}
+				} else {
+					// Records with non-PeerID identifiers and no recognized
+					// protocol are skipped: without a protocol hint we cannot
+					// determine how to use the addresses in legacy routing APIs.
+					logger.Debugw("skipping generic record with non-PeerID identifier", "ID", result.ID)
+					continue
+				}
+			}
+
+			// Convert addresses to multiaddrs. URLs are converted via
+			// ToMultiaddr (e.g. https://host -> /dns/host/tcp/443/https).
+			// Addresses that cannot be converted are dropped.
 			var addrs []multiaddr.Multiaddr
-			for _, a := range result.Addrs {
-				// Try to convert to multiaddr for backward compatibility
-				if ma := a.ToMultiaddr(); ma != nil {
+			for i := range result.Addrs {
+				if ma := result.Addrs[i].ToMultiaddr(); ma != nil {
 					addrs = append(addrs, ma)
 				}
-				// Note: Non-HTTP URLs are skipped as they can't be represented as multiaddrs
+			}
+			if len(addrs) == 0 {
+				logger.Debugw("skipping generic record with no convertible addresses", "ID", result.ID)
+				continue
 			}
 
 			select {
 			case <-ctx.Done():
 				return
 			case ch <- peer.AddrInfo{
-				ID:    *result.ID,
+				ID:    pid,
 				Addrs: addrs,
 			}:
 			}
@@ -169,21 +328,12 @@ func readProviderResponses(ctx context.Context, iter iter.ResultIter[types.Recor
 				continue
 			}
 
-			var addrs []multiaddr.Multiaddr
-			for _, a := range result.Addrs {
-				// Try to convert to multiaddr for backward compatibility
-				if ma := a.ToMultiaddr(); ma != nil {
-					addrs = append(addrs, ma)
-				}
-				// Note: Non-HTTP URLs are skipped as they can't be represented as multiaddrs
-			}
-
 			select {
 			case <-ctx.Done():
 				return
 			case ch <- peer.AddrInfo{
 				ID:    *result.ID,
-				Addrs: addrs,
+				Addrs: filterAddrs(result.Addrs),
 			}:
 			}
 		}
@@ -222,15 +372,7 @@ func (c *contentRouter) FindPeer(ctx context.Context, pid peer.ID) (peer.AddrInf
 			continue
 		}
 
-		var addrs []multiaddr.Multiaddr
-		for _, a := range res.Val.Addrs {
-			// Try to convert to multiaddr for backward compatibility
-			if ma := a.ToMultiaddr(); ma != nil {
-				addrs = append(addrs, ma)
-			}
-			// Note: Non-HTTP URLs are skipped as they can't be represented as multiaddrs
-		}
-
+		addrs := filterAddrs(res.Val.Addrs)
 		// If there are no addresses there's nothing of value to return
 		if len(addrs) == 0 {
 			continue

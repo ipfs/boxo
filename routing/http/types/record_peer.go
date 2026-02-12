@@ -9,12 +9,12 @@ import (
 
 const SchemaPeer = "peer"
 
-var _ Record = &PeerRecord{}
+var _ Record = (*PeerRecord)(nil)
 
 type PeerRecord struct {
 	Schema    string
 	ID        *peer.ID
-	Addrs     Addresses
+	Addrs     []Multiaddr
 	Protocols []string
 
 	// Extra contains extra fields that were included in the original JSON raw
@@ -31,7 +31,7 @@ func (pr *PeerRecord) UnmarshalJSON(b []byte) error {
 	v := struct {
 		Schema    string
 		ID        *peer.ID
-		Addrs     Addresses
+		Addrs     []Multiaddr
 		Protocols []string
 	}{}
 	err := json.Unmarshal(b, &v)
@@ -58,7 +58,7 @@ func (pr *PeerRecord) UnmarshalJSON(b []byte) error {
 }
 
 func (pr PeerRecord) MarshalJSON() ([]byte, error) {
-	m := map[string]interface{}{}
+	m := map[string]any{}
 	if pr.Extra != nil {
 		for key, val := range pr.Extra {
 			m[key] = val

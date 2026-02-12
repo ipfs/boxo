@@ -15,7 +15,10 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/routing"
 	"github.com/multiformats/go-multiaddr"
+	"github.com/multiformats/go-multibase"
+	"github.com/multiformats/go-multicodec"
 	"github.com/multiformats/go-multihash"
+	"github.com/multiformats/go-varint"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -106,6 +109,36 @@ func TestProvideMany(t *testing.T) {
 	require.NoError(t, err)
 }
 
+// mustAddr is a test helper that creates a types.Address or fails the test.
+func mustAddr(t *testing.T, s string) types.Address {
+	t.Helper()
+	a, err := types.NewAddress(s)
+	require.NoError(t, err)
+	return a
+}
+
+// collectProviders drains a FindProvidersAsync channel into a slice.
+func collectProviders(ch <-chan peer.AddrInfo) []peer.AddrInfo {
+	var out []peer.AddrInfo
+	for ai := range ch {
+		out = append(out, ai)
+	}
+	return out
+}
+
+// findProvidersWithRecords is a test helper that sets up a mock client with the
+// given records and returns the peer.AddrInfo results from FindProvidersAsync.
+func findProvidersWithRecords(t *testing.T, records []types.Record) []peer.AddrInfo {
+	t.Helper()
+	key := makeCID()
+	ctx := context.Background()
+	client := &mockClient{}
+	crc := NewContentRoutingClient(client)
+	aisIter := iter.ToResultIter[types.Record](iter.FromSlice(records))
+	client.On("FindProviders", ctx, key).Return(aisIter, nil)
+	return collectProviders(crc.FindProvidersAsync(ctx, key, len(records)))
+}
+
 func makeCID() cid.Cid {
 	buf := make([]byte, 63)
 	_, err := rand.Read(buf)
@@ -179,6 +212,256 @@ func TestFindProvidersAsync(t *testing.T) {
 	require.Equal(t, expected, actualAIs)
 }
 
+// TestFindProvidersAsyncConvertsGenericRecords verifies that GenericRecord
+// entries with a valid PeerID and convertible addresses are converted to
+// peer.AddrInfo. HTTPS URLs become /dns/host/tcp/443/https multiaddrs.
+func TestFindProvidersAsyncConvertsGenericRecords(t *testing.T) {
+	p1 := peer.ID("peer1")
+	gatewayPID, err := peer.Decode("12D3KooWM8sovaEGU1bmiWGWAzvs47DEcXKZZTuJnpQyVTkRs2Vn")
+	require.NoError(t, err)
+	p2 := peer.ID("peer2")
+
+	results := findProvidersWithRecords(t, []types.Record{
+		&types.PeerRecord{
+			Schema:    types.SchemaPeer,
+			ID:        &p1,
+			Protocols: []string{"transport-bitswap"},
+		},
+		&types.GenericRecord{
+			Schema:    types.SchemaGeneric,
+			ID:        "12D3KooWM8sovaEGU1bmiWGWAzvs47DEcXKZZTuJnpQyVTkRs2Vn",
+			Protocols: []string{"transport-ipfs-gateway-http"},
+			Addrs: types.Addresses{
+				mustAddr(t, "https://trustless-gateway.example.com"),
+				mustAddr(t, "/ip4/1.2.3.4/tcp/5000"),
+			},
+		},
+		&types.PeerRecord{
+			Schema:    types.SchemaPeer,
+			ID:        &p2,
+			Protocols: []string{"transport-bitswap"},
+		},
+	})
+
+	require.Len(t, results, 3)
+	assert.Equal(t, p1, results[0].ID)
+
+	// GenericRecord converted: PeerID decoded, HTTPS URL becomes multiaddr
+	assert.Equal(t, gatewayPID, results[1].ID)
+	require.Len(t, results[1].Addrs, 2)
+	assert.Equal(t, "/dns/trustless-gateway.example.com/tcp/443/https", results[1].Addrs[0].String())
+	assert.Equal(t, "/ip4/1.2.3.4/tcp/5000", results[1].Addrs[1].String())
+
+	assert.Equal(t, p2, results[2].ID)
+}
+
+// TestFindProvidersAsyncSkipsNonConvertibleGenericRecords verifies that
+// GenericRecord entries are skipped when they cannot produce a usable
+// peer.AddrInfo. The PeerID heuristic only applies to records with
+// transport-ipfs-gateway-http + HTTP(S) URL, so all other combinations
+// with non-PeerID identifiers or no convertible addresses are dropped.
+func TestFindProvidersAsyncSkipsNonConvertibleGenericRecords(t *testing.T) {
+	p1 := peer.ID("peer1")
+
+	results := findProvidersWithRecords(t, []types.Record{
+		&types.PeerRecord{
+			Schema:    types.SchemaPeer,
+			ID:        &p1,
+			Protocols: []string{"transport-bitswap"},
+		},
+		// non-PeerID + non-HTTP-gateway protocol: no heuristic applies, skipped
+		&types.GenericRecord{
+			Schema:    types.SchemaGeneric,
+			ID:        "did:key:z6Mkm1example",
+			Protocols: []string{"transport-foo"},
+			Addrs:     types.Addresses{mustAddr(t, "https://gateway.example.com")},
+		},
+		// valid PeerID but only non-convertible addresses: skipped
+		&types.GenericRecord{
+			Schema:    types.SchemaGeneric,
+			ID:        "12D3KooWM8sovaEGU1bmiWGWAzvs47DEcXKZZTuJnpQyVTkRs2Vn",
+			Protocols: []string{"transport-foo"},
+			Addrs:     types.Addresses{mustAddr(t, "foo://custom.example.com")},
+		},
+		// valid PeerID but empty address list: skipped
+		&types.GenericRecord{
+			Schema:    types.SchemaGeneric,
+			ID:        "12D3KooWM8sovaEGU1bmiWGWAzvs47DEcXKZZTuJnpQyVTkRs2Vn",
+			Protocols: []string{"transport-ipfs-gateway-http"},
+		},
+	})
+
+	// Only the PeerRecord should come through; all GenericRecords are skipped
+	require.Len(t, results, 1)
+	assert.Equal(t, p1, results[0].ID)
+}
+
+// encodeDIDKey encodes an ed25519 public key as a did:key: identifier.
+func encodeDIDKey(t *testing.T, pubKey crypto.PubKey) string {
+	t.Helper()
+	raw, err := pubKey.Raw()
+	require.NoError(t, err)
+
+	// multicodec prefix for ed25519-pub (0xed) as varint + raw key bytes
+	prefix := varint.ToUvarint(uint64(multicodec.Ed25519Pub))
+	data := append(prefix, raw...)
+
+	encoded, err := multibase.Encode(multibase.Base58BTC, data)
+	require.NoError(t, err)
+	return "did:key:" + encoded
+}
+
+// TestFindProvidersAsyncDIDKeyConversion verifies the end-to-end path for
+// HTTP gateway providers that use did:key: ed25519 identifiers instead of
+// PeerIDs. The contentrouter should extract the ed25519 public key from the
+// did:key, derive the corresponding PeerID, and return it in the AddrInfo
+// so that Kubo/Rainbow can route to the provider over legacy APIs.
+func TestFindProvidersAsyncDIDKeyConversion(t *testing.T) {
+	_, pubKey, err := crypto.GenerateEd25519Key(rand.Reader)
+	require.NoError(t, err)
+	expectedPID, err := peer.IDFromPublicKey(pubKey)
+	require.NoError(t, err)
+
+	results := findProvidersWithRecords(t, []types.Record{
+		&types.GenericRecord{
+			Schema:    types.SchemaGeneric,
+			ID:        encodeDIDKey(t, pubKey),
+			Protocols: []string{"transport-ipfs-gateway-http"},
+			Addrs:     types.Addresses{mustAddr(t, "https://gateway.example.com")},
+		},
+	})
+
+	require.Len(t, results, 1)
+	assert.Equal(t, expectedPID, results[0].ID)
+	require.Len(t, results[0].Addrs, 1)
+	assert.Equal(t, "/dns/gateway.example.com/tcp/443/https", results[0].Addrs[0].String())
+}
+
+// TestFindProvidersAsyncPlaceholderPeerID verifies the end-to-end fallback
+// path: when a GenericRecord has transport-ipfs-gateway-http + HTTPS URL but
+// its ID is neither a PeerID nor a did:key, the contentrouter generates a
+// placeholder PeerID so the record is not dropped by legacy routing APIs.
+func TestFindProvidersAsyncPlaceholderPeerID(t *testing.T) {
+	results := findProvidersWithRecords(t, []types.Record{
+		&types.GenericRecord{
+			Schema:    types.SchemaGeneric,
+			ID:        "custom-provider-123",
+			Protocols: []string{"transport-ipfs-gateway-http"},
+			Addrs:     types.Addresses{mustAddr(t, "https://provider.example.com")},
+		},
+	})
+
+	require.Len(t, results, 1, "record with placeholder PeerID should not be skipped")
+	assert.NotEmpty(t, results[0].ID)
+	require.Len(t, results[0].Addrs, 1)
+	assert.Equal(t, "/dns/provider.example.com/tcp/443/https", results[0].Addrs[0].String())
+}
+
+// TestPeerIDPlaceholderFromArbitraryID tests the determinism and uniqueness
+// properties of peerIDPlaceholderFromArbitraryID directly. Within a single
+// process, the same input must always produce the same PeerID, and different
+// inputs must produce different PeerIDs.
+func TestPeerIDPlaceholderFromArbitraryID(t *testing.T) {
+	t.Run("deterministic within process", func(t *testing.T) {
+		a := peerIDPlaceholderFromArbitraryID("provider-A")
+		b := peerIDPlaceholderFromArbitraryID("provider-A")
+		assert.Equal(t, a, b)
+	})
+
+	t.Run("different inputs produce different PeerIDs", func(t *testing.T) {
+		a := peerIDPlaceholderFromArbitraryID("provider-A")
+		b := peerIDPlaceholderFromArbitraryID("provider-B")
+		assert.NotEqual(t, a, b)
+	})
+
+	t.Run("result is a valid multihash", func(t *testing.T) {
+		pid := peerIDPlaceholderFromArbitraryID("provider-X")
+		_, err := multihash.Decode([]byte(pid))
+		require.NoError(t, err, "placeholder PeerID should be a valid multihash")
+	})
+}
+
+// TestPeerIDFromDIDKey tests did:key parsing and PeerID derivation in
+// isolation from the FindProviders flow. This covers edge cases (wrong prefix,
+// unsupported key types) that are hard to exercise through the integration test.
+func TestPeerIDFromDIDKey(t *testing.T) {
+	t.Run("valid ed25519 did:key", func(t *testing.T) {
+		_, pubKey, err := crypto.GenerateEd25519Key(rand.Reader)
+		require.NoError(t, err)
+		expectedPID, err := peer.IDFromPublicKey(pubKey)
+		require.NoError(t, err)
+
+		didKey := encodeDIDKey(t, pubKey)
+		pid, err := peerIDFromDIDKey(didKey)
+		require.NoError(t, err)
+		assert.Equal(t, expectedPID, pid)
+	})
+
+	t.Run("not a did:key", func(t *testing.T) {
+		_, err := peerIDFromDIDKey("12D3KooWM8sovaEGU1bmiWGWAzvs47DEcXKZZTuJnpQyVTkRs2Vn")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "not a did:key")
+	})
+
+	t.Run("unsupported key type", func(t *testing.T) {
+		// Encode a fake key with a different multicodec (e.g. secp256k1-pub 0xe7)
+		prefix := varint.ToUvarint(uint64(multicodec.Secp256k1Pub))
+		fakeKey := make([]byte, 33) // secp256k1 pubkey is 33 bytes
+		data := append(prefix, fakeKey...)
+		encoded, err := multibase.Encode(multibase.Base58BTC, data)
+		require.NoError(t, err)
+
+		_, err = peerIDFromDIDKey("did:key:" + encoded)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "unsupported key type")
+	})
+}
+
+// TestFindProvidersAsyncGenericRecordEmptyProtocols verifies that a
+// GenericRecord with a valid PeerID and HTTPS URL but empty Protocols is
+// still converted to a peer.AddrInfo. This supports the legacy pattern where
+// a PeerID + /https multiaddr was used as a hint to probe for a Trustless
+// IPFS HTTP Gateway, even without an explicit protocol declaration.
+func TestFindProvidersAsyncGenericRecordEmptyProtocols(t *testing.T) {
+	gatewayPID, err := peer.Decode("12D3KooWM8sovaEGU1bmiWGWAzvs47DEcXKZZTuJnpQyVTkRs2Vn")
+	require.NoError(t, err)
+
+	results := findProvidersWithRecords(t, []types.Record{
+		&types.GenericRecord{
+			Schema: types.SchemaGeneric,
+			ID:     "12D3KooWM8sovaEGU1bmiWGWAzvs47DEcXKZZTuJnpQyVTkRs2Vn",
+			Addrs:  types.Addresses{mustAddr(t, "https://dag.w3s.link")},
+			// No Protocols field - still works via PeerID + URL conversion
+		},
+	})
+
+	require.Len(t, results, 1)
+	assert.Equal(t, gatewayPID, results[0].ID)
+	require.Len(t, results[0].Addrs, 1)
+	assert.Equal(t, "/dns/dag.w3s.link/tcp/443/https", results[0].Addrs[0].String())
+}
+
+// TestFindProvidersAsyncGenericRecordHTTPURL verifies that plain http:// URLs
+// (not https://) are also converted to multiaddrs with the correct port.
+func TestFindProvidersAsyncGenericRecordHTTPURL(t *testing.T) {
+	gatewayPID, err := peer.Decode("12D3KooWM8sovaEGU1bmiWGWAzvs47DEcXKZZTuJnpQyVTkRs2Vn")
+	require.NoError(t, err)
+
+	results := findProvidersWithRecords(t, []types.Record{
+		&types.GenericRecord{
+			Schema:    types.SchemaGeneric,
+			ID:        "12D3KooWM8sovaEGU1bmiWGWAzvs47DEcXKZZTuJnpQyVTkRs2Vn",
+			Protocols: []string{"transport-ipfs-gateway-http"},
+			Addrs:     types.Addresses{mustAddr(t, "http://gateway.example.com:8080")},
+		},
+	})
+
+	require.Len(t, results, 1)
+	assert.Equal(t, gatewayPID, results[0].ID)
+	require.Len(t, results[0].Addrs, 1)
+	assert.Equal(t, "/dns/gateway.example.com/tcp/8080/http", results[0].Addrs[0].String())
+}
+
 func TestFindPeer(t *testing.T) {
 	ctx := context.Background()
 	client := &mockClient{}
@@ -189,7 +472,7 @@ func TestFindPeer(t *testing.T) {
 		{
 			Schema:    types.SchemaPeer,
 			ID:        &p1,
-			Addrs:     types.Addresses{*types.NewAddressFromMultiaddr(multiaddr.StringCast("/ip4/1.2.3.4/tcp/1234"))},
+			Addrs:     []types.Multiaddr{{Multiaddr: multiaddr.StringCast("/ip4/1.2.3.4/tcp/1234")}},
 			Protocols: []string{"transport-bitswap"},
 		},
 	}

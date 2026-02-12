@@ -26,7 +26,7 @@ type BitswapRecord struct {
 	Schema   string
 	Protocol string
 	ID       *peer.ID
-	Addrs    Addresses `json:",omitempty"`
+	Addrs    []Multiaddr `json:",omitempty"`
 }
 
 func (br *BitswapRecord) GetSchema() string {
@@ -53,7 +53,7 @@ type BitswapPayload struct {
 	Timestamp   *Time
 	AdvisoryTTL *Duration
 	ID          *peer.ID
-	Addrs       Addresses
+	Addrs       []Multiaddr
 }
 
 func (wr *WriteBitswapRecord) GetSchema() string {

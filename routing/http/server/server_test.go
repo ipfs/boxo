@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -124,20 +125,20 @@ func TestProviders(t *testing.T) {
 					Schema:    types.SchemaPeer,
 					ID:        &pid,
 					Protocols: []string{"transport-bitswap"},
-					Addrs: types.Addresses{
-						*types.NewAddressFromMultiaddr(addr1),
-						*types.NewAddressFromMultiaddr(addr2),
-						*types.NewAddressFromMultiaddr(addr3),
-						*types.NewAddressFromMultiaddr(addr4),
-						*types.NewAddressFromMultiaddr(addr5),
-						*types.NewAddressFromMultiaddr(addr6),
+					Addrs: []types.Multiaddr{
+						{Multiaddr: addr1},
+						{Multiaddr: addr2},
+						{Multiaddr: addr3},
+						{Multiaddr: addr4},
+						{Multiaddr: addr5},
+						{Multiaddr: addr6},
 					},
 				}},
 				{Val: &types.PeerRecord{
 					Schema:    types.SchemaPeer,
 					ID:        &pid2,
 					Protocols: []string{"transport-ipfs-gateway-http"},
-					Addrs:     types.Addresses{},
+					Addrs:     []types.Multiaddr{},
 				}},
 			},
 			)
@@ -232,10 +233,6 @@ func TestProviders(t *testing.T) {
 		runTest(t, mediaTypeNDJSON, "webtransport,!p2p-circuit,unknown", "", false, true, `{"Addrs":["/ip4/8.8.8.8/udp/4001/quic-v1/webtransport"],"ID":"12D3KooWM8sovaEGU1bmiWGWAzvs47DEcXKZZTuJnpQyVTkRs2Vn","Protocols":["transport-bitswap"],"Schema":"peer"}`+"\n"+`{"Addrs":[],"ID":"12D3KooWM8sovaEGU1bmiWGWAzvs47DEcXKZZTuJnpQyVTkRs2Vz","Protocols":["transport-ipfs-gateway-http"],"Schema":"peer"}`+"\n")
 	})
 
-	t.Run("NDJSON Response with addr filtering", func(t *testing.T) {
-		runTest(t, mediaTypeNDJSON, "webtransport,!p2p-circuit,unknown", "", false, true, `{"Addrs":["/ip4/8.8.8.8/udp/4001/quic-v1/webtransport"],"ID":"12D3KooWM8sovaEGU1bmiWGWAzvs47DEcXKZZTuJnpQyVTkRs2Vn","Protocols":["transport-bitswap"],"Schema":"peer"}`+"\n"+`{"Addrs":[],"ID":"12D3KooWM8sovaEGU1bmiWGWAzvs47DEcXKZZTuJnpQyVTkRs2Vz","Protocols":["transport-ipfs-gateway-http"],"Schema":"peer"}`+"\n")
-	})
-
 	t.Run("Empty NDJSON Response", func(t *testing.T) {
 		runTest(t, mediaTypeNDJSON, "", "", true, true, "")
 	})
@@ -261,6 +258,268 @@ func TestProviders(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, `{"Providers":[]}`, string(body))
 	})
+}
+
+// TestProvidersMixedSchemas verifies that the server correctly serializes a mix
+// of PeerRecord and GenericRecord in FindProviders responses. This is the
+// primary IPIP-518 server-side scenario: a routing backend returns both
+// traditional peer records (multiaddrs only) and generic records (with URLs
+// and non-standard URI schemes) in the same response stream.
+func TestProvidersMixedSchemas(t *testing.T) {
+	cidStr := "bafkreifjjcie6lypi6ny7amxnfftagclbuxndqonfipmb64f2km2devei4"
+	cb, err := cid.Decode(cidStr)
+	require.NoError(t, err)
+
+	pid, err := peer.Decode("12D3KooWM8sovaEGU1bmiWGWAzvs47DEcXKZZTuJnpQyVTkRs2Vn")
+	require.NoError(t, err)
+
+	addr1, _ := multiaddr.NewMultiaddr("/ip4/127.0.0.1/tcp/4001")
+
+	results := iter.FromSlice([]iter.Result[types.Record]{
+		// Traditional PeerRecord with multiaddrs
+		{Val: &types.PeerRecord{
+			Schema:    types.SchemaPeer,
+			ID:        &pid,
+			Protocols: []string{"transport-bitswap"},
+			Addrs:     []types.Multiaddr{{Multiaddr: addr1}},
+		}},
+		// GenericRecord with URLs (IPIP-518)
+		{Val: &types.GenericRecord{
+			Schema:    types.SchemaGeneric,
+			ID:        "gateway-provider-1",
+			Protocols: []string{"transport-ipfs-gateway-http"},
+			Addrs: types.Addresses{
+				mustAddr(t, "https://gateway.example.com"),
+				mustAddr(t, "foo://custom.example.com"),
+			},
+		}},
+	})
+
+	router := &mockContentRouter{}
+	server := httptest.NewServer(Handler(router))
+	t.Cleanup(server.Close)
+	serverAddr := "http://" + server.Listener.Addr().String()
+
+	router.On("FindProviders", mock.Anything, cb, DefaultRecordsLimit).Return(results, nil)
+
+	resp, err := http.Get(serverAddr + "/routing/v1/providers/" + cidStr)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+
+	// Verify both records are present in the JSON response.
+	// PeerRecord uses typed Addrs (multiaddrs), GenericRecord uses string Addrs (URLs).
+	bodyStr := string(body)
+	require.Contains(t, bodyStr, `"Schema":"peer"`)
+	require.Contains(t, bodyStr, `"Schema":"generic"`)
+	require.Contains(t, bodyStr, `"/ip4/127.0.0.1/tcp/4001"`)
+	require.Contains(t, bodyStr, `"https://gateway.example.com"`)
+	require.Contains(t, bodyStr, `"foo://custom.example.com"`)
+	require.Contains(t, bodyStr, `"transport-ipfs-gateway-http"`)
+}
+
+// TestProvidersMixedSchemasWithFiltering verifies that filter-addrs and
+// filter-protocols work correctly when the response contains both PeerRecord
+// and GenericRecord. The server must apply filters to all schema types.
+func TestProvidersMixedSchemasWithFiltering(t *testing.T) {
+	cidStr := "bafkreifjjcie6lypi6ny7amxnfftagclbuxndqonfipmb64f2km2devei4"
+	cb, err := cid.Decode(cidStr)
+	require.NoError(t, err)
+
+	pid, err := peer.Decode("12D3KooWM8sovaEGU1bmiWGWAzvs47DEcXKZZTuJnpQyVTkRs2Vn")
+	require.NoError(t, err)
+
+	addr1, _ := multiaddr.NewMultiaddr("/ip4/127.0.0.1/tcp/4001")
+
+	results := iter.FromSlice([]iter.Result[types.Record]{
+		// PeerRecord with bitswap (no /http in addrs)
+		{Val: &types.PeerRecord{
+			Schema:    types.SchemaPeer,
+			ID:        &pid,
+			Protocols: []string{"transport-bitswap"},
+			Addrs:     []types.Multiaddr{{Multiaddr: addr1}},
+		}},
+		// GenericRecord with gateway URL
+		{Val: &types.GenericRecord{
+			Schema:    types.SchemaGeneric,
+			ID:        "gateway-provider-1",
+			Protocols: []string{"transport-ipfs-gateway-http"},
+			Addrs: types.Addresses{
+				mustAddr(t, "https://gateway.example.com"),
+			},
+		}},
+	})
+
+	router := &mockContentRouter{}
+	server := httptest.NewServer(Handler(router))
+	t.Cleanup(server.Close)
+	serverAddr := "http://" + server.Listener.Addr().String()
+
+	router.On("FindProviders", mock.Anything, cb, DefaultRecordsLimit).Return(results, nil)
+
+	// Filter for transport-ipfs-gateway-http protocol only
+	urlStr := fmt.Sprintf("%s/routing/v1/providers/%s", serverAddr, cidStr)
+	urlStr = filters.AddFiltersToURL(urlStr, []string{"transport-ipfs-gateway-http"}, nil)
+
+	resp, err := http.Get(urlStr)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+
+	bodyStr := string(body)
+	// PeerRecord with bitswap should be filtered out
+	require.NotContains(t, bodyStr, `"transport-bitswap"`)
+	// GenericRecord with gateway should remain
+	require.Contains(t, bodyStr, `"Schema":"generic"`)
+	require.Contains(t, bodyStr, `"https://gateway.example.com"`)
+}
+
+// TestProvidersMixedSchemasNDJSON verifies that the server correctly serializes
+// a mix of PeerRecord and GenericRecord in NDJSON streaming responses.
+// This complements TestProvidersMixedSchemas which only tests the JSON path.
+func TestProvidersMixedSchemasNDJSON(t *testing.T) {
+	cidStr := "bafkreifjjcie6lypi6ny7amxnfftagclbuxndqonfipmb64f2km2devei4"
+	cb, err := cid.Decode(cidStr)
+	require.NoError(t, err)
+
+	pid, err := peer.Decode("12D3KooWM8sovaEGU1bmiWGWAzvs47DEcXKZZTuJnpQyVTkRs2Vn")
+	require.NoError(t, err)
+
+	addr1, _ := multiaddr.NewMultiaddr("/ip4/127.0.0.1/tcp/4001")
+
+	results := iter.FromSlice([]iter.Result[types.Record]{
+		{Val: &types.PeerRecord{
+			Schema:    types.SchemaPeer,
+			ID:        &pid,
+			Protocols: []string{"transport-bitswap"},
+			Addrs:     []types.Multiaddr{{Multiaddr: addr1}},
+		}},
+		{Val: &types.GenericRecord{
+			Schema:    types.SchemaGeneric,
+			ID:        "did:key:z6Mkm1example",
+			Protocols: []string{"transport-ipfs-gateway-http"},
+			Addrs: types.Addresses{
+				mustAddr(t, "https://gateway.example.com"),
+				mustAddr(t, "foo://custom.example.com"),
+			},
+		}},
+	})
+
+	router := &mockContentRouter{}
+	server := httptest.NewServer(Handler(router))
+	t.Cleanup(server.Close)
+	serverAddr := "http://" + server.Listener.Addr().String()
+
+	router.On("FindProviders", mock.Anything, cb, DefaultStreamingRecordsLimit).Return(results, nil)
+
+	req, err := http.NewRequest(http.MethodGet, serverAddr+"/routing/v1/providers/"+cidStr, nil)
+	require.NoError(t, err)
+	req.Header.Set("Accept", mediaTypeNDJSON)
+
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.Equal(t, mediaTypeNDJSON, resp.Header.Get("Content-Type"))
+
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+
+	// Each NDJSON line is a separate record.
+	lines := strings.Split(strings.TrimSpace(string(body)), "\n")
+	require.Len(t, lines, 2, "expected two NDJSON lines (peer + generic)")
+
+	// Line 0: PeerRecord
+	require.Contains(t, lines[0], `"Schema":"peer"`)
+	require.Contains(t, lines[0], `"/ip4/127.0.0.1/tcp/4001"`)
+
+	// Line 1: GenericRecord with URLs
+	require.Contains(t, lines[1], `"Schema":"generic"`)
+	require.Contains(t, lines[1], `"did:key:z6Mkm1example"`)
+	require.Contains(t, lines[1], `"https://gateway.example.com"`)
+	require.Contains(t, lines[1], `"foo://custom.example.com"`)
+	require.Contains(t, lines[1], `"transport-ipfs-gateway-http"`)
+}
+
+// TestProvidersMixedSchemasExtraFields verifies that protocol-specific metadata
+// (Extra fields) on GenericRecord survive server serialization in both JSON
+// and NDJSON paths. The spec allows extra fields like transport-ipfs-gateway-http
+// to carry protocol-specific metadata (e.g. "foobar" capability bitfield).
+func TestProvidersMixedSchemasExtraFields(t *testing.T) {
+	cidStr := "bafkreifjjcie6lypi6ny7amxnfftagclbuxndqonfipmb64f2km2devei4"
+	cb, err := cid.Decode(cidStr)
+	require.NoError(t, err)
+
+	gr := &types.GenericRecord{
+		Schema:    types.SchemaGeneric,
+		ID:        "QmUA9D3H7HeCYsirB3KmPSvZh3dNXMZas6Lwgr4fv1HTTp",
+		Protocols: []string{"transport-ipfs-gateway-http"},
+		Addrs:     types.Addresses{mustAddr(t, "https://dag.w3s.link")},
+		Extra: map[string]json.RawMessage{
+			"transport-ipfs-gateway-http": json.RawMessage(`"foobar"`),
+		},
+	}
+
+	t.Run("JSON", func(t *testing.T) {
+		results := iter.FromSlice([]iter.Result[types.Record]{
+			{Val: gr},
+		})
+
+		router := &mockContentRouter{}
+		server := httptest.NewServer(Handler(router))
+		t.Cleanup(server.Close)
+		serverAddr := "http://" + server.Listener.Addr().String()
+
+		router.On("FindProviders", mock.Anything, cb, DefaultRecordsLimit).Return(results, nil)
+
+		resp, err := http.Get(serverAddr + "/routing/v1/providers/" + cidStr)
+		require.NoError(t, err)
+		require.Equal(t, http.StatusOK, resp.StatusCode)
+
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		bodyStr := string(body)
+		require.Contains(t, bodyStr, `"transport-ipfs-gateway-http"`)
+		// Extra field must survive serialization
+		require.Contains(t, bodyStr, `"foobar"`)
+	})
+
+	t.Run("NDJSON", func(t *testing.T) {
+		results := iter.FromSlice([]iter.Result[types.Record]{
+			{Val: gr},
+		})
+
+		router := &mockContentRouter{}
+		server := httptest.NewServer(Handler(router))
+		t.Cleanup(server.Close)
+		serverAddr := "http://" + server.Listener.Addr().String()
+
+		router.On("FindProviders", mock.Anything, cb, DefaultStreamingRecordsLimit).Return(results, nil)
+
+		req, err := http.NewRequest(http.MethodGet, serverAddr+"/routing/v1/providers/"+cidStr, nil)
+		require.NoError(t, err)
+		req.Header.Set("Accept", mediaTypeNDJSON)
+
+		resp, err := http.DefaultClient.Do(req)
+		require.NoError(t, err)
+		require.Equal(t, http.StatusOK, resp.StatusCode)
+
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		bodyStr := string(body)
+		require.Contains(t, bodyStr, `"transport-ipfs-gateway-http"`)
+		require.Contains(t, bodyStr, `"foobar"`)
+	})
+}
+
+func mustAddr(t *testing.T, s string) types.Address {
+	t.Helper()
+	addr, err := types.NewAddress(s)
+	require.NoError(t, err)
+	return addr
 }
 
 func TestPeers(t *testing.T) {
@@ -388,13 +647,13 @@ func TestPeers(t *testing.T) {
 				Schema:    types.SchemaPeer,
 				ID:        &pid,
 				Protocols: []string{"transport-bitswap", "transport-foo"},
-				Addrs:     types.Addresses{},
+				Addrs:     []types.Multiaddr{},
 			}},
 			{Val: &types.PeerRecord{
 				Schema:    types.SchemaPeer,
 				ID:        &pid,
 				Protocols: []string{"transport-foo"},
-				Addrs:     types.Addresses{},
+				Addrs:     []types.Multiaddr{},
 			}},
 		})
 
@@ -433,19 +692,19 @@ func TestPeers(t *testing.T) {
 				Schema:    types.SchemaPeer,
 				ID:        &pid,
 				Protocols: []string{"transport-bitswap", "transport-foo"},
-				Addrs: types.Addresses{
-					*types.NewAddressFromMultiaddr(addr1),
-					*types.NewAddressFromMultiaddr(addr2),
-					*types.NewAddressFromMultiaddr(addr3),
-					*types.NewAddressFromMultiaddr(addr4),
+				Addrs: []types.Multiaddr{
+					{Multiaddr: addr1},
+					{Multiaddr: addr2},
+					{Multiaddr: addr3},
+					{Multiaddr: addr4},
 				},
 			}},
 			{Val: &types.PeerRecord{
 				Schema:    types.SchemaPeer,
 				ID:        &pid2,
 				Protocols: []string{"transport-foo"},
-				Addrs: types.Addresses{
-					*types.NewAddressFromMultiaddr(addr5),
+				Addrs: []types.Multiaddr{
+					{Multiaddr: addr5},
 				},
 			}},
 		})
@@ -485,19 +744,19 @@ func TestPeers(t *testing.T) {
 				Schema:    types.SchemaPeer,
 				ID:        &pid,
 				Protocols: []string{"transport-bitswap", "transport-foo"},
-				Addrs: types.Addresses{
-					*types.NewAddressFromMultiaddr(addr1),
-					*types.NewAddressFromMultiaddr(addr2),
-					*types.NewAddressFromMultiaddr(addr3),
-					*types.NewAddressFromMultiaddr(addr4),
+				Addrs: []types.Multiaddr{
+					{Multiaddr: addr1},
+					{Multiaddr: addr2},
+					{Multiaddr: addr3},
+					{Multiaddr: addr4},
 				},
 			}},
 			{Val: &types.PeerRecord{
 				Schema:    types.SchemaPeer,
 				ID:        &pid2,
 				Protocols: []string{"transport-foo"},
-				Addrs: types.Addresses{
-					*types.NewAddressFromMultiaddr(addr5),
+				Addrs: []types.Multiaddr{
+					{Multiaddr: addr5},
 				},
 			}},
 		})
@@ -556,13 +815,13 @@ func TestPeers(t *testing.T) {
 				Schema:    types.SchemaPeer,
 				ID:        &pid,
 				Protocols: []string{"transport-bitswap", "transport-foo"},
-				Addrs:     types.Addresses{},
+				Addrs:     []types.Multiaddr{},
 			}},
 			{Val: &types.PeerRecord{
 				Schema:    types.SchemaPeer,
 				ID:        &pid,
 				Protocols: []string{"transport-foo"},
-				Addrs:     types.Addresses{},
+				Addrs:     []types.Multiaddr{},
 			}},
 		})
 
@@ -616,13 +875,13 @@ func TestPeers(t *testing.T) {
 				Schema:    types.SchemaPeer,
 				ID:        &pid,
 				Protocols: []string{"transport-bitswap", "transport-foo"},
-				Addrs:     types.Addresses{},
+				Addrs:     []types.Multiaddr{},
 			}},
 			{Val: &types.PeerRecord{
 				Schema:    types.SchemaPeer,
 				ID:        &pid,
 				Protocols: []string{"transport-foo"},
-				Addrs:     types.Addresses{},
+				Addrs:     []types.Multiaddr{},
 			}},
 		}
 

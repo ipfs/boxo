@@ -2,6 +2,7 @@ package json
 
 import (
 	"encoding/json"
+	"fmt"
 
 	"github.com/ipfs/boxo/routing/http/types"
 )
@@ -44,6 +45,16 @@ func (r *RecordsArray) UnmarshalJSON(b []byte) error {
 		switch readProv.Schema {
 		case types.SchemaPeer:
 			var prov types.PeerRecord
+			err := json.Unmarshal(provBytes, &prov)
+			if err != nil {
+				return err
+			}
+			*r = append(*r, &prov)
+		case types.SchemaGeneric:
+			if len(provBytes) > types.MaxGenericRecordSize {
+				return fmt.Errorf("generic record too large: %d bytes (max %d)", len(provBytes), types.MaxGenericRecordSize)
+			}
+			var prov types.GenericRecord
 			err := json.Unmarshal(provBytes, &prov)
 			if err != nil {
 				return err

@@ -23,26 +23,26 @@ type Address struct {
 
 // NewAddress creates a new Address from a string.
 // It accepts any valid multiaddr or URI, following IPIP-518 parsing rules.
-func NewAddress(s string) (*Address, error) {
-	addr := &Address{raw: s}
+func NewAddress(s string) (Address, error) {
+	addr := Address{raw: s}
 
 	// IPIP-518 parsing logic
 	if strings.HasPrefix(s, "/") {
 		// Parse as multiaddr
 		ma, err := multiaddr.NewMultiaddr(s)
 		if err != nil {
-			return nil, fmt.Errorf("invalid multiaddr: %w", err)
+			return Address{}, fmt.Errorf("invalid multiaddr: %w", err)
 		}
 		addr.multiaddr = ma
 	} else {
 		// Parse as URI - accept any valid URI scheme
 		u, err := url.Parse(s)
 		if err != nil {
-			return nil, fmt.Errorf("invalid URI: %w", err)
+			return Address{}, fmt.Errorf("invalid uri: %w", err)
 		}
 		// Must be absolute URL
 		if !u.IsAbs() {
-			return nil, fmt.Errorf("URI must be absolute")
+			return Address{}, fmt.Errorf("uri must be absolute")
 		}
 		addr.url = u
 	}
@@ -51,8 +51,8 @@ func NewAddress(s string) (*Address, error) {
 }
 
 // NewAddressFromMultiaddr creates a new Address from a multiaddr.
-func NewAddressFromMultiaddr(ma multiaddr.Multiaddr) *Address {
-	return &Address{
+func NewAddressFromMultiaddr(ma multiaddr.Multiaddr) Address {
+	return Address{
 		raw:       ma.String(),
 		multiaddr: ma,
 	}
@@ -111,7 +111,7 @@ func (a *Address) UnmarshalJSON(b []byte) error {
 		return nil // Don't return error, just skip
 	}
 
-	*a = *addr
+	*a = addr
 	return nil
 }
 
@@ -121,7 +121,8 @@ func (a *Address) UnmarshalJSON(b []byte) error {
 func (a *Address) Protocols() []string {
 	if a.url != nil {
 		return []string{a.url.Scheme}
-	} else if a.multiaddr != nil {
+	}
+	if a.multiaddr != nil {
 		protos := a.multiaddr.Protocols()
 		result := make([]string, len(protos))
 		for i, p := range protos {
@@ -134,10 +135,9 @@ func (a *Address) Protocols() []string {
 
 // HasProtocol checks if the address contains the given protocol.
 // For URLs, it checks the scheme. For multiaddrs, it checks the protocols.
-// Special handling for http/https/tls as per IPIP-518:
+// Special handling for http/https as per IPIP-518:
 // - "http" matches http://, https:// URLs and /http, /tls/http multiaddrs
 // - "https" matches https:// URLs, /tls/http, /https multiaddrs
-// - "tls" matches /tls multiaddrs AND https:// URLs
 func (a *Address) HasProtocol(proto string) bool {
 	proto = strings.ToLower(proto)
 
@@ -150,13 +150,12 @@ func (a *Address) HasProtocol(proto string) bool {
 			return scheme == "http" || scheme == "https"
 		case "https":
 			return scheme == "https"
-		case "tls":
-			// TLS matches https URLs
-			return scheme == "https"
 		default:
 			return scheme == proto
 		}
-	} else if a.multiaddr != nil {
+	}
+
+	if a.multiaddr != nil {
 		protocols := a.Protocols()
 
 		switch proto {
@@ -172,24 +171,16 @@ func (a *Address) HasProtocol(proto string) bool {
 			hasTLS := false
 			hasHTTP := false
 			for _, p := range protocols {
-				if p == "https" {
+				switch p {
+				case "https":
 					return true
-				}
-				if p == "tls" {
+				case "tls":
 					hasTLS = true
-				}
-				if p == "http" {
+				case "http":
 					hasHTTP = true
 				}
 			}
 			return hasTLS && hasHTTP
-		case "tls":
-			// "tls" matches any multiaddr with /tls
-			for _, p := range protocols {
-				if p == "tls" {
-					return true
-				}
-			}
 		default:
 			for _, p := range protocols {
 				if p == proto {
@@ -250,16 +241,8 @@ func (a *Address) ToMultiaddr() multiaddr.Multiaddr {
 		addrProto = "dns"
 	}
 
-	// Build multiaddr string
-	var maStr string
-	if scheme == "https" {
-		// For HTTPS, use /https as this is what existing HTTP providers
-		// announce on IPNI, so we follow same convention for backward-compatibility
-		maStr = fmt.Sprintf("/%s/%s/tcp/%s/https", addrProto, host, port)
-	} else {
-		// For HTTP, use /http
-		maStr = fmt.Sprintf("/%s/%s/tcp/%s/http", addrProto, host, port)
-	}
+	// Build multiaddr string using scheme directly (http or https)
+	maStr := fmt.Sprintf("/%s/%s/tcp/%s/%s", addrProto, host, port, scheme)
 
 	// Create and return multiaddr
 	ma, err := multiaddr.NewMultiaddr(maStr)
@@ -308,7 +291,7 @@ func (addrs *Addresses) UnmarshalJSON(b []byte) error {
 	for _, s := range strs {
 		addr := Address{raw: s}
 		if a, err := NewAddress(s); err == nil {
-			addr = *a
+			addr = a
 		}
 		// Always add the address, even if invalid (will be skipped during filtering)
 		result = append(result, addr)

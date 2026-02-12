@@ -68,11 +68,23 @@ func ApplyFiltersToIter(recordsIter iter.ResultIter[types.Record], filterAddrs, 
 			record, ok := v.Val.(*types.PeerRecord)
 			if !ok {
 				logger.Errorw("problem casting find providers record", "Schema", v.Val.GetSchema(), "Type", reflect.TypeOf(v).String())
-				// drop failed type assertion
 				return iter.Result[types.Record]{}
 			}
 
 			record = applyFilters(record, filterAddrs, filterProtocols)
+			if record == nil {
+				return iter.Result[types.Record]{}
+			}
+			v.Val = record
+
+		case types.SchemaGeneric:
+			record, ok := v.Val.(*types.GenericRecord)
+			if !ok {
+				logger.Errorw("problem casting find providers record", "Schema", v.Val.GetSchema(), "Type", reflect.TypeOf(v).String())
+				return iter.Result[types.Record]{}
+			}
+
+			record = applyGenericFilters(record, filterAddrs, filterProtocols)
 			if record == nil {
 				return iter.Result[types.Record]{}
 			}
@@ -85,7 +97,6 @@ func ApplyFiltersToIter(recordsIter iter.ResultIter[types.Record], filterAddrs, 
 			record, ok := v.Val.(*types.BitswapRecord)
 			if !ok {
 				logger.Errorw("problem casting find providers record", "Schema", v.Val.GetSchema(), "Type", reflect.TypeOf(v).String())
-				// drop failed type assertion
 				return iter.Result[types.Record]{}
 			}
 			peerRecord := types.FromBitswapRecord(record)
@@ -119,7 +130,7 @@ func ApplyFiltersToPeerRecordIter(peerRecordIter iter.ResultIter[*types.PeerReco
 
 	filteredIter := ApplyFiltersToIter(mappedIter, filterAddrs, filterProtocols)
 
-	// Convert Record back to PeerRecord 🙃
+	// Convert Record back to PeerRecord
 	return iter.Map(filteredIter, func(v iter.Result[types.Record]) iter.Result[*types.PeerRecord] {
 		if v.Err != nil || v.Val == nil {
 			return iter.Result[*types.PeerRecord]{Err: v.Err}
@@ -130,15 +141,15 @@ func ApplyFiltersToPeerRecordIter(peerRecordIter iter.ResultIter[*types.PeerReco
 	})
 }
 
-// Applies the filters. Returns nil if the provider does not pass the protocols filter
-// The address filter is more complicated because it potentially modifies the Addrs slice.
+// applyFilters applies the filters to a PeerRecord. Returns nil if the provider
+// does not pass the protocols filter. The address filter potentially modifies
+// the Addrs slice.
 func applyFilters(provider *types.PeerRecord, filterAddrs, filterProtocols []string) *types.PeerRecord {
 	if len(filterAddrs) == 0 && len(filterProtocols) == 0 {
 		return provider
 	}
 
 	if !protocolsAllowed(provider.Protocols, filterProtocols) {
-		// If the provider doesn't match any of the passed protocols, the provider is omitted from the response.
 		return nil
 	}
 
@@ -147,14 +158,49 @@ func applyFilters(provider *types.PeerRecord, filterAddrs, filterProtocols []str
 		return provider
 	}
 
-	filteredAddrs := applyAddrFilter(provider.Addrs, filterAddrs)
+	// Convert []Multiaddr to Addresses to reuse applyAddrFilter which
+	// handles both multiaddr and URL protocol matching per IPIP-518.
+	addrs := make(types.Addresses, len(provider.Addrs))
+	for i, ma := range provider.Addrs {
+		addrs[i] = types.NewAddressFromMultiaddr(ma.Multiaddr)
+	}
 
-	// If filtering resulted in no addrs, omit the provider
-	if len(filteredAddrs) == 0 {
+	filtered := applyAddrFilter(addrs, filterAddrs)
+	if len(filtered) == 0 {
 		return nil
 	}
 
-	provider.Addrs = filteredAddrs
+	// convert back to []Multiaddr
+	provider.Addrs = make([]types.Multiaddr, len(filtered))
+	for i, a := range filtered {
+		provider.Addrs[i] = types.Multiaddr{Multiaddr: a.Multiaddr()}
+	}
+
+	return provider
+}
+
+// applyGenericFilters applies the filters to a GenericRecord. Returns nil if
+// the provider does not pass the protocols filter. The address filter
+// potentially modifies the Addrs slice.
+func applyGenericFilters(provider *types.GenericRecord, filterAddrs, filterProtocols []string) *types.GenericRecord {
+	if len(filterAddrs) == 0 && len(filterProtocols) == 0 {
+		return provider
+	}
+
+	if !protocolsAllowed(provider.Protocols, filterProtocols) {
+		return nil
+	}
+
+	if len(filterAddrs) == 0 || (len(provider.Addrs) == 0 && slices.Contains(filterAddrs, "unknown")) {
+		return provider
+	}
+
+	filtered := applyAddrFilter(provider.Addrs, filterAddrs)
+	if len(filtered) == 0 {
+		return nil
+	}
+
+	provider.Addrs = filtered
 	return provider
 }
 
@@ -173,9 +219,6 @@ func applyFilters(provider *types.PeerRecord, filterAddrs, filterProtocols []str
 // If only negative filters are provided, addresses not matching any negative filter are included.
 // If positive filters are provided, only addresses matching at least one positive filter (and no negative filters) are included.
 // If both positive and negative filters are provided, the address must match at least one positive filter and no negative filters to be included.
-//
-// Returns:
-// A new slice of types.Address containing only the addresses that pass the filter criteria.
 func applyAddrFilter(addrs types.Addresses, filterAddrsQuery []string) types.Addresses {
 	if len(filterAddrsQuery) == 0 {
 		return addrs
