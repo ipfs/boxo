@@ -31,3 +31,4 @@ Once you have your example finished, do not forget to run `go mod tidy` and addi
 - [Gateway backed by a remote (HTTP) blockstore and IPNS resolver](./gateway/proxy-blocks)
 - [Gateway backed by a remote (HTTP) CAR Gateway](./gateway/proxy-car)
 - [Delegated Routing V1 Command Line Client](./routing/delegated-routing-client/)
+- [Creating UnixFS DAGs and exporting to CAR with chunking and HAMT sharding](./unixfs-to-car)
