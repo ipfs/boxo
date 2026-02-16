@@ -27,6 +27,8 @@ The following emojis are used to highlight certain changes:
 - `gateway`: 🛠 ✨ [IPIP-523](https://github.com/ipfs/specs/pull/523) `?format=` URL query parameter now takes precedence over `Accept` HTTP header, ensuring deterministic HTTP cache behavior and allowing browsers to use `?format=` even when they send `Accept` headers with specific content types. [#1074](https://github.com/ipfs/boxo/pull/1074)
 - `gateway`: 🛠 ✨ [IPIP-524](https://github.com/ipfs/specs/pull/524) codec conversions (e.g., dag-pb to dag-json, dag-json to dag-cbor) are no longer performed by default. Requesting a format that differs from the block's codec now returns HTTP 406 Not Acceptable with a hint to fetch raw blocks (`?format=raw`) and convert client-side. Set `Config.AllowCodecConversion` to `true` to restore the old behavior. [#1077](https://github.com/ipfs/boxo/pull/1077)
 - `gateway`: compliance with gateway-conformance [v0.10.0](https://github.com/ipfs/gateway-conformance/releases/tag/v0.10.0) (since v0.8: relaxed DAG-CBOR HTML preview cache headers, relaxed CAR 200/404 for missing paths, [IPIP-523](https://github.com/ipfs/specs/pull/523) format query precedence, [IPIP-524](https://github.com/ipfs/specs/pull/524) codec mismatch returns 406)
+- upgrade to `go-ipld-prime` [v0.22.0](https://github.com/ipld/go-ipld-prime/releases/tag/v0.22.0)
+- upgrade to `go-libp2p-kad-dht` [v0.38.0](https://github.com/libp2p/go-libp2p-kad-dht/releases/tag/v0.38.0)
 
 ### Removed
 
