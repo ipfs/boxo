@@ -15,7 +15,6 @@ to use the Jaeger UI. The [Gateway examples](../examples/gateway/) fully support
 - [Environment Variables](#environment-variables)
   - [`OTEL_TRACES_EXPORTER`](#otel_traces_exporter)
   - [`OTLP Exporter`](#otlp-exporter)
-  - [`Zipkin Exporter`](#zipkin-exporter)
   - [`File Exporter`](#file-exporter)
   - [`OTEL_PROPAGATORS`](#otel_propagators)
 - [Using Jaeger UI](#using-jaeger-ui)
@@ -33,7 +32,6 @@ set of additional environment variables used to configure it. The following valu
 are supported:
 
 - `otlp`
-- `zipkin`
 - `stdout`
 - `file` -- appends traces to a JSON file on the filesystem
 
@@ -51,10 +49,6 @@ Specifies the OTLP protocol to use, which is one of:
 - `http/protobuf`
 
 Default: `"grpc"`
-
-### `Zipkin Exporter`
-
-See [Zipkin Exporter](https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/configuration/sdk-environment-variables.md#zipkin-exporter).
 
 ### `File Exporter`
 
@@ -77,7 +71,6 @@ ephemeral container:
 ```console
 $ docker run -d --rm --name jaeger \
   -e COLLECTOR_OTLP_ENABLED=true \
-  -e COLLECTOR_ZIPKIN_HOST_PORT=:9411 \
   -p 5775:5775/udp \
   -p 6831:6831/udp \
   -p 6832:6832/udp \
