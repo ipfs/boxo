@@ -20,6 +20,9 @@ The following emojis are used to highlight certain changes:
 
 ### Removed
 
+- `cmd/boxo-migrate`: removed code for go-ipfs migration -- no longer needed.
+- `cmd/deprecator`: removed code to deprecare relocated ipfs packages -- no longer needed.
+
 ### Fixed
 
 ### Security
