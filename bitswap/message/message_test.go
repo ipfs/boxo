@@ -7,9 +7,12 @@ import (
 
 	"github.com/ipfs/boxo/bitswap/client/wantlist"
 	pb "github.com/ipfs/boxo/bitswap/message/pb"
+	chunker "github.com/ipfs/boxo/chunker"
 	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
 	"github.com/ipfs/go-test/random"
+	"github.com/libp2p/go-libp2p/core/network"
+	mh "github.com/multiformats/go-multihash"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -300,5 +303,62 @@ func TestEntrySize(t *testing.T) {
 	epb := e.ToPB()
 	if e.Size() != proto.Size(epb) {
 		t.Fatal("entry size calculation incorrect", e.Size(), proto.Size(epb))
+	}
+}
+
+// TestBlockSizeLimitFitsInLibp2pMessage verifies that a single block at the
+// bitswap spec limit (chunker.BlockSizeLimit, 2MiB) fits within the libp2p
+// message size limit (network.MessageSizeMax, 4MiB) when serialized as a
+// bitswap message. This guards the invariant that the spec block size can
+// always be transferred over bitswap-over-libp2p. The test uses CIDv1 with
+// raw codec and SHA2-256 multihash, matching the unixfs-v1-2025 profile.
+func TestBlockSizeLimitFitsInLibp2pMessage(t *testing.T) {
+	t.Parallel()
+
+	// create a CIDv1 + raw + SHA2-256 block at exactly BlockSizeLimit
+	data := make([]byte, chunker.BlockSizeLimit)
+	prefix := cid.Prefix{
+		Version:  1,
+		Codec:    cid.Raw,
+		MhType:   mh.SHA2_256,
+		MhLength: -1,
+	}
+	c, err := prefix.Sum(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	blk, err := blocks.NewBlockWithCid(data, c)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// build a bitswap message with the block
+	msg := New(true)
+	msg.AddBlock(blk)
+
+	// serialize and check size fits in libp2p message limit
+	buf := new(bytes.Buffer)
+	if err := msg.ToNetV1(buf); err != nil {
+		t.Fatal(err)
+	}
+	wireSize := buf.Len()
+	if wireSize > network.MessageSizeMax {
+		t.Fatalf("serialized message (%d bytes) exceeds network.MessageSizeMax (%d bytes)",
+			wireSize, network.MessageSizeMax)
+	}
+	t.Logf("block=%d wire=%d limit=%d headroom=%d bytes",
+		chunker.BlockSizeLimit, wireSize, network.MessageSizeMax, network.MessageSizeMax-wireSize)
+
+	// round-trip: verify FromNet can read it back (uses MessageSizeMax as reader limit)
+	m2, _, err := FromNet(bytes.NewReader(buf.Bytes()))
+	if err != nil {
+		t.Fatalf("FromNet failed: %v", err)
+	}
+	received := m2.Blocks()
+	if len(received) != 1 {
+		t.Fatalf("expected 1 block, got %d", len(received))
+	}
+	if len(received[0].RawData()) != chunker.BlockSizeLimit {
+		t.Fatalf("expected block of %d bytes, got %d", chunker.BlockSizeLimit, len(received[0].RawData()))
 	}
 }

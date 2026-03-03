@@ -227,7 +227,7 @@ func (s *server) detectResponseType(r *http.Request) (string, error) {
 	}
 
 	for _, acceptHeader := range acceptHeaders {
-		for _, accept := range strings.Split(acceptHeader, ",") {
+		for accept := range strings.SplitSeq(acceptHeader, ",") {
 			mediaType, _, err := mime.ParseMediaType(accept)
 			if err != nil {
 				return "", fmt.Errorf("unable to parse Accept header: %w", err)

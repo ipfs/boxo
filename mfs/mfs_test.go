@@ -131,7 +131,7 @@ func compStrArrs(a, b []string) bool {
 		return false
 	}
 
-	for i := 0; i < len(a); i++ {
+	for i := range a {
 		if a[i] != b[i] {
 			return false
 		}
@@ -232,8 +232,7 @@ func setupRoot(ctx context.Context, t testing.TB) (ipld.DAGService, *Root) {
 }
 
 func TestBasic(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	ds, rt := setupRoot(ctx, t)
 
 	rootdir := rt.GetDirectory()
@@ -262,8 +261,7 @@ func TestBasic(t *testing.T) {
 }
 
 func TestMkdir(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	_, rt := setupRoot(ctx, t)
 
 	rootdir := rt.GetDirectory()
@@ -300,8 +298,7 @@ func TestMkdir(t *testing.T) {
 }
 
 func TestDirectoryLoadFromDag(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	ds, rt := setupRoot(ctx, t)
 
 	rootdir := rt.GetDirectory()
@@ -392,8 +389,7 @@ func TestDirectoryLoadFromDag(t *testing.T) {
 }
 
 func TestMvFile(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	dagService, rt := setupRoot(ctx, t)
 	rootDir := rt.GetDirectory()
 
@@ -416,8 +412,7 @@ func TestMvFile(t *testing.T) {
 }
 
 func TestMvFileToSubdir(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	dagService, rt := setupRoot(ctx, t)
 	rootDir := rt.GetDirectory()
 
@@ -442,8 +437,7 @@ func TestMvFileToSubdir(t *testing.T) {
 }
 
 func TestMvFileToSubdirWithRename(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	dagService, rt := setupRoot(ctx, t)
 	rootDir := rt.GetDirectory()
 
@@ -468,8 +462,7 @@ func TestMvFileToSubdirWithRename(t *testing.T) {
 }
 
 func TestMvDir(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	dagService, rt := setupRoot(ctx, t)
 	rootDir := rt.GetDirectory()
 
@@ -500,8 +493,7 @@ func TestMvDir(t *testing.T) {
 }
 
 func TestMfsFile(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	ds, rt := setupRoot(ctx, t)
 
 	rootdir := rt.GetDirectory()
@@ -652,8 +644,7 @@ func TestMfsFile(t *testing.T) {
 }
 
 func TestMfsModeAndModTime(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	ds, rt := setupRoot(ctx, t)
 	rootdir := rt.GetDirectory()
@@ -803,8 +794,7 @@ func TestMfsModeAndModTime(t *testing.T) {
 }
 
 func TestMfsRawNodeSetModeAndMtime(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	_, rt := setupRoot(ctx, t)
 	rootdir := rt.GetDirectory()
@@ -879,8 +869,7 @@ func TestMfsRawNodeSetModeAndMtime(t *testing.T) {
 }
 
 func TestMfsDirListNames(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	ds, rt := setupRoot(ctx, t)
 
 	rootdir := rt.GetDirectory()
@@ -888,7 +877,7 @@ func TestMfsDirListNames(t *testing.T) {
 	total := rand.Intn(10) + 1
 	fNames := make([]string, 0, total)
 
-	for i := 0; i < total; i++ {
+	for range total {
 		fn := randomName()
 		fNames = append(fNames, fn)
 		nd := getRandFile(t, ds, rand.Int63n(1000)+1)
@@ -904,13 +893,7 @@ func TestMfsDirListNames(t *testing.T) {
 	}
 
 	for _, lName := range list {
-		found := false
-		for _, fName := range fNames {
-			if lName == fName {
-				found = true
-				break
-			}
-		}
+		found := slices.Contains(fNames, lName)
 		if !found {
 			t.Fatal(lName + " not found in directory listing")
 		}
@@ -918,7 +901,7 @@ func TestMfsDirListNames(t *testing.T) {
 }
 
 func randomWalk(d *Directory, n int) (*Directory, error) {
-	for i := 0; i < n; i++ {
+	for range n {
 		dirents, err := d.List(context.Background())
 		if err != nil {
 			return nil, err
@@ -949,12 +932,12 @@ func randomWalk(d *Directory, n int) (*Directory, error) {
 func randomName() string {
 	set := "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890_"
 	length := rand.Intn(10) + 2
-	var out string
-	for i := 0; i < length; i++ {
+	var out strings.Builder
+	for range length {
 		j := rand.Intn(len(set))
-		out += set[j : j+1]
+		out.WriteString(set[j : j+1])
 	}
-	return out
+	return out.String()
 }
 
 func actorMakeFile(d *Directory) error {
@@ -1099,7 +1082,7 @@ func actorReadFile(d *Directory) error {
 
 func testActor(rt *Root, iterations int, errs chan error) {
 	d := rt.GetDirectory()
-	for i := 0; i < iterations; i++ {
+	for range iterations {
 		switch rand.Intn(5) {
 		case 0:
 			if err := actorMkdir(d); err != nil {
@@ -1127,18 +1110,17 @@ func testActor(rt *Root, iterations int, errs chan error) {
 }
 
 func TestMfsStress(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	_, rt := setupRoot(ctx, t)
 
 	numroutines := 10
 
 	errs := make(chan error)
-	for i := 0; i < numroutines; i++ {
+	for range numroutines {
 		go testActor(rt, 50, errs)
 	}
 
-	for i := 0; i < numroutines; i++ {
+	for range numroutines {
 		err := <-errs
 		if err != nil {
 			t.Fatal(err)
@@ -1147,11 +1129,10 @@ func TestMfsStress(t *testing.T) {
 }
 
 func TestMfsHugeDir(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	_, rt := setupRoot(ctx, t)
 
-	for i := 0; i < 10000; i++ {
+	for i := range 10000 {
 		err := Mkdir(rt, fmt.Sprintf("/dir%d", i), MkdirOpts{Mkparents: false, Flush: false})
 		if err != nil {
 			t.Fatal(err)
@@ -1160,8 +1141,7 @@ func TestMfsHugeDir(t *testing.T) {
 }
 
 func TestMkdirP(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	_, rt := setupRoot(ctx, t)
 
 	err := Mkdir(rt, "/a/b/c/d/e/f", MkdirOpts{Mkparents: true, Flush: true})
@@ -1171,8 +1151,7 @@ func TestMkdirP(t *testing.T) {
 }
 
 func TestConcurrentWriteAndFlush(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	ds, rt := setupRoot(ctx, t)
 
 	d := mkdirP(t, rt.GetDirectory(), "foo/bar/baz")
@@ -1185,19 +1164,17 @@ func TestConcurrentWriteAndFlush(t *testing.T) {
 	nloops := 500
 
 	wg := new(sync.WaitGroup)
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		for i := 0; i < nloops; i++ {
+	wg.Go(func() {
+		for range nloops {
 			err := writeFile(rt, "/foo/bar/baz/file", func(_ []byte) []byte { return []byte("STUFF") })
 			if err != nil {
 				t.Error("file write failed: ", err)
 				return
 			}
 		}
-	}()
+	})
 
-	for i := 0; i < nloops; i++ {
+	for range nloops {
 		_, err := rt.GetDirectory().GetNode()
 		if err != nil {
 			t.Fatal(err)
@@ -1208,8 +1185,7 @@ func TestConcurrentWriteAndFlush(t *testing.T) {
 }
 
 func TestFlushing(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	_, rt := setupRoot(ctx, t)
 
 	dir := rt.GetDirectory()
@@ -1312,8 +1288,7 @@ func readFile(rt *Root, path string, offset int64, buf []byte) error {
 }
 
 func TestConcurrentReads(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	ds, rt := setupRoot(ctx, t)
 
@@ -1334,12 +1309,12 @@ func TestConcurrentReads(t *testing.T) {
 
 	var wg sync.WaitGroup
 	nloops := 100
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		wg.Add(1)
 		go func(me int) {
 			defer wg.Done()
 			mybuf := make([]byte, len(buf))
-			for j := 0; j < nloops; j++ {
+			for range nloops {
 				offset := rand.Intn(len(buf))
 				length := rand.Intn(len(buf) - offset)
 
@@ -1403,8 +1378,7 @@ func writeFile(rt *Root, path string, transform func([]byte) []byte) error {
 }
 
 func TestConcurrentWrites(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	ds, rt := setupRoot(ctx, t)
 
@@ -1422,12 +1396,10 @@ func TestConcurrentWrites(t *testing.T) {
 	var wg sync.WaitGroup
 	nloops := 100
 	errs := make(chan error, 1000)
-	for i := 0; i < 10; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	for range 10 {
+		wg.Go(func() {
 			var lastSeen uint64
-			for j := 0; j < nloops; j++ {
+			for range nloops {
 				err := writeFile(rt, "a/b/c/afile", func(buf []byte) []byte {
 					if len(buf) == 0 {
 						if lastSeen > 0 {
@@ -1457,7 +1429,7 @@ func TestConcurrentWrites(t *testing.T) {
 					return
 				}
 			}
-		}()
+		})
 	}
 	wg.Wait()
 	close(errs)
@@ -1476,8 +1448,7 @@ func TestConcurrentWrites(t *testing.T) {
 }
 
 func TestFileDescriptors(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	ds, rt := setupRoot(ctx, t)
 	dir := rt.GetDirectory()
@@ -1583,8 +1554,7 @@ func TestFileDescriptors(t *testing.T) {
 }
 
 func TestTruncateAtSize(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	ds, rt := setupRoot(ctx, t)
 
 	dir := rt.GetDirectory()
@@ -1609,8 +1579,7 @@ func TestTruncateAtSize(t *testing.T) {
 }
 
 func TestTruncateAndWrite(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	ds, rt := setupRoot(ctx, t)
 
 	dir := rt.GetDirectory()
@@ -1627,7 +1596,7 @@ func TestTruncateAndWrite(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer fd.Close()
-	for i := 0; i < 200; i++ {
+	for i := range 200 {
 		err = fd.Truncate(0)
 		if err != nil {
 			t.Fatal(err)
@@ -1656,8 +1625,7 @@ func TestTruncateAndWrite(t *testing.T) {
 }
 
 func TestFSNodeType(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	ds, rt := setupRoot(ctx, t)
 
 	// check for IsDir
@@ -1825,4 +1793,707 @@ func FuzzMkdirAndWriteConcurrently(f *testing.F) {
 			t.Logf("error writing to file from filepath %s: %s", filepath, err)
 		}
 	})
+}
+
+// TestRootOptionChunker verifies that WithChunker sets the chunker factory
+// for files created in the MFS, producing the exact expected block count and sizes.
+func TestRootOptionChunker(t *testing.T) {
+	ctx := t.Context()
+	ds := getDagserv(t)
+
+	// Use 512-byte chunks (non-default: default is 256KB = 262144 bytes).
+	// With default chunker, 2048 bytes would produce 1 chunk.
+	// With our custom 512-byte chunker, it must produce exactly 4 chunks.
+	const chunkSize = 512
+	const dataSize = 2048 // exactly 4 chunks with 512-byte chunker
+
+	// Verify our test value differs from default
+	if int64(chunkSize) == chunker.DefaultBlockSize {
+		t.Fatalf("test uses default chunk size %d; use a non-default value", chunkSize)
+	}
+
+	// Create root with custom chunker (512 bytes)
+	root, err := NewEmptyRoot(ctx, ds, nil, nil, MkdirOpts{}, WithChunker(chunker.SizeSplitterGen(chunkSize)))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify chunker was set on root
+	if root.GetChunker() == nil {
+		t.Fatal("expected non-nil chunker on root")
+	}
+
+	// Create empty file node
+	nd := dag.NodeWithData(ft.FilePBData(nil, 0))
+	nd.SetCidBuilder(cid.V1Builder{Codec: cid.DagProtobuf, MhType: multihash.SHA2_256})
+	if err := ds.Add(ctx, nd); err != nil {
+		t.Fatal(err)
+	}
+	if err := PutNode(root, "/testfile", nd); err != nil {
+		t.Fatal(err)
+	}
+
+	// Write exactly 2048 bytes (should produce exactly 4 x 512-byte chunks)
+	data := make([]byte, dataSize)
+	for i := range data {
+		data[i] = byte(i % 256)
+	}
+
+	fi, err := Lookup(root, "/testfile")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	fd, err := fi.(*File).Open(Flags{Write: true, Sync: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fd.Write(data); err != nil {
+		t.Fatal(err)
+	}
+	if err := fd.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify result: must have exactly 4 child links (proves custom chunker was used)
+	// With default 256KB chunker, this would be 1 link (or 0 links with inline data)
+	node, err := fi.GetNode()
+	if err != nil {
+		t.Fatal(err)
+	}
+	links := node.Links()
+	if len(links) != 4 {
+		t.Fatalf("expected exactly 4 links for %d bytes with %d-byte chunks, got %d (default chunker would produce 1)", dataSize, chunkSize, len(links))
+	}
+
+	// Verify each chunk is exactly chunkSize bytes
+	for i, link := range links {
+		if link.Size != chunkSize {
+			t.Fatalf("link %d: expected size %d, got %d", i, chunkSize, link.Size)
+		}
+	}
+}
+
+// TestRootOptionMaxLinks verifies that WithMaxLinks triggers HAMT sharding
+// when directory entries exceed the configured maximum.
+func TestRootOptionMaxLinks(t *testing.T) {
+	ctx := t.Context()
+	ds := getDagserv(t)
+
+	// Use MaxLinks=3 (non-default: default is ~174 from helpers.DefaultLinksPerBlock).
+	// With default MaxLinks, 4 files would NOT trigger HAMT sharding.
+	// With our custom MaxLinks=3, adding 4 files MUST trigger HAMT.
+	const maxLinks = 3
+	const fileCount = 4 // exceeds maxLinks=3, but not default ~174
+
+	// Use SizeEstimationDisabled (non-default: default is SizeEstimationLinks=0).
+	// This mode ignores size-based thresholds and only considers link count,
+	// ensuring we're testing MaxLinks propagation, not size thresholds.
+	sizeEstimationDisabled := uio.SizeEstimationDisabled
+	if sizeEstimationDisabled == uio.SizeEstimationLinks {
+		t.Fatal("test uses default SizeEstimationMode; use a non-default value")
+	}
+
+	root, err := NewEmptyRoot(ctx, ds, nil, nil, MkdirOpts{SizeEstimationMode: &sizeEstimationDisabled},
+		WithMaxLinks(maxLinks),
+		WithSizeEstimationMode(sizeEstimationDisabled))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create subdirectory with explicit opts to ensure MaxLinks and SizeEstimationMode propagate
+	if err := Mkdir(root, "/subdir", MkdirOpts{
+		MaxLinks:           maxLinks,
+		SizeEstimationMode: &sizeEstimationDisabled,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	subdir, err := Lookup(root, "/subdir")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := subdir.(*Directory)
+
+	// Verify MaxLinks was propagated to the subdirectory
+	actualMaxLinks := dir.unixfsDir.GetMaxLinks()
+	if actualMaxLinks != maxLinks {
+		t.Fatalf("MaxLinks not propagated: expected %d, got %d", maxLinks, actualMaxLinks)
+	}
+
+	// Verify SizeEstimationMode was propagated
+	actualMode := dir.unixfsDir.GetSizeEstimationMode()
+	if actualMode != sizeEstimationDisabled {
+		t.Fatalf("SizeEstimationMode not propagated: expected %d, got %d", sizeEstimationDisabled, actualMode)
+	}
+
+	// Verify starts as BasicDirectory
+	node, err := dir.GetNode()
+	if err != nil {
+		t.Fatal(err)
+	}
+	fsn, err := ft.FSNodeFromBytes(node.(*dag.ProtoNode).Data())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fsn.Type() != ft.TDirectory {
+		t.Fatalf("expected TDirectory initially, got %s", fsn.Type())
+	}
+
+	// Add exactly 4 files (exceeds MaxLinks=3, but would not exceed default ~174)
+	for i := range fileCount {
+		child := dag.NodeWithData(ft.FilePBData([]byte("test"), 4))
+		if err := ds.Add(ctx, child); err != nil {
+			t.Fatal(err)
+		}
+		if err := dir.AddChild(fmt.Sprintf("file%d", i), child); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Flush and verify it became HAMT (proves custom MaxLinks was used)
+	// With default MaxLinks (~174), 4 files would NOT trigger HAMT
+	if err := dir.Flush(); err != nil {
+		t.Fatal(err)
+	}
+	node, err = dir.GetNode()
+	if err != nil {
+		t.Fatal(err)
+	}
+	fsn, err = ft.FSNodeFromBytes(node.(*dag.ProtoNode).Data())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fsn.Type() != ft.THAMTShard {
+		t.Fatalf("expected THAMTShard after %d entries with MaxLinks=%d, got %s (default MaxLinks would stay BasicDirectory)", fileCount, maxLinks, fsn.Type())
+	}
+}
+
+// TestRootOptionSizeEstimationMode verifies that WithSizeEstimationMode
+// propagates correctly to child directories, including after reload from DAG.
+func TestRootOptionSizeEstimationMode(t *testing.T) {
+	ctx := t.Context()
+	ds := getDagserv(t)
+
+	// Use SizeEstimationDisabled (non-default: default is SizeEstimationLinks=0).
+	// This mode ignores size-based thresholds and only considers link count.
+	// With default SizeEstimationLinks, the size threshold might prevent HAMT
+	// conversion even when MaxLinks is exceeded (if size is below threshold).
+	mode := uio.SizeEstimationDisabled
+	if mode == uio.SizeEstimationLinks {
+		t.Fatal("test uses default SizeEstimationMode; use a non-default value")
+	}
+
+	// Use MaxLinks=3 (non-default: default is ~174).
+	const maxLinks = 3
+
+	// Create root with non-default settings
+	root, err := NewEmptyRoot(ctx, ds, nil, nil, MkdirOpts{SizeEstimationMode: &mode},
+		WithSizeEstimationMode(mode),
+		WithMaxLinks(maxLinks))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create subdirectory (will inherit settings via cacheNode when loaded)
+	if err := Mkdir(root, "/subdir", MkdirOpts{}); err != nil {
+		t.Fatal(err)
+	}
+
+	// Add 2 files (below MaxLinks threshold)
+	for i := range 2 {
+		child := dag.NodeWithData(ft.FilePBData([]byte("test"), 4))
+		if err := ds.Add(ctx, child); err != nil {
+			t.Fatal(err)
+		}
+		if err := PutNode(root, fmt.Sprintf("/subdir/file%d", i), child); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Flush to persist to DAG
+	if err := root.GetDirectory().Flush(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Get root node and reload (simulates daemon restart)
+	rootNode, err := root.GetDirectory().GetNode()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create new root from persisted node with same settings.
+	// This tests that settings propagate to directories loaded from DAG via cacheNode().
+	root2, err := NewRoot(ctx, ds, rootNode.(*dag.ProtoNode), nil, nil,
+		WithSizeEstimationMode(mode),
+		WithMaxLinks(maxLinks))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Access reloaded subdirectory (triggers cacheNode which should propagate settings)
+	subdir2, err := Lookup(root2, "/subdir")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir2 := subdir2.(*Directory)
+
+	// Verify settings were propagated to reloaded directory
+	actualMode := dir2.unixfsDir.GetSizeEstimationMode()
+	if actualMode != mode {
+		t.Fatalf("SizeEstimationMode not propagated after reload: expected %d, got %d", mode, actualMode)
+	}
+	actualMaxLinks := dir2.unixfsDir.GetMaxLinks()
+	if actualMaxLinks != maxLinks {
+		t.Fatalf("MaxLinks not propagated after reload: expected %d, got %d", maxLinks, actualMaxLinks)
+	}
+
+	// Verify still BasicDirectory with 2 entries
+	node, err := dir2.GetNode()
+	if err != nil {
+		t.Fatal(err)
+	}
+	fsn, err := ft.FSNodeFromBytes(node.(*dag.ProtoNode).Data())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fsn.Type() != ft.TDirectory {
+		t.Fatalf("expected TDirectory with 2 entries, got %s", fsn.Type())
+	}
+
+	// Add 2 more files (now 4 total, exceeds MaxLinks=3)
+	for i := 2; i < 4; i++ {
+		child := dag.NodeWithData(ft.FilePBData([]byte("test"), 4))
+		if err := ds.Add(ctx, child); err != nil {
+			t.Fatal(err)
+		}
+		if err := dir2.AddChild(fmt.Sprintf("file%d", i), child); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Flush and verify it became HAMT (proves settings propagated after reload)
+	// With default settings, 4 tiny files would NOT trigger HAMT
+	if err := dir2.Flush(); err != nil {
+		t.Fatal(err)
+	}
+	node, err = dir2.GetNode()
+	if err != nil {
+		t.Fatal(err)
+	}
+	fsn, err = ft.FSNodeFromBytes(node.(*dag.ProtoNode).Data())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fsn.Type() != ft.THAMTShard {
+		t.Fatalf("expected THAMTShard after reload with custom settings, got %s", fsn.Type())
+	}
+}
+
+// TestChunkerInheritance verifies that the chunker setting propagates
+// through nested subdirectories to files created deep in the hierarchy.
+func TestChunkerInheritance(t *testing.T) {
+	ctx := t.Context()
+	ds := getDagserv(t)
+
+	// Use 256-byte chunks (non-default: default is 256KB = 262144 bytes).
+	// With default chunker, 1024 bytes would produce 1 chunk.
+	// With our custom 256-byte chunker, it must produce exactly 4 chunks.
+	// This tests that the chunker propagates through /a -> /b -> /c to the file.
+	const chunkSize = 256
+	const dataSize = 1024 // exactly 4 chunks with 256-byte chunker
+
+	// Verify our test value differs from default
+	if int64(chunkSize) == chunker.DefaultBlockSize {
+		t.Fatalf("test uses default chunk size %d; use a non-default value", chunkSize)
+	}
+
+	// Create root with custom chunker
+	root, err := NewEmptyRoot(ctx, ds, nil, nil, MkdirOpts{}, WithChunker(chunker.SizeSplitterGen(chunkSize)))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify chunker was set on root
+	if root.GetChunker() == nil {
+		t.Fatal("expected non-nil chunker on root")
+	}
+
+	// Create nested subdirectory (3 levels deep: /a/b/c)
+	// Each directory should inherit the chunker from its parent
+	if err := Mkdir(root, "/a/b/c", MkdirOpts{Mkparents: true}); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create file in nested directory
+	nd := dag.NodeWithData(ft.FilePBData(nil, 0))
+	nd.SetCidBuilder(cid.V1Builder{Codec: cid.DagProtobuf, MhType: multihash.SHA2_256})
+	if err := ds.Add(ctx, nd); err != nil {
+		t.Fatal(err)
+	}
+	if err := PutNode(root, "/a/b/c/file", nd); err != nil {
+		t.Fatal(err)
+	}
+
+	// Write data
+	data := make([]byte, dataSize)
+	for i := range data {
+		data[i] = byte(i)
+	}
+
+	fi, err := Lookup(root, "/a/b/c/file")
+	if err != nil {
+		t.Fatal(err)
+	}
+	fd, err := fi.(*File).Open(Flags{Write: true, Sync: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fd.Write(data); err != nil {
+		t.Fatal(err)
+	}
+	if err := fd.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify: must have exactly 4 links (proves chunker inherited through /a/b/c)
+	// With default 256KB chunker, 1024 bytes would produce 1 chunk (or inline data)
+	node, err := fi.GetNode()
+	if err != nil {
+		t.Fatal(err)
+	}
+	links := node.Links()
+	if len(links) != 4 {
+		t.Fatalf("expected exactly 4 links (chunker inherited through 3 levels), got %d (default chunker would produce 1)", len(links))
+	}
+
+	// Verify each chunk is exactly chunkSize bytes
+	for i, link := range links {
+		if link.Size != chunkSize {
+			t.Fatalf("link %d: expected size %d, got %d", i, chunkSize, link.Size)
+		}
+	}
+}
+
+// TestRootOptionMaxHAMTFanout verifies that WithMaxHAMTFanout propagates
+// to directories and affects HAMT shard width.
+func TestRootOptionMaxHAMTFanout(t *testing.T) {
+	ctx := t.Context()
+	ds := getDagserv(t)
+
+	// Use custom fanout of 64 (non-default: default is 256).
+	const customFanout = 64
+
+	// Use SizeEstimationDisabled so we rely only on MaxLinks for HAMT conversion.
+	sizeEstimationDisabled := uio.SizeEstimationDisabled
+	const maxLinks = 3
+
+	root, err := NewEmptyRoot(ctx, ds, nil, nil,
+		MkdirOpts{SizeEstimationMode: &sizeEstimationDisabled},
+		WithMaxLinks(maxLinks),
+		WithMaxHAMTFanout(customFanout),
+		WithSizeEstimationMode(sizeEstimationDisabled))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create subdirectory
+	if err := Mkdir(root, "/subdir", MkdirOpts{
+		MaxLinks:           maxLinks,
+		MaxHAMTFanout:      customFanout,
+		SizeEstimationMode: &sizeEstimationDisabled,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	subdir, err := Lookup(root, "/subdir")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := subdir.(*Directory)
+
+	// Verify MaxHAMTFanout was propagated
+	actualFanout := dir.unixfsDir.GetMaxHAMTFanout()
+	if actualFanout != customFanout {
+		t.Fatalf("MaxHAMTFanout not propagated: expected %d, got %d", customFanout, actualFanout)
+	}
+
+	// Add files to trigger HAMT conversion (exceeds MaxLinks=3)
+	for i := range 4 {
+		child := dag.NodeWithData(ft.FilePBData([]byte("test"), 4))
+		if err := ds.Add(ctx, child); err != nil {
+			t.Fatal(err)
+		}
+		if err := dir.AddChild(fmt.Sprintf("file%d", i), child); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Flush and verify it became HAMT
+	if err := dir.Flush(); err != nil {
+		t.Fatal(err)
+	}
+	node, err := dir.GetNode()
+	if err != nil {
+		t.Fatal(err)
+	}
+	fsn, err := ft.FSNodeFromBytes(node.(*dag.ProtoNode).Data())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fsn.Type() != ft.THAMTShard {
+		t.Fatalf("expected THAMTShard, got %s", fsn.Type())
+	}
+
+	// Verify the HAMT uses the custom fanout by checking the shard's fanout field.
+	// The fanout is stored in the UnixFS Data field.
+	if fsn.Fanout() != uint64(customFanout) {
+		t.Fatalf("expected HAMT fanout %d, got %d", customFanout, fsn.Fanout())
+	}
+}
+
+// TestRootOptionHAMTShardingSize verifies that WithHAMTShardingSize propagates
+// to directories and affects HAMT conversion threshold.
+func TestRootOptionHAMTShardingSize(t *testing.T) {
+	ctx := t.Context()
+	ds := getDagserv(t)
+
+	// Use very small threshold of 100 bytes (non-default: default is 256KiB).
+	// This should trigger HAMT conversion with just a few small files.
+	const customShardingSize = 100
+
+	// Use SizeEstimationBlock for accurate size tracking.
+	sizeEstimationBlock := uio.SizeEstimationBlock
+
+	root, err := NewEmptyRoot(ctx, ds, nil, nil,
+		MkdirOpts{SizeEstimationMode: &sizeEstimationBlock},
+		WithHAMTShardingSize(customShardingSize),
+		WithSizeEstimationMode(sizeEstimationBlock))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create subdirectory
+	if err := Mkdir(root, "/subdir", MkdirOpts{
+		SizeEstimationMode: &sizeEstimationBlock,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	subdir, err := Lookup(root, "/subdir")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := subdir.(*Directory)
+
+	// Verify HAMTShardingSize was propagated
+	actualShardingSize := dir.unixfsDir.GetHAMTShardingSize()
+	if actualShardingSize != customShardingSize {
+		t.Fatalf("HAMTShardingSize not propagated: expected %d, got %d", customShardingSize, actualShardingSize)
+	}
+
+	// Verify starts as BasicDirectory
+	node, err := dir.GetNode()
+	if err != nil {
+		t.Fatal(err)
+	}
+	fsn, err := ft.FSNodeFromBytes(node.(*dag.ProtoNode).Data())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fsn.Type() != ft.TDirectory {
+		t.Fatalf("expected TDirectory initially, got %s", fsn.Type())
+	}
+
+	// Add files to exceed the small 100-byte threshold.
+	// Each link adds roughly 40-50 bytes, so 3 files should exceed 100 bytes.
+	for i := range 3 {
+		child := dag.NodeWithData(ft.FilePBData([]byte("test content"), 12))
+		if err := ds.Add(ctx, child); err != nil {
+			t.Fatal(err)
+		}
+		if err := dir.AddChild(fmt.Sprintf("file%d", i), child); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Flush and verify it became HAMT
+	if err := dir.Flush(); err != nil {
+		t.Fatal(err)
+	}
+	node, err = dir.GetNode()
+	if err != nil {
+		t.Fatal(err)
+	}
+	fsn, err = ft.FSNodeFromBytes(node.(*dag.ProtoNode).Data())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fsn.Type() != ft.THAMTShard {
+		t.Fatalf("expected THAMTShard after exceeding custom sharding threshold (%d bytes), got %s", customShardingSize, fsn.Type())
+	}
+}
+
+// TestHAMTShardingSizeInheritance verifies that HAMTShardingSize propagates
+// through nested subdirectories and after reload from DAG.
+func TestHAMTShardingSizeInheritance(t *testing.T) {
+	ctx := t.Context()
+	ds := getDagserv(t)
+
+	// Use very small threshold
+	const customShardingSize = 150
+	sizeEstimationBlock := uio.SizeEstimationBlock
+
+	// Create root with custom settings
+	root, err := NewEmptyRoot(ctx, ds, nil, nil,
+		MkdirOpts{SizeEstimationMode: &sizeEstimationBlock},
+		WithHAMTShardingSize(customShardingSize),
+		WithSizeEstimationMode(sizeEstimationBlock))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create nested subdirectory
+	if err := Mkdir(root, "/a/b", MkdirOpts{Mkparents: true}); err != nil {
+		t.Fatal(err)
+	}
+
+	// Add a file to /a/b
+	child := dag.NodeWithData(ft.FilePBData([]byte("test"), 4))
+	if err := ds.Add(ctx, child); err != nil {
+		t.Fatal(err)
+	}
+	if err := PutNode(root, "/a/b/file", child); err != nil {
+		t.Fatal(err)
+	}
+
+	// Flush to persist to DAG
+	if err := root.GetDirectory().Flush(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Get root node and reload (simulates daemon restart)
+	rootNode, err := root.GetDirectory().GetNode()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create new root from persisted node with same settings
+	root2, err := NewRoot(ctx, ds, rootNode.(*dag.ProtoNode), nil, nil,
+		WithHAMTShardingSize(customShardingSize),
+		WithSizeEstimationMode(sizeEstimationBlock))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Access reloaded nested directory (triggers cacheNode)
+	subdir2, err := Lookup(root2, "/a/b")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir2 := subdir2.(*Directory)
+
+	// Verify settings were propagated after reload
+	actualShardingSize := dir2.unixfsDir.GetHAMTShardingSize()
+	if actualShardingSize != customShardingSize {
+		t.Fatalf("HAMTShardingSize not propagated after reload: expected %d, got %d", customShardingSize, actualShardingSize)
+	}
+
+	// Add more files to exceed threshold
+	for i := 1; i < 5; i++ {
+		child := dag.NodeWithData(ft.FilePBData([]byte("test content"), 12))
+		if err := ds.Add(ctx, child); err != nil {
+			t.Fatal(err)
+		}
+		if err := dir2.AddChild(fmt.Sprintf("file%d", i), child); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Verify it became HAMT (proves custom threshold was applied after reload)
+	if err := dir2.Flush(); err != nil {
+		t.Fatal(err)
+	}
+	node, err := dir2.GetNode()
+	if err != nil {
+		t.Fatal(err)
+	}
+	fsn, err := ft.FSNodeFromBytes(node.(*dag.ProtoNode).Data())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fsn.Type() != ft.THAMTShard {
+		t.Fatalf("expected THAMTShard after reload with custom threshold, got %s", fsn.Type())
+	}
+}
+
+// TestMkdirParentsChunker verifies that Mkdir with Mkparents propagates
+// the Chunker from opts to intermediate directories, not just the final one.
+func TestMkdirParentsChunker(t *testing.T) {
+	ctx := t.Context()
+	ds := getDagserv(t)
+
+	// Create root with 256-byte chunker (the "default" for this test).
+	// This is what intermediate directories would incorrectly inherit
+	// if the bug exists.
+	rootChunkSize := int64(256)
+	root, err := NewEmptyRoot(ctx, ds, nil, nil, MkdirOpts{},
+		WithChunker(chunker.SizeSplitterGen(rootChunkSize)))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create /a/b/c with a DIFFERENT 128-byte chunker.
+	// The bug: intermediate directory /a inherits root's 256-byte chunker
+	// instead of the 128-byte chunker specified in opts.
+	optsChunkSize := int64(128)
+	err = Mkdir(root, "/a/b/c", MkdirOpts{
+		Mkparents: true,
+		Chunker:   chunker.SizeSplitterGen(optsChunkSize),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create file in /a (the first intermediate directory)
+	nd := dag.NodeWithData(ft.FilePBData(nil, 0))
+	nd.SetCidBuilder(cid.V1Builder{Codec: cid.DagProtobuf, MhType: multihash.SHA2_256})
+	if err := ds.Add(ctx, nd); err != nil {
+		t.Fatal(err)
+	}
+	if err := PutNode(root, "/a/testfile", nd); err != nil {
+		t.Fatal(err)
+	}
+
+	// Write 512 bytes
+	// With root's 256-byte chunker (bug): 2 chunks
+	// With opts' 128-byte chunker (correct): 4 chunks
+	data := make([]byte, 512)
+	for i := range data {
+		data[i] = byte(i % 256)
+	}
+
+	fi, err := Lookup(root, "/a/testfile")
+	if err != nil {
+		t.Fatal(err)
+	}
+	fd, err := fi.(*File).Open(Flags{Write: true, Sync: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fd.Write(data); err != nil {
+		t.Fatal(err)
+	}
+	if err := fd.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify: should have 4 chunks (opts' chunker), not 2 (root's chunker)
+	node, err := fi.GetNode()
+	if err != nil {
+		t.Fatal(err)
+	}
+	links := node.Links()
+	if len(links) != 4 {
+		t.Fatalf("intermediate dir should use opts.Chunker (128-byte, 4 chunks), not root's (256-byte, 2 chunks); got %d links", len(links))
+	}
 }

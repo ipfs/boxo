@@ -21,6 +21,25 @@ import (
 
 var logger = logging.Logger("routing/http/contentrouter")
 
+// filterAddrs extracts multiaddrs from types.Multiaddr slice, filtering out nil
+// entries as a defensive measure against corrupted data.
+// See: https://github.com/ipfs/kubo/issues/11116
+func filterAddrs(in []types.Multiaddr) []multiaddr.Multiaddr {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]multiaddr.Multiaddr, 0, len(in))
+	for _, a := range in {
+		if a.Multiaddr != nil {
+			out = append(out, a.Multiaddr)
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
 const ttl = 24 * time.Hour
 
 // A Client provides HTTP Delegated Routing methods. See also [server.DelegatedRouter].
@@ -147,17 +166,12 @@ func readProviderResponses(ctx context.Context, iter iter.ResultIter[types.Recor
 				continue
 			}
 
-			var addrs []multiaddr.Multiaddr
-			for _, a := range result.Addrs {
-				addrs = append(addrs, a.Multiaddr)
-			}
-
 			select {
 			case <-ctx.Done():
 				return
 			case ch <- peer.AddrInfo{
 				ID:    *result.ID,
-				Addrs: addrs,
+				Addrs: filterAddrs(result.Addrs),
 			}:
 			}
 
@@ -175,17 +189,12 @@ func readProviderResponses(ctx context.Context, iter iter.ResultIter[types.Recor
 				continue
 			}
 
-			var addrs []multiaddr.Multiaddr
-			for _, a := range result.Addrs {
-				addrs = append(addrs, a.Multiaddr)
-			}
-
 			select {
 			case <-ctx.Done():
 				return
 			case ch <- peer.AddrInfo{
 				ID:    *result.ID,
-				Addrs: addrs,
+				Addrs: filterAddrs(result.Addrs),
 			}:
 			}
 		}
@@ -224,11 +233,7 @@ func (c *contentRouter) FindPeer(ctx context.Context, pid peer.ID) (peer.AddrInf
 			continue
 		}
 
-		var addrs []multiaddr.Multiaddr
-		for _, a := range res.Val.Addrs {
-			addrs = append(addrs, a.Multiaddr)
-		}
-
+		addrs := filterAddrs(res.Val.Addrs)
 		// If there are no addresses there's nothing of value to return
 		if len(addrs) == 0 {
 			continue
@@ -327,11 +332,7 @@ func (c *contentRouter) GetClosestPeers(ctx context.Context, key cid.Cid) (<-cha
 				continue
 			}
 
-			var addrs []multiaddr.Multiaddr
-			for _, a := range res.Val.Addrs {
-				addrs = append(addrs, a.Multiaddr)
-			}
-
+			addrs := filterAddrs(res.Val.Addrs)
 			// If there are no addresses there's nothing of value to return
 			if len(addrs) == 0 {
 				continue

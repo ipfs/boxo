@@ -182,8 +182,7 @@ func TestResolveToLastNode_NoUnnecessaryFetching(t *testing.T) {
 }
 
 func TestPathRemainder(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	bsrv := dagmock.Bserv()
 
 	nb := basicnode.Prototype.Any.NewBuilder()
@@ -223,8 +222,7 @@ func TestPathRemainder(t *testing.T) {
 }
 
 func TestResolveToLastNode_MixedSegmentTypes(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	bsrv := dagmock.Bserv()
 	a := randNode()

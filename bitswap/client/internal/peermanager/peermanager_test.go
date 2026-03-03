@@ -354,7 +354,7 @@ func BenchmarkPeerManager(b *testing.B) {
 
 	// Create a bunch of connections
 	connected := 0
-	for i := 0; i < len(peers); i++ {
+	for i := range peers {
 		peerManager.Connected(peers[i])
 		connected++
 	}

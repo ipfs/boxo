@@ -70,14 +70,12 @@ func TestWithConcurrentRequestLimiter(t *testing.T) {
 
 		// Send multiple concurrent requests
 		var wg sync.WaitGroup
-		for i := 0; i < 10; i++ {
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
+		for range 10 {
+			wg.Go(func() {
 				req := httptest.NewRequest(http.MethodGet, "/", nil)
 				rec := httptest.NewRecorder()
 				handler.ServeHTTP(rec, req)
-			}()
+			})
 		}
 		wg.Wait()
 
@@ -117,7 +115,7 @@ func TestWithConcurrentRequestLimiter(t *testing.T) {
 		// Send more requests than the limit
 		var wg sync.WaitGroup
 		results := make([]int, numRequests)
-		for i := 0; i < numRequests; i++ {
+		for i := range numRequests {
 			wg.Add(1)
 			go func(idx int) {
 				defer wg.Done()
@@ -240,7 +238,7 @@ func TestWithConcurrentRequestLimiter(t *testing.T) {
 		<-started // Wait for handler to start
 
 		// Generate many rejections and verify Retry-After stays constant
-		for i := 0; i < 20; i++ {
+		for range 20 {
 			req := httptest.NewRequest(http.MethodGet, "/", nil)
 			rec := httptest.NewRecorder()
 			handler.ServeHTTP(rec, req)
@@ -257,8 +255,8 @@ func TestMiddlewareIntegration(t *testing.T) {
 	t.Run("both middlewares work together", func(t *testing.T) {
 		var handler http.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// Simulate processing that writes data periodically
-			for i := 0; i < 3; i++ {
-				w.Write([]byte(fmt.Sprintf("data%d", i)))
+			for i := range 3 {
+				w.Write(fmt.Appendf(nil, "data%d", i))
 				w.(http.Flusher).Flush()
 				time.Sleep(30 * time.Millisecond)
 			}
@@ -271,17 +269,15 @@ func TestMiddlewareIntegration(t *testing.T) {
 
 		// Test that requests work normally within limits
 		var wg sync.WaitGroup
-		for i := 0; i < 2; i++ {
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
+		for range 2 {
+			wg.Go(func() {
 				req := httptest.NewRequest(http.MethodGet, "/", nil)
 				rec := httptest.NewRecorder()
 				handler.ServeHTTP(rec, req)
 				if rec.Code != http.StatusOK {
 					t.Errorf("expected status 200, got %d", rec.Code)
 				}
-			}()
+			})
 		}
 		wg.Wait()
 	})

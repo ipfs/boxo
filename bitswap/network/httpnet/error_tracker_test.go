@@ -73,14 +73,12 @@ func TestErrorTracker_ConcurrentAccess(t *testing.T) {
 	numRoutines := 10
 	threshold := 100
 
-	for i := 0; i < numRoutines; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	for range numRoutines {
+		wg.Go(func() {
 			for j := 0; j < threshold/numRoutines; j++ {
 				et.logErrors(p, 1, threshold)
 			}
-		}()
+		})
 	}
 
 	wg.Wait()

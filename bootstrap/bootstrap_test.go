@@ -17,7 +17,7 @@ import (
 func TestRandomizeAddressList(t *testing.T) {
 	var ps []peer.AddrInfo
 	sizeofSlice := 10
-	for i := 0; i < sizeofSlice; i++ {
+	for range sizeofSlice {
 		pid, err := test.RandPeerID()
 		if err != nil {
 			t.Fatal(err)

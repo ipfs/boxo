@@ -34,6 +34,10 @@ const (
 	// See the MaxConcurrentRequests field documentation for detailed tuning guidance.
 	DefaultMaxConcurrentRequests = 4096
 
+	// DefaultMaxRequestDuration is the default per-request timeout for the
+	// gateway handler.
+	DefaultMaxRequestDuration = time.Hour
+
 	// DefaultDiagnosticServiceURL is the default URL for CID diagnostic service
 	DefaultDiagnosticServiceURL = "https://check.ipfs.network"
 )
@@ -51,6 +55,19 @@ type Config struct {
 	// [application/vnd.ipld.car]: https://www.iana.org/assignments/media-types/application/vnd.ipld.car
 	// [Trustless Gateway]: https://specs.ipfs.tech/http-gateways/trustless-gateway/
 	DeserializedResponses bool
+
+	// AllowCodecConversion enables automatic conversion between codecs when
+	// the requested format differs from the block's native codec. For example,
+	// converting dag-pb (UnixFS) to dag-json.
+	//
+	// When false (default), the gateway returns 406 Not Acceptable if the
+	// requested format doesn't match the block's codec. This follows the
+	// behavior specified in IPIP-524.
+	//
+	// When true, the gateway attempts to convert between legacy IPLD formats.
+	// This is provided for backwards compatibility but is not required by
+	// the gateway specification.
+	AllowCodecConversion bool
 
 	// NoDNSLink configures the gateway to _not_ perform DNS TXT record lookups in
 	// response to requests with values in `Host` HTTP header. This flag can be
@@ -133,6 +150,12 @@ type Config struct {
 	// (e.g., Cloudflare's 5GB limit). A value of 0 disables this limit.
 	MaxRangeRequestFileSize int64
 
+	// MaxRequestDuration is the maximum total time a request can take.
+	// Unlike RetrievalTimeout (which resets on each data write and catches
+	// stalled transfers), this is an absolute deadline for the entire request.
+	// Zero or negative values will use DefaultMaxRequestDuration (1 hour).
+	MaxRequestDuration time.Duration
+
 	// MetricsRegistry is the Prometheus registry to use for metrics.
 	// If nil, prometheus.DefaultRegisterer will be used.
 	MetricsRegistry prometheus.Registerer
@@ -147,6 +170,13 @@ func validateConfig(c Config) Config {
 			log.Errorf("invalid DiagnosticServiceURL %q: %v, disabling diagnostic service", c.DiagnosticServiceURL, err)
 			c.DiagnosticServiceURL = ""
 		}
+	}
+
+	if c.MaxRequestDuration <= 0 {
+		if c.MaxRequestDuration < 0 {
+			log.Errorf("invalid MaxRequestDuration %s, using default %s", c.MaxRequestDuration.String(), DefaultMaxRequestDuration.String())
+		}
+		c.MaxRequestDuration = DefaultMaxRequestDuration
 	}
 
 	// Future validations can be added here

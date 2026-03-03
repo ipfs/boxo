@@ -113,8 +113,7 @@ func peerManagerFactory(id uint64) bssession.SessionPeerManager {
 }
 
 func TestReceiveFrom(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	notif := notifications.New(false)
 	defer notif.Shutdown()
 	sim := bssim.New()
@@ -160,8 +159,7 @@ func TestReceiveFrom(t *testing.T) {
 }
 
 func TestReceiveBlocksWhenManagerShutdown(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	notif := notifications.New(false)
 	defer notif.Shutdown()
 	sim := bssim.New()
@@ -197,8 +195,7 @@ func TestReceiveBlocksWhenManagerShutdown(t *testing.T) {
 }
 
 func TestReceiveBlocksWhenSessionContextCancelled(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	notif := notifications.New(false)
 	defer notif.Shutdown()
 	sim := bssim.New()
@@ -234,8 +231,7 @@ func TestReceiveBlocksWhenSessionContextCancelled(t *testing.T) {
 }
 
 func TestShutdown(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	notif := notifications.New(false)
 	defer notif.Shutdown()
 	sim := bssim.New()

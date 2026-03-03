@@ -31,7 +31,7 @@ func (m *mockFileInfo) Size() int64 {
 	return m.size
 }
 
-func (m *mockFileInfo) Sys() interface{} {
+func (m *mockFileInfo) Sys() any {
 	return nil
 }
 

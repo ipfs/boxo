@@ -144,7 +144,7 @@ func makeBlocks(t *testing.T, start, end int) []blocks.Block {
 
 	var blks []blocks.Block
 	for i := start; i < end; i++ {
-		blks = append(blks, blocks.NewBlock([]byte(fmt.Sprintf("%d", i))))
+		blks = append(blks, blocks.NewBlock(fmt.Appendf(nil, "%d", i)))
 	}
 	return blks
 }
@@ -334,7 +334,7 @@ func TestBestURL(t *testing.T) {
 		t.Fatal(err)
 	}
 	var urls []*url.URL
-	for i := 0; i < 4; i++ {
+	for i := range 4 {
 		baseurl.Host = fmt.Sprintf("127.0.0.1:%d", 1000+i)
 		u, _ := url.Parse(baseurl.String())
 		urls = append(urls, u)

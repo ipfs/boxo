@@ -70,7 +70,7 @@ func TestSizeSplitterIsDeterministic(t *testing.T) {
 		}
 	}
 
-	for run := 0; run < 1; run++ { // crank this up to satisfy yourself.
+	for range 1 { // crank this up to satisfy yourself.
 		test()
 	}
 }

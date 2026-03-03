@@ -350,8 +350,7 @@ func TestContextSession(t *testing.T) {
 	t.Parallel()
 	a := assert.New(t)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	blks := random.BlocksOfSize(2, blockSize)
 	block1 := blks[0]

@@ -12,6 +12,7 @@ package openapi
 import (
 	"encoding/json"
 	"fmt"
+	"slices"
 )
 
 // Status Status a pin object can have at a pinning service
@@ -32,11 +33,9 @@ func (v *Status) UnmarshalJSON(src []byte) error {
 		return err
 	}
 	enumTypeValue := Status(value)
-	for _, existing := range []Status{"queued", "pinning", "pinned", "failed"} {
-		if existing == enumTypeValue {
-			*v = enumTypeValue
-			return nil
-		}
+	if slices.Contains([]Status{"queued", "pinning", "pinned", "failed"}, enumTypeValue) {
+		*v = enumTypeValue
+		return nil
 	}
 
 	return fmt.Errorf("%+v is not a valid Status", value)

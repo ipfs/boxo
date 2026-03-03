@@ -1,6 +1,7 @@
 package session
 
 import (
+	"maps"
 	"sync"
 	"testing"
 	"time"
@@ -102,9 +103,7 @@ func (pm *mockPeerManager) waitNextWants() map[peer.ID]*sentWants {
 	defer pm.lk.Unlock()
 
 	nw := make(map[peer.ID]*sentWants, len(pm.peerSends))
-	for p, sentWants := range pm.peerSends {
-		nw[p] = sentWants
-	}
+	maps.Copy(nw, pm.peerSends)
 	return nw
 }
 

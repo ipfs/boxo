@@ -1,7 +1,6 @@
 package gateway
 
 import (
-	"context"
 	"html"
 	"io"
 	"net/http"
@@ -27,8 +26,7 @@ func TestDagJsonCborPreview(t *testing.T) {
 		DeserializedResponses: true,
 	})
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	p, err := path.Join(path.FromCid(root), "subdir", "dag-cbor-document")
 	require.NoError(t, err)
@@ -78,5 +76,49 @@ func TestDagJsonCborPreview(t *testing.T) {
 
 		require.Contains(t, string(body), escaped)
 		require.NotContains(t, string(body), script)
+	})
+
+	t.Run("download links without AllowCodecConversion", func(t *testing.T) {
+		t.Parallel()
+
+		tsNoConv := newTestServerWithConfig(t, backend, Config{
+			DeserializedResponses: true,
+			AllowCodecConversion:  false,
+		})
+
+		req := mustNewRequest(t, http.MethodGet, tsNoConv.URL+resolvedPath.String()+"/", nil)
+		req.Header.Add("Accept", "text/html")
+
+		res := mustDoWithoutRedirect(t, req)
+		require.Equal(t, http.StatusOK, res.StatusCode)
+
+		body, err := io.ReadAll(res.Body)
+		require.NoError(t, err)
+
+		require.Contains(t, string(body), `href="?format=raw"`, "raw block link always present")
+		require.Contains(t, string(body), `href="?format=dag-cbor"`, "native codec link present")
+		require.NotContains(t, string(body), `href="?format=dag-json"`, "cross-codec link absent when conversion disabled")
+	})
+
+	t.Run("download links with AllowCodecConversion", func(t *testing.T) {
+		t.Parallel()
+
+		tsConv := newTestServerWithConfig(t, backend, Config{
+			DeserializedResponses: true,
+			AllowCodecConversion:  true,
+		})
+
+		req := mustNewRequest(t, http.MethodGet, tsConv.URL+resolvedPath.String()+"/", nil)
+		req.Header.Add("Accept", "text/html")
+
+		res := mustDoWithoutRedirect(t, req)
+		require.Equal(t, http.StatusOK, res.StatusCode)
+
+		body, err := io.ReadAll(res.Body)
+		require.NoError(t, err)
+
+		require.Contains(t, string(body), `href="?format=raw"`, "raw block link always present")
+		require.Contains(t, string(body), `href="?format=dag-cbor"`, "native codec link present")
+		require.Contains(t, string(body), `href="?format=dag-json"`, "cross-codec link present when conversion enabled")
 	})
 }

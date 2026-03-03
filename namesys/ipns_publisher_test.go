@@ -81,8 +81,7 @@ func TestIPNSPublisher(t *testing.T) {
 func TestAsyncDS(t *testing.T) {
 	t.Parallel()
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	rt := mockrouting.NewServer().Client(testutil.RandIdentityOrFatal(t))
 	ds := &checkSyncDS{

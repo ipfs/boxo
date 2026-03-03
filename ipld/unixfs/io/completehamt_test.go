@@ -51,7 +51,7 @@ func CreateCompleteHAMT(ds ipld.DAGService, treeHeight int, childsPerNode int) (
 		return nil, errors.New("childsPerNode * treeHeight should be multiple of 8")
 	}
 	bytesInKey := log2ofChilds * treeHeight / 8
-	for i := 0; i < totalChildren; i++ {
+	for i := range totalChildren {
 		var hashbuf [8]byte
 		binary.LittleEndian.PutUint64(hashbuf[:], uint64(i))
 		var oldLink *ipld.Link

@@ -16,22 +16,66 @@ The following emojis are used to highlight certain changes:
 
 ### Added
 
-- `routing/http`: `GET /routing/v1/dht/closest/peers/{key}` per [IPIP-476](https://github.com/ipfs/specs/pull/476)
-- upgrade to `go-libp2p-kad-dht` [v0.36.0](https://github.com/libp2p/go-libp2p-kad-dht/releases/tag/v0.36.0)
-- `ipld/merkledag`: Added fetched node size reporting to the progress tracker. See [kubo#8915](https://github.com/ipfs/kubo/issues/8915)
 - `ipns`: NewRecord now allows adding custom metadata (Data) entries
+
+
+### Changed
+
+### Removed
+
+- `cmd/boxo-migrate`: removed code for go-ipfs migration -- no longer needed.
+- `cmd/deprecator`: removed code to deprecare relocated ipfs packages -- no longer needed.
+
+### Fixed
+
+### Security
+
+
+## [v0.37.0]
+
+### Added
+
+- `ipld/unixfs/io`: added `SizeEstimationMode` for configurable HAMT sharding threshold decisions. Supports legacy link-based estimation (`SizeEstimationLinks`), accurate block-based estimation (`SizeEstimationBlock`), or disabling size-based thresholds (`SizeEstimationDisabled`). [#1088](https://github.com/ipfs/boxo/pull/1088), [IPIP-499](https://github.com/ipfs/specs/pull/499)
+- `ipld/unixfs/io`: added `UnixFSProfile` with `UnixFS_v0_2015` and `UnixFS_v1_2025` presets for CID-deterministic file and directory DAG construction. [#1088](https://github.com/ipfs/boxo/pull/1088), [IPIP-499](https://github.com/ipfs/specs/pull/499)
+- `files`: `NewSerialFileWithOptions` now supports controlling whether symlinks are preserved or dereferenced before being added to IPFS. See `SerialFileOptions.DereferenceSymlinks`. [#1088](https://github.com/ipfs/boxo/pull/1088), [IPIP-499](https://github.com/ipfs/specs/pull/499)
+
+### Changed
+
+- 🛠 `chunker`, `ipld/unixfs/importer/helpers`: block size limits raised from 1MiB to 2MiB to match the [bitswap spec](https://specs.ipfs.tech/bitswap-protocol/#block-sizes). Max chunker size is `2MiB - 256 bytes` to leave room for protobuf framing when `--raw-leaves=false`. IPIP-499 profiles use lower chunk sizes (256KiB and 1MiB) and are not affected.
+- 🛠 `chunker`: `DefaultBlockSize` changed from `const` to `var` to allow runtime configuration via global profiles. [#1088](https://github.com/ipfs/boxo/pull/1088), [IPIP-499](https://github.com/ipfs/specs/pull/499)
+- `gateway`: 🛠 ✨ [IPIP-523](https://github.com/ipfs/specs/pull/523) `?format=` URL query parameter now takes precedence over `Accept` HTTP header, ensuring deterministic HTTP cache behavior and allowing browsers to use `?format=` even when they send `Accept` headers with specific content types. [#1074](https://github.com/ipfs/boxo/pull/1074)
+- `gateway`: 🛠 ✨ [IPIP-524](https://github.com/ipfs/specs/pull/524) codec conversions (e.g., dag-pb to dag-json, dag-json to dag-cbor) are no longer performed by default. Requesting a format that differs from the block's codec now returns HTTP 406 Not Acceptable with a hint to fetch raw blocks (`?format=raw`) and convert client-side. Set `Config.AllowCodecConversion` to `true` to restore the old behavior. [#1077](https://github.com/ipfs/boxo/pull/1077)
+- `gateway`: compliance with gateway-conformance [v0.10.0](https://github.com/ipfs/gateway-conformance/releases/tag/v0.10.0) (since v0.8: relaxed DAG-CBOR HTML preview cache headers, relaxed CAR 200/404 for missing paths, [IPIP-523](https://github.com/ipfs/specs/pull/523) format query precedence, [IPIP-524](https://github.com/ipfs/specs/pull/524) codec mismatch returns 406)
+- upgrade to `go-ipld-prime` [v0.22.0](https://github.com/ipld/go-ipld-prime/releases/tag/v0.22.0)
+- upgrade to `go-libp2p-kad-dht` [v0.38.0](https://github.com/libp2p/go-libp2p-kad-dht/releases/tag/v0.38.0)
+
+### Removed
+
+ - `tracing`: opentelemetry zipkin exporter (`go.opentelemetry.io/otel/exporters/zipkin`) is deprecated and has been removed. It is recommended to switch to OTLP. Configure your application to send traces using OTLP and enable [Zipkin’s OTLP ingestion support](https://github.com/openzipkin-contrib/zipkin-otel).
+
+### Fixed
+
+- 🛠 `ipld/unixfs/io`: fixed HAMT sharding threshold comparison to use `>` instead of `>=`. A directory exactly at the threshold now stays as a basic (flat) directory, aligning behavior with code documentation and the JS implementation. This is a theoretical breaking change, but unlikely to impact real-world users as it requires a directory to be exactly at the threshold boundary. If you depend on the old behavior, adjust `HAMTShardingSize` to be 1 byte lower. [#1088](https://github.com/ipfs/boxo/pull/1088), [IPIP-499](https://github.com/ipfs/specs/pull/499)
+- `ipld/unixfs/mod`: fixed sparse file writes in MFS. Writing past the end of a file (e.g., `ipfs files write --offset 1000 /file` on a smaller file) would lose data because `expandSparse` created the zero-padding node but didn't update the internal pointer. Subsequent writes went to the old unexpanded node.
+- `ipld/unixfs/io`: fixed mode/mtime metadata loss during Basic<->HAMT directory conversions. Previously, directories with `WithStat(mode, mtime)` would lose this metadata when converting between basic and sharded formats, or when reloading a HAMT directory from disk.
+
+
+## [v0.36.0]
+
+### Added
+- `routing/http`: `GET /routing/v1/dht/closest/peers/{key}` per [IPIP-476](https://github.com/ipfs/specs/pull/476)
+- `ipld/merkledag`: Added fetched node size reporting to the progress tracker. See [kubo#8915](https://github.com/ipfs/kubo/issues/8915)
+- `gateway`: Added a configurable fallback timeout for the gateway handler, defaulting to 1 hour. Configurable via `MaxRequestDuration` in the gateway config.
 
 ### Changed
 
 - `keystore`: improve error messages and include key file name [#1080](https://github.com/ipfs/boxo/pull/1080)
-
-### Removed
+- upgrade to `go-libp2p-kad-dht` [v0.37.1](https://github.com/libp2p/go-libp2p-kad-dht/releases/tag/v0.37.1)
+- upgrade to `go-libp2p` [v0.47.0](https://github.com/libp2p/go-libp2p/releases/tag/v0.47.0)
 
 ### Fixed
 
 - `bitswap/network`: Fixed goroutine leak that could cause bitswap to stop serving blocks after extended uptime. The root cause is `stream.Close()` blocking indefinitely when remote peers are unresponsive during multistream handshake ([go-libp2p#3448](https://github.com/libp2p/go-libp2p/pull/3448)). This PR ([#1083](https://github.com/ipfs/boxo/pull/1083)) adds a localized fix specific to bitswap's `SendMessage` by setting a read deadline before closing streams.
-
-### Security
 
 
 ## [v0.35.2]

@@ -415,7 +415,7 @@ func testSeekingStress(t *testing.T, rawLeaves UseRawLeaves) {
 	}
 
 	testbuf := make([]byte, nbytes)
-	for i := 0; i < 50; i++ {
+	for range 50 {
 		offset := mrand.Intn(int(nbytes))
 		l := int(nbytes) - offset
 		n, err := rs.Seek(int64(offset), io.SeekStart)
@@ -579,7 +579,7 @@ func testMultipleAppends(t *testing.T, rawLeaves UseRawLeaves) {
 	spl := chunker.SizeSplitterGen(500)
 
 	ctx := context.Background()
-	for i := 0; i < len(should); i++ {
+	for i := range should {
 
 		db, err := dbp.New(spl(bytes.NewReader(should[i : i+1])))
 		if err != nil {
@@ -746,7 +746,7 @@ func TestMetadata(t *testing.T) {
 }
 
 func testMetadata(t *testing.T, rawLeaves UseRawLeaves) {
-	const nbytes = 3 * chunker.DefaultBlockSize
+	nbytes := 3 * chunker.DefaultBlockSize
 	buf := new(bytes.Buffer)
 	_, err := io.CopyN(buf, random.NewRand(), nbytes)
 	if err != nil {

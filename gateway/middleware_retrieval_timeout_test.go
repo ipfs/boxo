@@ -1,3 +1,5 @@
+//go:build go1.25
+
 package gateway
 
 import (
@@ -6,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"testing/synctest"
 	"time"
 )
 
@@ -17,73 +20,62 @@ func TestWithRetrievalTimeout(t *testing.T) {
 			time.Sleep(100 * time.Millisecond)
 		}), 50*time.Millisecond, config, newTestMetrics())
 
-		req := httptest.NewRequest(http.MethodGet, "/", nil)
-		req.Header.Set("Accept", "text/html,application/xhtml+xml")
-		rec := httptest.NewRecorder()
+		synctest.Test(t, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, "/", nil)
+			req.Header.Set("Accept", "text/html,application/xhtml+xml")
+			rec := httptest.NewRecorder()
 
-		done := make(chan bool)
-		go func() {
 			handler.ServeHTTP(rec, req)
-			done <- true
-		}()
+			time.Sleep(200 * time.Millisecond) // let internal goroutines complete before bubble exits
+			synctest.Wait()
 
-		select {
-		case <-done:
-		case <-time.After(200 * time.Millisecond):
-		}
+			if rec.Code != http.StatusGatewayTimeout {
+				t.Errorf("expected status 504, got %d", rec.Code)
+			}
 
-		if rec.Code != http.StatusGatewayTimeout {
-			t.Errorf("expected status 504, got %d", rec.Code)
-		}
+			contentType := rec.Header().Get("Content-Type")
+			if contentType != "text/html" {
+				t.Errorf("expected Content-Type text/html, got %s", contentType)
+			}
 
-		contentType := rec.Header().Get("Content-Type")
-		if contentType != "text/html" {
-			t.Errorf("expected Content-Type text/html, got %s", contentType)
-		}
-
-		body := rec.Body.String()
-		if !bytes.Contains([]byte(body), []byte("<html")) {
-			t.Error("expected HTML response body")
-		}
-		if !bytes.Contains([]byte(body), []byte("504")) {
-			t.Error("expected 504 in HTML body")
-		}
+			body := rec.Body.String()
+			if !bytes.Contains([]byte(body), []byte("<html")) {
+				t.Error("expected HTML response body")
+			}
+			if !bytes.Contains([]byte(body), []byte("504")) {
+				t.Error("expected 504 in HTML body")
+			}
+		})
 	})
 	t.Run("timeout on initial retrieval block", func(t *testing.T) {
-		blockChan := make(chan struct{})
-		defer close(blockChan) // Ensure goroutine cleanup
+		synctest.Test(t, func(t *testing.T) {
+			blockChan := make(chan struct{})
 
-		// Simulate a handler that blocks indefinitely on initial retrieval
-		// (e.g., searching for providers that don't exist)
-		handler := withRetrievalTimeout(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// Block until test cleanup - simulating stuck provider search
-			<-blockChan
-		}), 50*time.Millisecond, nil, newTestMetrics())
+			// Simulate a handler that blocks indefinitely on initial retrieval
+			// (e.g., searching for providers that don't exist)
+			handler := withRetrievalTimeout(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				// Block until test cleanup - simulating stuck provider search
+				<-blockChan
+			}), 50*time.Millisecond, nil, newTestMetrics())
 
-		req := httptest.NewRequest(http.MethodGet, "/ipfs/bafkreif6lrhgz3fpiwypdk65qrqiey7svgpggruhbylrgv32l3izkqpsc4", nil)
-		rec := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodGet, "/ipfs/bafkreif6lrhgz3fpiwypdk65qrqiey7svgpggruhbylrgv32l3izkqpsc4", nil)
+			rec := httptest.NewRecorder()
 
-		done := make(chan bool)
-		go func() {
 			handler.ServeHTTP(rec, req)
-			done <- true
-		}()
 
-		// Wait for timeout to trigger
-		select {
-		case <-done:
-			// Good, handler completed (due to timeout)
-		case <-time.After(200 * time.Millisecond):
-			t.Fatal("handler did not complete within expected time")
-		}
+			if rec.Code != http.StatusGatewayTimeout {
+				t.Errorf("expected status 504, got %d", rec.Code)
+			}
+			body := rec.Body.String()
+			if !bytes.Contains([]byte(body), []byte("Unable to retrieve content within timeout period")) {
+				t.Errorf("expected timeout message in body, got %s", body)
+			}
 
-		if rec.Code != http.StatusGatewayTimeout {
-			t.Errorf("expected status 504, got %d", rec.Code)
-		}
-		body := rec.Body.String()
-		if !bytes.Contains([]byte(body), []byte("Unable to retrieve content within timeout period")) {
-			t.Errorf("expected timeout message in body, got %s", body)
-		}
+			// Allow blocked handler goroutine to exit cleanly
+			close(blockChan)
+			time.Sleep(100 * time.Millisecond) // let internal goroutines complete before bubble exits
+			synctest.Wait()
+		})
 	})
 
 	t.Run("timeout on slow initial retrieval", func(t *testing.T) {
@@ -95,28 +87,22 @@ func TestWithRetrievalTimeout(t *testing.T) {
 			w.Write([]byte("should not appear"))
 		}), 50*time.Millisecond, nil, newTestMetrics())
 
-		req := httptest.NewRequest(http.MethodGet, "/", nil)
-		rec := httptest.NewRecorder()
+		synctest.Test(t, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, "/", nil)
+			rec := httptest.NewRecorder()
 
-		done := make(chan bool)
-		go func() {
 			handler.ServeHTTP(rec, req)
-			done <- true
-		}()
+			time.Sleep(200 * time.Millisecond) // let internal goroutines complete before bubble exits
+			synctest.Wait()
 
-		select {
-		case <-done:
-		case <-time.After(200 * time.Millisecond):
-			t.Fatal("handler did not complete within expected time")
-		}
-
-		if rec.Code != http.StatusGatewayTimeout {
-			t.Errorf("expected status 504, got %d", rec.Code)
-		}
-		body := rec.Body.String()
-		if bytes.Contains([]byte(body), []byte("should not appear")) {
-			t.Errorf("body should not contain 'should not appear', got %s", body)
-		}
+			if rec.Code != http.StatusGatewayTimeout {
+				t.Errorf("expected status 504, got %d", rec.Code)
+			}
+			body := rec.Body.String()
+			if bytes.Contains([]byte(body), []byte("should not appear")) {
+				t.Errorf("body should not contain 'should not appear', got %s", body)
+			}
+		})
 	})
 	t.Run("timeout disabled with zero value", func(t *testing.T) {
 		handler := withRetrievalTimeout(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -142,32 +128,25 @@ func TestWithRetrievalTimeout(t *testing.T) {
 			time.Sleep(150 * time.Millisecond)
 		}), 50*time.Millisecond, nil, newTestMetrics())
 
-		req := httptest.NewRequest(http.MethodGet, "/", nil)
-		rec := httptest.NewRecorder()
+		synctest.Test(t, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, "/", nil)
+			rec := httptest.NewRecorder()
 
-		// Run in goroutine to allow timeout to trigger
-		done := make(chan bool)
-		go func() {
 			handler.ServeHTTP(rec, req)
-			done <- true
-		}()
+			time.Sleep(200 * time.Millisecond) // let internal goroutines complete before bubble exits
+			synctest.Wait()
 
-		// Wait for handler to complete (including timeout)
-		select {
-		case <-done:
-		case <-time.After(200 * time.Millisecond):
-		}
-
-		if rec.Code != http.StatusGatewayTimeout {
-			t.Errorf("expected status 504, got %d", rec.Code)
-		}
+			if rec.Code != http.StatusGatewayTimeout {
+				t.Errorf("expected status 504, got %d", rec.Code)
+			}
+		})
 	})
 
 	t.Run("timeout resets on data write", func(t *testing.T) {
 		handler := withRetrievalTimeout(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// Write data in chunks, each write should reset the timeout
-			for i := 0; i < 3; i++ {
-				w.Write([]byte(fmt.Sprintf("chunk%d", i)))
+			for i := range 3 {
+				w.Write(fmt.Appendf(nil, "chunk%d", i))
 				w.(http.Flusher).Flush()
 				time.Sleep(75 * time.Millisecond) // Less than timeout
 			}
@@ -190,24 +169,26 @@ func TestWithRetrievalTimeout(t *testing.T) {
 		handler := withRetrievalTimeout(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.Write([]byte("initial"))
 			// Empty writes shouldn't reset timeout
-			for i := 0; i < 5; i++ {
+			for range 5 {
 				w.Write([]byte{})
 				time.Sleep(30 * time.Millisecond)
 			}
 		}), 100*time.Millisecond, nil, newTestMetrics())
 
-		req := httptest.NewRequest(http.MethodGet, "/", nil)
-		rec := httptest.NewRecorder()
-		handler.ServeHTTP(rec, req)
+		synctest.Test(t, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, "/", nil)
+			rec := httptest.NewRecorder()
 
-		// Wait for timeout
-		time.Sleep(200 * time.Millisecond)
+			handler.ServeHTTP(rec, req)
+			time.Sleep(300 * time.Millisecond) // let internal goroutines complete before bubble exits
+			synctest.Wait()
 
-		// The initial write should succeed, but timeout should trigger after
-		body := rec.Body.String()
-		if !bytes.Contains([]byte(body), []byte("initial")) {
-			t.Errorf("expected body to contain 'initial', got %s", body)
-		}
+			// The initial write should succeed, but timeout should trigger after
+			body := rec.Body.String()
+			if !bytes.Contains([]byte(body), []byte("initial")) {
+				t.Errorf("expected body to contain 'initial', got %s", body)
+			}
+		})
 	})
 
 	t.Run("truncation message on mid-stream timeout", func(t *testing.T) {
@@ -221,33 +202,28 @@ func TestWithRetrievalTimeout(t *testing.T) {
 			w.Write([]byte("should not appear"))
 		}), 50*time.Millisecond, nil, newTestMetrics())
 
-		req := httptest.NewRequest(http.MethodGet, "/", nil)
-		rec := httptest.NewRecorder()
+		synctest.Test(t, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, "/", nil)
+			rec := httptest.NewRecorder()
 
-		done := make(chan bool)
-		go func() {
 			handler.ServeHTTP(rec, req)
-			done <- true
-		}()
+			time.Sleep(300 * time.Millisecond) // let internal goroutines complete before bubble exits
+			synctest.Wait()
 
-		select {
-		case <-done:
-		case <-time.After(300 * time.Millisecond):
-		}
-
-		body := rec.Body.String()
-		// Should contain the initial data
-		if !bytes.Contains([]byte(body), []byte("partial data")) {
-			t.Errorf("expected body to contain 'partial data', got %s", body)
-		}
-		// Should contain truncation message
-		if !bytes.Contains([]byte(body), []byte(truncationMessage)) {
-			t.Errorf("expected body to contain truncation message, got %s", body)
-		}
-		// Should not contain data after timeout
-		if bytes.Contains([]byte(body), []byte("should not appear")) {
-			t.Errorf("body should not contain 'should not appear', got %s", body)
-		}
+			body := rec.Body.String()
+			// Should contain the initial data
+			if !bytes.Contains([]byte(body), []byte("partial data")) {
+				t.Errorf("expected body to contain 'partial data', got %s", body)
+			}
+			// Should contain truncation message
+			if !bytes.Contains([]byte(body), []byte(truncationMessage)) {
+				t.Errorf("expected body to contain truncation message, got %s", body)
+			}
+			// Should not contain data after timeout
+			if bytes.Contains([]byte(body), []byte("should not appear")) {
+				t.Errorf("body should not contain 'should not appear', got %s", body)
+			}
+		})
 	})
 
 	t.Run("tracks status code for truncated responses", func(t *testing.T) {
@@ -258,24 +234,19 @@ func TestWithRetrievalTimeout(t *testing.T) {
 			time.Sleep(150 * time.Millisecond)
 		}), 50*time.Millisecond, nil, newTestMetrics())
 
-		req := httptest.NewRequest(http.MethodGet, "/", nil)
-		rec := httptest.NewRecorder()
+		synctest.Test(t, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, "/", nil)
+			rec := httptest.NewRecorder()
 
-		done := make(chan bool)
-		go func() {
 			handler.ServeHTTP(rec, req)
-			done <- true
-		}()
+			time.Sleep(300 * time.Millisecond) // let internal goroutines complete before bubble exits
+			synctest.Wait()
 
-		select {
-		case <-done:
-		case <-time.After(300 * time.Millisecond):
-		}
-
-		// The recorder should have captured the original status
-		if rec.Code != http.StatusPartialContent {
-			t.Errorf("expected status 206, got %d", rec.Code)
-		}
+			// The recorder should have captured the original status
+			if rec.Code != http.StatusPartialContent {
+				t.Errorf("expected status 206, got %d", rec.Code)
+			}
+		})
 	})
 }
 
@@ -300,40 +271,49 @@ func TestWithRetrievalTimeout(t *testing.T) {
 // map if not properly isolated.
 func TestConcurrentHeaderAccessRace(t *testing.T) {
 	t.Run("race before headers sent (504 response)", func(t *testing.T) {
+		// Handler must run longer than timeout for race window to exist.
+		// With fake time: 100 × 100µs = 10ms handler vs 5ms timeout ensures
+		// timeout fires while handler is still modifying headers.
+		const iterations = 100
+		const sleepPerIter = 100 * time.Microsecond // total: 10ms
+		const timeout = 5 * time.Millisecond
+
 		handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// Continuously modify headers to create race
-			for i := 0; i < 100; i++ {
+			for i := range iterations {
 				w.Header().Set("X-Test", fmt.Sprintf("value-%d", i))
-				time.Sleep(time.Microsecond)
+				time.Sleep(sleepPerIter)
 			}
 		})
 
 		config := &Config{DisableHTMLErrors: true}
-		timeoutHandler := withRetrievalTimeout(handler, 5*time.Millisecond, config, newTestMetrics())
+		timeoutHandler := withRetrievalTimeout(handler, timeout, config, newTestMetrics())
 
 		// Run with race detector
-		for i := 0; i < 5; i++ {
-			rec := httptest.NewRecorder()
-			req := httptest.NewRequest(http.MethodGet, "/test", nil)
+		for range 5 {
+			synctest.Test(t, func(t *testing.T) {
+				rec := httptest.NewRecorder()
+				req := httptest.NewRequest(http.MethodGet, "/test", nil)
 
-			done := make(chan bool)
-			go func() {
-				defer func() {
-					if r := recover(); r != nil {
-						// Check if it's the concurrent map writes panic
-						if panicStr, ok := r.(string); ok && panicStr == "concurrent map writes" {
-							t.Logf("Reproduced concurrent map writes panic!")
+				var panicOccurred bool
+				func() {
+					defer func() {
+						if r := recover(); r != nil {
+							// Check if it's the concurrent map writes panic
+							if panicStr, ok := r.(string); ok && panicStr == "concurrent map writes" {
+								panicOccurred = true
+							}
 						}
-					}
-					done <- true
+					}()
+					timeoutHandler.ServeHTTP(rec, req)
 				}()
-				timeoutHandler.ServeHTTP(rec, req)
-			}()
 
-			select {
-			case <-done:
-			case <-time.After(100 * time.Millisecond):
-			}
+				time.Sleep(20 * time.Millisecond) // let internal goroutines complete before bubble exits
+				synctest.Wait()
+
+				if panicOccurred {
+					t.Logf("Reproduced concurrent map writes panic!")
+				}
+			})
 		}
 	})
 
@@ -351,13 +331,13 @@ func TestConcurrentHeaderAccessRace(t *testing.T) {
 
 			// Then continue modifying headers (which should be no-op after WriteHeader)
 			// and writing more data slowly to trigger timeout during response
-			for i := 0; i < 100; i++ {
+			for i := range 100 {
 				// Try to set headers after WriteHeader (should be ignored but could race)
 				w.Header().Set("X-Late-Header", fmt.Sprintf("value-%d", i))
 
 				// Write small chunks of data
 				if i%10 == 0 {
-					w.Write([]byte(fmt.Sprintf("chunk-%d", i)))
+					w.Write(fmt.Appendf(nil, "chunk-%d", i))
 					if f, ok := w.(http.Flusher); ok {
 						f.Flush()
 					}
@@ -370,34 +350,37 @@ func TestConcurrentHeaderAccessRace(t *testing.T) {
 		timeoutHandler := withRetrievalTimeout(handler, 20*time.Millisecond, config, newTestMetrics())
 
 		// Run with race detector
-		for i := 0; i < 5; i++ {
-			rec := httptest.NewRecorder()
-			req := httptest.NewRequest(http.MethodGet, "/test", nil)
+		for range 5 {
+			synctest.Test(t, func(t *testing.T) {
+				rec := httptest.NewRecorder()
+				req := httptest.NewRequest(http.MethodGet, "/test", nil)
 
-			done := make(chan bool)
-			go func() {
-				defer func() {
-					if r := recover(); r != nil {
-						// Check if it's the concurrent map writes panic
-						if panicStr, ok := r.(string); ok && panicStr == "concurrent map writes" {
-							t.Errorf("Reproduced concurrent map writes panic in truncation path!")
+				var panicOccurred bool
+				func() {
+					defer func() {
+						if r := recover(); r != nil {
+							// Check if it's the concurrent map writes panic
+							if panicStr, ok := r.(string); ok && panicStr == "concurrent map writes" {
+								panicOccurred = true
+							}
 						}
-					}
-					done <- true
+					}()
+					timeoutHandler.ServeHTTP(rec, req)
 				}()
-				timeoutHandler.ServeHTTP(rec, req)
-			}()
 
-			select {
-			case <-done:
-			case <-time.After(150 * time.Millisecond):
-			}
+				time.Sleep(200 * time.Millisecond) // let internal goroutines complete before bubble exits
+				synctest.Wait()
 
-			// Verify we got initial data before timeout
-			body := rec.Body.String()
-			if !bytes.Contains([]byte(body), []byte("initial data")) {
-				t.Errorf("Expected initial data in response, got: %s", body)
-			}
+				if panicOccurred {
+					t.Errorf("Reproduced concurrent map writes panic in truncation path!")
+				}
+
+				// Verify we got initial data before timeout
+				body := rec.Body.String()
+				if !bytes.Contains([]byte(body), []byte("initial data")) {
+					t.Errorf("Expected initial data in response, got: %s", body)
+				}
+			})
 		}
 	})
 }

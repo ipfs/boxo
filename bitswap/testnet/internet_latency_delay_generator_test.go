@@ -32,7 +32,7 @@ func TestInternetLatencyDelayNextWaitTimeDistribution(t *testing.T) {
 
 	// strategy here is rather than mock randomness, just use enough samples to
 	// get approximately the distribution you'd expect
-	for i := 0; i < 10000; i++ {
+	for range 10000 {
 		next := internetLatencyDistributionDelay.NextWaitTime(initialValue)
 		if math.Abs((next - initialValue).Seconds()) <= deviation.Seconds() {
 			buckets["fast"]++

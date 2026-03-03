@@ -57,8 +57,8 @@ func TestBlocks(t *testing.T) {
 
 func makeObjects(n int) []blocks.Block {
 	var out []blocks.Block
-	for i := 0; i < n; i++ {
-		out = append(out, newObject([]byte(fmt.Sprintf("object %d", i))))
+	for i := range n {
+		out = append(out, newObject(fmt.Appendf(nil, "object %d", i)))
 	}
 	return out
 }

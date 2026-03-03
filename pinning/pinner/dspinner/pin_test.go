@@ -28,11 +28,11 @@ type fakeLogger struct {
 	lastError error
 }
 
-func (f *fakeLogger) Error(args ...interface{}) {
+func (f *fakeLogger) Error(args ...any) {
 	f.lastError = errors.New(fmt.Sprint(args...))
 }
 
-func (f *fakeLogger) Errorf(format string, args ...interface{}) {
+func (f *fakeLogger) Errorf(format string, args ...any) {
 	f.lastError = fmt.Errorf(format, args...)
 }
 
@@ -99,8 +99,7 @@ func allPins(t *testing.T, ch <-chan ipfspin.StreamedPin) (pins []ipfspin.Pinned
 }
 
 func TestPinnerBasic(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	dstore := dssync.MutexWrap(ds.NewMapDatastore())
 	bstore := blockstore.NewBlockstore(dstore)
@@ -331,8 +330,7 @@ func TestPinnerBasic(t *testing.T) {
 }
 
 func TestAddLoadPin(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	dstore := dssync.MutexWrap(ds.NewMapDatastore())
 	bstore := blockstore.NewBlockstore(dstore)
@@ -438,8 +436,7 @@ func TestIsPinnedLookup(t *testing.T) {
 	// pinned and once they have been unpinned.
 	aBranchLen := 6
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	dstore := dssync.MutexWrap(ds.NewMapDatastore())
 	bstore := blockstore.NewBlockstore(dstore)
 	bserv := bs.New(bstore, offline.Exchange(bstore))
@@ -481,8 +478,7 @@ func TestIsPinnedLookup(t *testing.T) {
 }
 
 func TestDuplicateSemantics(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	dstore := dssync.MutexWrap(ds.NewMapDatastore())
 	bstore := blockstore.NewBlockstore(dstore)
 	bserv := bs.New(bstore, offline.Exchange(bstore))
@@ -520,8 +516,7 @@ func TestDuplicateSemantics(t *testing.T) {
 }
 
 func TestFlush(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	dstore := dssync.MutexWrap(ds.NewMapDatastore())
 	bstore := blockstore.NewBlockstore(dstore)
 	bserv := bs.New(bstore, offline.Exchange(bstore))
@@ -589,8 +584,7 @@ func TestPinRecursiveFail(t *testing.T) {
 }
 
 func TestPinUpdate(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	dstore := dssync.MutexWrap(ds.NewMapDatastore())
 	bstore := blockstore.NewBlockstore(dstore)
@@ -657,8 +651,7 @@ func TestPinUpdate(t *testing.T) {
 }
 
 func TestLoadDirty(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	dstore := dssync.MutexWrap(ds.NewMapDatastore())
 	bstore := blockstore.NewBlockstore(dstore)
@@ -768,7 +761,7 @@ func TestEncodeDecodePin(t *testing.T) {
 	_, c := randNode()
 
 	pin := newPin(c, ipfspin.Recursive, "testpin")
-	pin.Metadata = make(map[string]interface{}, 2)
+	pin.Metadata = make(map[string]any, 2)
 	pin.Metadata["hello"] = "world"
 	pin.Metadata["foo"] = "bar"
 
@@ -815,7 +808,7 @@ func makeTree(ctx context.Context, aBranchLen int, dserv ipld.DAGService, p ipfs
 
 	aNodes := make([]*mdag.ProtoNode, aBranchLen)
 	aKeys = make([]cid.Cid, aBranchLen)
-	for i := 0; i < aBranchLen; i++ {
+	for i := range aBranchLen {
 		a, _ := randNode()
 		if i >= 1 {
 			if err = a.AddNodeLink("child", aNodes[i-1]); err != nil {
@@ -884,7 +877,7 @@ func makeNodes(count int, dserv ipld.DAGService) []ipld.Node {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	nodes := make([]ipld.Node, count)
-	for i := 0; i < count; i++ {
+	for i := range count {
 		n, _ := randNode()
 		err := dserv.Add(ctx, n)
 		if err != nil {
@@ -951,8 +944,7 @@ func makeStore() (ds.Datastore, ipld.DAGService) {
 // compares the load time when rebuilding indexes to loading without rebuilding
 // indexes.
 func BenchmarkLoad(b *testing.B) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := b.Context()
 
 	dstore, dserv := makeStore()
 	pinner, err := New(ctx, dstore, dserv)
@@ -1152,8 +1144,7 @@ func benchmarkPinAll(b *testing.B, count int, pinner ipfspin.Pinner, dserv ipld.
 }
 
 func BenchmarkRebuild(b *testing.B) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := b.Context()
 
 	dstore, dserv := makeStore()
 	pinIncr := 32768
@@ -1184,8 +1175,7 @@ func BenchmarkRebuild(b *testing.B) {
 }
 
 func TestCidIndex(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	dstore, dserv := makeStore()
 	pinner, err := New(ctx, dstore, dserv)
@@ -1290,8 +1280,7 @@ func TestCidIndex(t *testing.T) {
 }
 
 func TestRebuild(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	dstore, dserv := makeStore()
 	pinner, err := New(ctx, dstore, dserv)

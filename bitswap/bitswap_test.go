@@ -521,8 +521,7 @@ func TestDoubleGet(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	ctx2, cancel2 := context.WithCancel(context.Background())
-	defer cancel2()
+	ctx2 := t.Context()
 
 	blkch2, err := instances[1].Exchange.GetBlocks(ctx2, []cid.Cid{blocks[0].Cid()})
 	if err != nil {

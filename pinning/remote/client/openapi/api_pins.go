@@ -95,7 +95,7 @@ Execute executes the request
 func (r apiPinsGetRequest) Execute() (PinResults, *_nethttp.Response, error) {
 	var (
 		localVarHTTPMethod   = _nethttp.MethodGet
-		localVarPostBody     interface{}
+		localVarPostBody     any
 		localVarFormFileName string
 		localVarFileName     string
 		localVarFileBytes    []byte
@@ -230,7 +230,7 @@ Execute executes the request
 func (r apiPinsPostRequest) Execute() (PinStatus, *_nethttp.Response, error) {
 	var (
 		localVarHTTPMethod   = _nethttp.MethodPost
-		localVarPostBody     interface{}
+		localVarPostBody     any
 		localVarFormFileName string
 		localVarFileName     string
 		localVarFileBytes    []byte
@@ -345,7 +345,7 @@ Execute executes the request
 func (r apiPinsRequestidDeleteRequest) Execute() (*_nethttp.Response, error) {
 	var (
 		localVarHTTPMethod   = _nethttp.MethodDelete
-		localVarPostBody     interface{}
+		localVarPostBody     any
 		localVarFormFileName string
 		localVarFileName     string
 		localVarFileBytes    []byte
@@ -447,7 +447,7 @@ Execute executes the request
 func (r apiPinsRequestidGetRequest) Execute() (PinStatus, *_nethttp.Response, error) {
 	var (
 		localVarHTTPMethod   = _nethttp.MethodGet
-		localVarPostBody     interface{}
+		localVarPostBody     any
 		localVarFormFileName string
 		localVarFileName     string
 		localVarFileBytes    []byte
@@ -565,7 +565,7 @@ Execute executes the request
 func (r apiPinsRequestidPostRequest) Execute() (PinStatus, *_nethttp.Response, error) {
 	var (
 		localVarHTTPMethod   = _nethttp.MethodPost
-		localVarPostBody     interface{}
+		localVarPostBody     any
 		localVarFormFileName string
 		localVarFileName     string
 		localVarFileBytes    []byte

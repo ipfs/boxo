@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -188,4 +189,327 @@ testInputs:
 			)
 		}
 	}
+}
+
+func TestSerialFileSymlinks(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("skipping symlink test on Windows")
+	}
+
+	tmpdir := t.TempDir()
+
+	// Create test structure:
+	// tmpdir/
+	//   realfile.txt     -> "real content"
+	//   realdir/
+	//     nested.txt     -> "nested content"
+	//   linktofile       -> symlink to realfile.txt
+	//   linktodir        -> symlink to realdir/
+
+	realfile := filepath.Join(tmpdir, "realfile.txt")
+	if err := os.WriteFile(realfile, []byte("real content"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	realdir := filepath.Join(tmpdir, "realdir")
+	if err := os.Mkdir(realdir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	nested := filepath.Join(realdir, "nested.txt")
+	if err := os.WriteFile(nested, []byte("nested content"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	linktofile := filepath.Join(tmpdir, "linktofile")
+	if err := os.Symlink(realfile, linktofile); err != nil {
+		t.Fatal(err)
+	}
+
+	linktodir := filepath.Join(tmpdir, "linktodir")
+	if err := os.Symlink(realdir, linktodir); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Run("preserve symlinks (default)", func(t *testing.T) {
+		stat, err := os.Lstat(tmpdir)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		sf, err := NewSerialFileWithOptions(tmpdir, stat, SerialFileOptions{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer sf.Close()
+
+		symlinkCount := 0
+		err = Walk(sf, func(path string, nd Node) error {
+			defer nd.Close()
+			if _, ok := nd.(*Symlink); ok {
+				symlinkCount++
+			}
+			return nil
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if symlinkCount != 2 {
+			t.Errorf("expected 2 symlinks, got %d", symlinkCount)
+		}
+	})
+
+	t.Run("dereference symlinks", func(t *testing.T) {
+		stat, err := os.Lstat(tmpdir)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		sf, err := NewSerialFileWithOptions(tmpdir, stat, SerialFileOptions{
+			DereferenceSymlinks: true,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer sf.Close()
+
+		symlinkCount := 0
+		fileContents := make(map[string]string)
+		dirCount := 0
+
+		err = Walk(sf, func(path string, nd Node) error {
+			defer nd.Close()
+			switch n := nd.(type) {
+			case *Symlink:
+				symlinkCount++
+			case File:
+				data, err := io.ReadAll(n)
+				if err != nil {
+					return err
+				}
+				fileContents[path] = string(data)
+			case Directory:
+				if path != "" { // skip root
+					dirCount++
+				}
+			}
+			return nil
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if symlinkCount != 0 {
+			t.Errorf("expected 0 symlinks with dereferencing, got %d", symlinkCount)
+		}
+
+		// linktofile should now be a regular file with same content as realfile
+		if content, ok := fileContents["linktofile"]; !ok {
+			t.Error("linktofile not found as file")
+		} else if content != "real content" {
+			t.Errorf("linktofile content = %q, want %q", content, "real content")
+		}
+
+		// linktodir should now be a directory containing nested.txt
+		if content, ok := fileContents["linktodir/nested.txt"]; !ok {
+			t.Error("linktodir/nested.txt not found")
+		} else if content != "nested content" {
+			t.Errorf("linktodir/nested.txt content = %q, want %q", content, "nested content")
+		}
+	})
+
+	t.Run("dereference single symlink to file", func(t *testing.T) {
+		stat, err := os.Lstat(linktofile)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		sf, err := NewSerialFileWithOptions(linktofile, stat, SerialFileOptions{
+			DereferenceSymlinks: true,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer sf.Close()
+
+		// Should be a File, not a Symlink
+		file, ok := sf.(File)
+		if !ok {
+			t.Fatalf("expected File, got %T", sf)
+		}
+
+		data, err := io.ReadAll(file)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if string(data) != "real content" {
+			t.Errorf("content = %q, want %q", string(data), "real content")
+		}
+	})
+
+	t.Run("dereference single symlink to directory", func(t *testing.T) {
+		stat, err := os.Lstat(linktodir)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		sf, err := NewSerialFileWithOptions(linktodir, stat, SerialFileOptions{
+			DereferenceSymlinks: true,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer sf.Close()
+
+		// Should be a Directory, not a Symlink
+		dir, ok := sf.(Directory)
+		if !ok {
+			t.Fatalf("expected Directory, got %T", sf)
+		}
+
+		// Should contain nested.txt
+		entries := dir.Entries()
+		found := false
+		for entries.Next() {
+			if entries.Name() == "nested.txt" {
+				found = true
+				break
+			}
+		}
+		if err := entries.Err(); err != nil {
+			t.Fatal(err)
+		}
+		if !found {
+			t.Error("nested.txt not found in dereferenced directory")
+		}
+	})
+}
+
+func TestCircularSymlinks(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("skipping symlink test on Windows")
+	}
+
+	const symlinkErrMsg = "too many levels of symbolic links"
+
+	tmpdir := t.TempDir()
+
+	// Create test structure:
+	// tmpdir/
+	//   linktolinkA      -> symlink to linktolinkB
+	//   linktolinkB      -> symlink to linktolinkC
+	//   linktolinkC      -> symlink to linktolinkA
+
+	linktolinkA := filepath.Join(tmpdir, "linktolinkA")
+	linktolinkB := filepath.Join(tmpdir, "linktolinkB")
+	linktolinkC := filepath.Join(tmpdir, "linktolinkC")
+	if err := os.Symlink(linktolinkB, linktolinkA); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(linktolinkC, linktolinkB); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(linktolinkA, linktolinkC); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Run("preserve symlinks (default)", func(t *testing.T) {
+		stat, err := os.Lstat(tmpdir)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		sf, err := NewSerialFileWithOptions(tmpdir, stat, SerialFileOptions{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer sf.Close()
+
+		symlinkCount := 0
+		err = Walk(sf, func(path string, nd Node) error {
+			defer nd.Close()
+			if _, ok := nd.(*Symlink); ok {
+				symlinkCount++
+			}
+			return nil
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if symlinkCount != 3 {
+			t.Errorf("expected 3 symlinks, got %d", symlinkCount)
+		}
+	})
+
+	t.Run("dereference symlinks", func(t *testing.T) {
+		stat, err := os.Lstat(tmpdir)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		sf, err := NewSerialFileWithOptions(tmpdir, stat, SerialFileOptions{
+			DereferenceSymlinks: true,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer sf.Close()
+
+		symlinkCount := 0
+		fileContents := make(map[string]string)
+		dirCount := 0
+
+		err = Walk(sf, func(path string, nd Node) error {
+			defer nd.Close()
+			switch n := nd.(type) {
+			case *Symlink:
+				symlinkCount++
+			case File:
+				data, err := io.ReadAll(n)
+				if err != nil {
+					return err
+				}
+				fileContents[path] = string(data)
+			case Directory:
+				if path != "" { // skip root
+					dirCount++
+				}
+			}
+			return nil
+		})
+		if err == nil {
+			t.Fatal("expected error")
+		}
+		perr, ok := err.(*os.PathError)
+		if !ok {
+			t.Fatal("expected PathError, got:", err)
+		}
+		if !strings.Contains(perr.Err.Error(), symlinkErrMsg) {
+			t.Fatalf("expected error to contain %q, got %q", symlinkErrMsg, perr.Err.Error())
+		}
+	})
+
+	t.Run("dereference single symlink to symlink", func(t *testing.T) {
+		stat, err := os.Lstat(linktolinkA)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		_, err = NewSerialFileWithOptions(linktolinkA, stat, SerialFileOptions{
+			DereferenceSymlinks: true,
+		})
+		if err == nil {
+			t.Fatal("expected error")
+		}
+		perr, ok := err.(*os.PathError)
+		if !ok {
+			t.Fatal("expected PathError, got:", err)
+		}
+		if !strings.Contains(perr.Err.Error(), symlinkErrMsg) {
+			t.Fatalf("expected error to contain %q, got %q", symlinkErrMsg, perr.Err.Error())
+		}
+	})
 }

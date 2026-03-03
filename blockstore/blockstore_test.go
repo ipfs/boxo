@@ -170,8 +170,8 @@ func newBlockStoreWithKeys(t *testing.T, d ds.Datastore, N int) (Blockstore, []c
 	bs := NewBlockstore(ds_sync.MutexWrap(d))
 
 	keys := make([]cid.Cid, N)
-	for i := 0; i < N; i++ {
-		block := blocks.NewBlock([]byte(fmt.Sprintf("some data %d", i)))
+	for i := range N {
+		block := blocks.NewBlock(fmt.Appendf(nil, "some data %d", i))
 		err := bs.Put(bg, block)
 		if err != nil {
 			t.Fatal(err)

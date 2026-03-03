@@ -66,7 +66,7 @@ func TestBasicFilestore(t *testing.T) {
 			fname := makeFile(t, dir, buf)
 
 			var cids []cid.Cid
-			for i := 0; i < 100; i++ {
+			for i := range 100 {
 				n := &posinfo.FilestoreNode{
 					PosInfo: &posinfo.PosInfo{
 						FullPath: fname,

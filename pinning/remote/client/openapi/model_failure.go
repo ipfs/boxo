@@ -61,7 +61,7 @@ func (o *Failure) SetError(v FailureError) {
 }
 
 func (o Failure) MarshalJSON() ([]byte, error) {
-	toSerialize := map[string]interface{}{}
+	toSerialize := map[string]any{}
 	if true {
 		toSerialize["error"] = o.Error
 	}

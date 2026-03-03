@@ -80,7 +80,7 @@ func TestBlockstoreManager(t *testing.T) {
 
 	exp := make(map[cid.Cid]blocks.Block)
 	var blks []blocks.Block
-	for i := 0; i < 32; i++ {
+	for i := range 32 {
 		buf := make([]byte, 1024*(i+1))
 		_, _ = rand.Read(buf)
 		b := blocks.NewBlock(buf)
@@ -168,7 +168,7 @@ func TestBlockstoreManagerConcurrency(t *testing.T) {
 
 	// Create more concurrent requests than the number of workers
 	wg := sync.WaitGroup{}
-	for i := 0; i < 16; i++ {
+	for range 16 {
 		wg.Add(1)
 
 		go func(t *testing.T) {

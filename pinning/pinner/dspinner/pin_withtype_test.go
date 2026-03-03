@@ -161,8 +161,8 @@ func TestCheckIfPinnedWithType(t *testing.T) {
 	t.Run("Context cancellation during indirect check with many pins", func(t *testing.T) {
 		// Create many recursive pins to ensure we can hit the cancellation
 		nodes := make([]cid.Cid, 50)
-		for i := 0; i < 50; i++ {
-			node := mdag.NodeWithData([]byte(fmt.Sprintf("recursive node %d", i)))
+		for i := range 50 {
+			node := mdag.NodeWithData(fmt.Appendf(nil, "recursive node %d", i))
 			err = dserv.Add(ctx, node)
 			require.NoError(t, err)
 			nodes[i] = node.Cid()

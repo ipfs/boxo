@@ -78,7 +78,7 @@ func BenchmarkBuzhash2(b *testing.B) {
 func TestBuzhashBitsHashBias(t *testing.T) {
 	counts := make([]byte, 32)
 	for _, h := range bytehash {
-		for i := 0; i < 32; i++ {
+		for i := range 32 {
 			if h&1 == 1 {
 				counts[i]++
 			}

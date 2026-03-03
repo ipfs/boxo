@@ -14,7 +14,7 @@ import (
 )
 
 func shuffle[T any](a []T) {
-	for n := 0; n < 5; n++ {
+	for range 5 {
 		for i := range a {
 			j := rand.Intn(len(a))
 			a[i], a[j] = a[j], a[i]
