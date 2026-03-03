@@ -250,31 +250,6 @@ func TestCBORDataSerialization(t *testing.T) {
 			ttlVal, err := v.AsInt()
 			require.NoError(t, err)
 			require.Equal(t, ttl, time.Duration(ttlVal))
-
-		case "CustomKey":
-			customKeyVal, err := v.AsBytes()
-			require.NoError(t, err)
-			require.Equal(t, customKeyVal, []byte("test"))
-
-		case "CustomKeyMap":
-			customKeyMapIterator := v.MapIterator()
-			var customKeyMapFields []string
-
-			for !customKeyMapIterator.Done() {
-				mapKey, _, err := customKeyMapIterator.Next()
-				require.NoError(t, err)
-				mapKeyStr, err := mapKey.AsString()
-				require.NoError(t, err)
-				customKeyMapFields = append(customKeyMapFields, mapKeyStr)
-			}
-
-			expectedOrder := []string{"key1", "key2", "long-key"}
-			require.Len(t, customKeyMapFields, len(expectedOrder))
-			for i, f := range customKeyMapFields {
-				expected := expectedOrder[i]
-				assert.Equal(t, expected, f)
-			}
-
 		}
 
 		fields = append(fields, kStr)

@@ -408,11 +408,9 @@ func createNode(value []byte, seq uint64, eol time.Time, ttl time.Duration, meta
 	var keys []string
 
 	for key, value := range metadata {
-
 		if slices.Contains(reservedKeys, key) {
 			return nil, fmt.Errorf("%w: %s", ErrMetadataConflict, key)
 		}
-
 		m[key] = value
 		keys = append(keys, key)
 	}
