@@ -48,25 +48,33 @@ type MetadataValue struct {
 	node ipld.Node
 }
 
-func MetadataValueFromString(value string) MetadataValue {
-	return MetadataValue{node: basicnode.NewString(value)}
+// StringValue creates a string metadata value.
+func StringValue(s string) MetadataValue {
+	return MetadataValue{node: basicnode.NewString(s)}
 }
 
-func MetadataValueFromBytes(value []byte) MetadataValue {
-	return MetadataValue{node: basicnode.NewBytes(value)}
+// BytesValue creates a bytes metadata value.
+func BytesValue(b []byte) MetadataValue {
+	return MetadataValue{node: basicnode.NewBytes(b)}
 }
 
-func MetadataValueFromInt(value int64) MetadataValue {
-	return MetadataValue{node: basicnode.NewInt(value)}
+// IntValue creates an integer metadata value.
+func IntValue(i int64) MetadataValue {
+	return MetadataValue{node: basicnode.NewInt(i)}
 }
 
-func MetadataValueFromBool(value bool) MetadataValue {
-	return MetadataValue{node: basicnode.NewBool(value)}
+// BoolValue creates a boolean metadata value.
+func BoolValue(b bool) MetadataValue {
+	return MetadataValue{node: basicnode.NewBool(b)}
 }
 
 // Metadata returns a custom metadata value by key.
+// Returns ErrMetadataConflict if the key is a reserved IPNS field.
 // Returns ErrMetadataNotFound if the key doesn't exist.
 func (rec *Record) Metadata(key string) (MetadataValue, error) {
+	if slices.Contains(reservedKeys, key) {
+		return MetadataValue{}, fmt.Errorf("%w: %s", ErrMetadataConflict, key)
+	}
 	node, err := rec.node.LookupByString(key)
 	if err != nil {
 		return MetadataValue{}, fmt.Errorf("%w: %s", ErrMetadataNotFound, key)
@@ -74,6 +82,7 @@ func (rec *Record) Metadata(key string) (MetadataValue, error) {
 	return MetadataValue{node: node}, nil
 }
 
+// MetadataExists reports whether a custom metadata key exists in the record.
 func (rec *Record) MetadataExists(key string) bool {
 	_, err := rec.node.LookupByString(key)
 	return err == nil
@@ -404,7 +413,7 @@ func newRecord(sk ic.PrivKey, value []byte, seq uint64, eol time.Time, ttl time.
 }
 
 func createNode(value []byte, seq uint64, eol time.Time, ttl time.Duration, metadata map[string]ipld.Node) (datamodel.Node, error) {
-	m := make(map[string]ipld.Node)
+	m := make(map[string]ipld.Node, 5+len(metadata))
 	var keys []string
 
 	for key, value := range metadata {

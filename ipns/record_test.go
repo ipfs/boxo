@@ -378,10 +378,10 @@ func TestMetadataAPI(t *testing.T) {
 	t.Run("Validate setting and retrieving supported types", func(t *testing.T) {
 		// custom metadata - one bytes entry and one map entry
 		metadata := map[string]MetadataValue{
-			"_metadata_str":   MetadataValueFromString("test"),
-			"_metadata_int":   MetadataValueFromInt(1212),
-			"_metadata_bytes": MetadataValueFromBytes([]byte{1, 2, 3, 4}),
-			"_metadata_bool":  MetadataValueFromBool(true),
+			"_metadata_str":   StringValue("test"),
+			"_metadata_int":   IntValue(1212),
+			"_metadata_bytes": BytesValue([]byte{1, 2, 3, 4}),
+			"_metadata_bool":  BoolValue(true),
 		}
 
 		rec := mustNewRecord(t, sk, path, seq, eol, ttl, WithMetadata(metadata))
@@ -421,16 +421,66 @@ func TestMetadataAPI(t *testing.T) {
 
 	t.Run("Validate conflicting type raises error", func(t *testing.T) {
 		for _, key := range reservedKeys {
-
 			metadata := map[string]MetadataValue{
-				key: MetadataValueFromString("test"),
+				key: StringValue("test"),
 			}
 
 			rec, err := NewRecord(sk, path, seq, eol, ttl, WithMetadata(metadata))
-			require.NotNil(t, err)
-
+			require.Error(t, err)
 			require.ErrorIs(t, err, ErrMetadataConflict)
 			require.Nil(t, rec)
 		}
+	})
+
+	t.Run("Reading reserved keys via Metadata returns error", func(t *testing.T) {
+		rec := mustNewRecord(t, sk, path, seq, eol, ttl)
+
+		for _, key := range reservedKeys {
+			_, err := rec.Metadata(key)
+			require.ErrorIs(t, err, ErrMetadataConflict, "Metadata(%q) should return ErrMetadataConflict", key)
+		}
+	})
+
+	t.Run("Metadata survives marshal/unmarshal roundtrip", func(t *testing.T) {
+		metadata := map[string]MetadataValue{
+			"_metadata_str":   StringValue("test"),
+			"_metadata_int":   IntValue(1212),
+			"_metadata_bytes": BytesValue([]byte{1, 2, 3, 4}),
+			"_metadata_bool":  BoolValue(true),
+		}
+
+		rec := mustNewRecord(t, sk, path, seq, eol, ttl, WithMetadata(metadata))
+
+		data, err := MarshalRecord(rec)
+		require.NoError(t, err)
+
+		rec2, err := UnmarshalRecord(data)
+		require.NoError(t, err)
+
+		mv, err := rec2.Metadata("_metadata_str")
+		require.NoError(t, err)
+		s, err := mv.AsString()
+		require.NoError(t, err)
+		assert.Equal(t, "test", s)
+
+		mv, err = rec2.Metadata("_metadata_int")
+		require.NoError(t, err)
+		i, err := mv.AsInt()
+		require.NoError(t, err)
+		assert.Equal(t, int64(1212), i)
+
+		mv, err = rec2.Metadata("_metadata_bytes")
+		require.NoError(t, err)
+		b, err := mv.AsBytes()
+		require.NoError(t, err)
+		assert.Equal(t, []byte{1, 2, 3, 4}, b)
+
+		mv, err = rec2.Metadata("_metadata_bool")
+		require.NoError(t, err)
+		bl, err := mv.AsBool()
+		require.NoError(t, err)
+		assert.Equal(t, true, bl)
+
+		require.False(t, rec2.MetadataExists("non_existent_key"))
 	})
 }

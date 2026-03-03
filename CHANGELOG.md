@@ -16,8 +16,7 @@ The following emojis are used to highlight certain changes:
 
 ### Added
 
-- `ipns`: NewRecord now allows adding custom metadata (Data) entries
-
+- `ipns`: `NewRecord` accepts `WithMetadata` option for storing custom key-value pairs in the signed DAG-CBOR data of IPNS records. Metadata can be read back from unmarshaled records via `Record.Metadata`. [#1085](https://github.com/ipfs/boxo/pull/1085)
 
 ### Changed
 
