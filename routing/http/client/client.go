@@ -69,9 +69,10 @@ type Client struct {
 	httpClient httpClient
 	accepts    string
 
-	peerID   peer.ID
-	addrs    []types.Multiaddr
-	identity crypto.PrivKey
+	peerID    peer.ID
+	addrs     []types.Multiaddr
+	addrsFunc func() []types.Multiaddr
+	identity  crypto.PrivKey
 
 	// Called immediately after signing a provide request. It is used
 	// for testing, e.g., testing the server with a mangled signature.
@@ -182,6 +183,21 @@ func WithProviderInfo(peerID peer.ID, addrs []multiaddr.Multiaddr) Option {
 		c.peerID = peerID
 		for _, a := range addrs {
 			c.addrs = append(c.addrs, types.Multiaddr{Multiaddr: a})
+		}
+		return nil
+	}
+}
+
+func WithProviderInfoFunc(peerID peer.ID, addrsFunc func() []multiaddr.Multiaddr) Option {
+	return func(c *Client) error {
+		c.peerID = peerID
+		c.addrsFunc = func() []types.Multiaddr {
+			addrs := addrsFunc()
+			out := make([]types.Multiaddr, len(addrs))
+			for i, a := range addrs {
+				out[i] = types.Multiaddr{Multiaddr: a}
+			}
+			return out
 		}
 		return nil
 	}
@@ -336,6 +352,13 @@ func (c *Client) FindProviders(ctx context.Context, key cid.Cid) (providers iter
 	return &measuringIter[iter.Result[types.Record]]{Iter: it, ctx: ctx, m: m}, nil
 }
 
+func (c *Client) providerAddrs() []types.Multiaddr {
+	if c.addrsFunc != nil {
+		return c.addrsFunc()
+	}
+	return c.addrs
+}
+
 // Deprecated: historic API from [IPIP-526], may be removed in a future version.
 //
 // [IPIP-526]: https://specs.ipfs.tech/ipips/ipip-0526/
@@ -362,7 +385,7 @@ func (c *Client) ProvideBitswap(ctx context.Context, keys []cid.Cid, ttl time.Du
 			AdvisoryTTL: &types.Duration{Duration: ttl},
 			Timestamp:   &types.Time{Time: now},
 			ID:          &c.peerID,
-			Addrs:       c.addrs,
+			Addrs:       c.providerAddrs(),
 		},
 	}
 	err := req.Sign(c.peerID, c.identity)
