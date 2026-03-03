@@ -46,3 +46,9 @@ var ErrInvalidName = errors.New("name is invalid")
 
 // ErrInvalidPath is returned when an IPNS [Record] has an invalid path.
 var ErrInvalidPath = errors.New("value is not a valid content path")
+
+// ErrMetadataNotFound is returned when when IPNS metadata dictionary key does not exist
+var ErrMetadataNotFound = errors.New("metadata key not found in record")
+
+// ErrMetadataConflict is returned when metadata key uses a reserved keyword
+var ErrMetadataConflict = errors.New("metadata key uses reserved name")
