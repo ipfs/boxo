@@ -295,9 +295,16 @@ func WithPublicKey(embedded bool) Option {
 	}
 }
 
-func WithMetadata(metadata map[string]ipld.Node) Option {
+// WithMetadata sets custom metadata entries for the IPNS record.
+// Keys should be prefixed with "_" per the IPNS spec to avoid
+// collisions with future standard fields.
+func WithMetadata(metadata map[string]MetadataValue) Option {
 	return func(o *options) {
-		o.metadata = metadata
+		m := make(map[string]ipld.Node, len(metadata))
+		for k, v := range metadata {
+			m[k] = v.node
+		}
+		o.metadata = m
 	}
 }
 
