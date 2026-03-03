@@ -103,7 +103,9 @@ func (c *recordingHTTPClient) Do(req *http.Request) (*http.Response, error) {
 	return resp, err
 }
 
-func makeTestDeps(t *testing.T, clientsOpts []Option, serverOpts []server.Option) testDeps {
+type AddrResolver func() []multiaddr.Multiaddr
+
+func makeTestDeps(t *testing.T, clientsOpts []Option, serverOpts []server.Option, resolver AddrResolver) testDeps {
 	const testUserAgent = "testUserAgent"
 	peerID, addrs, identity := makeProviderAndIdentity()
 	router := &mockContentRouter{}
@@ -119,8 +121,16 @@ func makeTestDeps(t *testing.T, clientsOpts []Option, serverOpts []server.Option
 	t.Cleanup(server.Close)
 	serverAddr := "http://" + server.Listener.Addr().String()
 	recordingHTTPClient := &recordingHTTPClient{httpClient: newDefaultHTTPClient(testUserAgent)}
+
+	var providerOpt Option
+	if resolver == nil {
+		providerOpt = WithProviderInfo(peerID, addrs)
+	} else {
+		providerOpt = WithProviderInfoFunc(peerID, resolver)
+	}
+
 	defaultClientOpts := []Option{
-		WithProviderInfo(peerID, addrs),
+		providerOpt,
 		WithIdentity(identity),
 		WithHTTPClient(recordingHTTPClient),
 	}
@@ -372,7 +382,7 @@ func TestClient_FindProviders(t *testing.T) {
 				})
 			}
 
-			deps := makeTestDeps(t, clientOpts, serverOpts)
+			deps := makeTestDeps(t, clientOpts, serverOpts, nil)
 
 			deps.recordingHTTPClient.f = append(deps.recordingHTTPClient.f, onRespReceived...)
 			deps.recordingHandler.f = append(deps.recordingHandler.f, onReqReceived...)
@@ -469,7 +479,7 @@ func TestClient_Provide(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
-				deps := makeTestDeps(t, nil, nil)
+				deps := makeTestDeps(t, nil, nil, nil)
 				client := deps.client
 				router := deps.router
 
@@ -671,7 +681,7 @@ func TestClient_FindPeers(t *testing.T) {
 				})
 			}
 
-			deps := makeTestDeps(t, clientOpts, serverOpts)
+			deps := makeTestDeps(t, clientOpts, serverOpts, nil)
 
 			deps.recordingHTTPClient.f = append(deps.recordingHTTPClient.f, onRespReceived...)
 			deps.recordingHandler.f = append(deps.recordingHandler.f, onReqReceived...)
@@ -934,7 +944,7 @@ func TestClient_GetClosestPeers(t *testing.T) {
 				})
 			}
 
-			deps := makeTestDeps(t, clientOpts, serverOpts)
+			deps := makeTestDeps(t, clientOpts, serverOpts, nil)
 
 			deps.recordingHTTPClient.f = append(deps.recordingHTTPClient.f, onRespReceived...)
 			deps.recordingHandler.f = append(deps.recordingHandler.f, onReqReceived...)
@@ -1075,7 +1085,7 @@ func TestClient_IPNS(t *testing.T) {
 	t.Run("Find IPNS Record returns error if server errors", func(t *testing.T) {
 		_, name := makeName(t)
 
-		deps := makeTestDeps(t, nil, nil)
+		deps := makeTestDeps(t, nil, nil, nil)
 		client := deps.client
 		router := deps.router
 
@@ -1091,7 +1101,7 @@ func TestClient_IPNS(t *testing.T) {
 			sk, name := makeName(t)
 			record, _ := makeIPNSRecord(t, sk, opts...)
 
-			deps := makeTestDeps(t, nil, nil)
+			deps := makeTestDeps(t, nil, nil, nil)
 			client := deps.client
 			router := deps.router
 
@@ -1107,7 +1117,7 @@ func TestClient_IPNS(t *testing.T) {
 			record, _ := makeIPNSRecord(t, sk, opts...)
 			_, name2 := makeName(t)
 
-			deps := makeTestDeps(t, nil, nil)
+			deps := makeTestDeps(t, nil, nil, nil)
 			client := deps.client
 			router := deps.router
 
@@ -1122,7 +1132,7 @@ func TestClient_IPNS(t *testing.T) {
 			sk, name := makeName(t)
 			record, _ := makeIPNSRecord(t, sk, opts...)
 
-			deps := makeTestDeps(t, nil, nil)
+			deps := makeTestDeps(t, nil, nil, nil)
 			client := deps.client
 			router := deps.router
 
@@ -1139,5 +1149,40 @@ func TestClient_IPNS(t *testing.T) {
 
 	t.Run("V2 IPNS Records", func(t *testing.T) {
 		runWithRecordOptions(t, ipns.WithV1Compatibility(false))
+	})
+}
+
+func TestProviderAddrs(t *testing.T) {
+	t.Run("returns static addresses when addrsFunc is nil", func(t *testing.T) {
+		_, addrs, _ := makeProviderAndIdentity()
+
+		deps := makeTestDeps(t, nil, nil, nil)
+
+		client := deps.client
+		providerAddrs := client.providerAddrs()
+
+		require.Len(t, providerAddrs, len(addrs))
+		for i, addr := range addrs {
+			require.Equal(t, addr, providerAddrs[i].Multiaddr)
+		}
+	})
+
+	t.Run("returns dynamic addresses when addrsFunc is set", func(t *testing.T) {
+		makeProviderAndIdentity()
+		ma1, err := multiaddr.NewMultiaddr("/ip4/203.0.113.1/tcp/4001")
+		require.NoError(t, err)
+
+		addrsFunc := func() []multiaddr.Multiaddr {
+			return []multiaddr.Multiaddr{ma1}
+		}
+
+		deps := makeTestDeps(t, nil, nil, addrsFunc)
+
+		client := deps.client
+		providerAddrs := client.providerAddrs()
+
+		// Should use dynamic addresses, not static ones
+		require.Len(t, providerAddrs, 1)
+		require.Equal(t, ma1, providerAddrs[0].Multiaddr)
 	})
 }
