@@ -2,6 +2,7 @@ package chunk
 
 import (
 	"io"
+	"strings"
 	"sync"
 )
 
@@ -24,8 +25,26 @@ func init() {
 // chunker. Everything before the first dash is considered the "name" of the
 // chunker. For example, "rabin-{min}-{avg}-{max}" will select the "rabin"
 // chunker.
+//
+// Register panics if name is empty, contains a dash, ctor is nil, or a
+// chunker with the same name is already registered. This follows the
+// convention established by [database/sql.Register].
+//
+// Register is safe for concurrent use.
 func Register(name string, ctor CtorFunc) {
 	splittersMu.Lock()
 	defer splittersMu.Unlock()
+	if name == "" {
+		panic("chunk: Register name is empty")
+	}
+	if strings.Contains(name, "-") {
+		panic("chunk: Register name must not contain a dash: " + name)
+	}
+	if ctor == nil {
+		panic("chunk: Register ctor is nil")
+	}
+	if _, dup := splitters[name]; dup {
+		panic("chunk: Register called twice for chunker " + name)
+	}
 	splitters[name] = ctor
 }
