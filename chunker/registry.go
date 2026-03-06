@@ -6,11 +6,11 @@ import (
 	"sync"
 )
 
-type CtorFunc func(r io.Reader, chunker string) (Splitter, error)
+type SplitterFunc func(r io.Reader, chunker string) (Splitter, error)
 
 var (
 	splittersMu sync.RWMutex
-	splitters   = map[string]CtorFunc{}
+	splitters   = map[string]SplitterFunc{}
 )
 
 // init registers the default splitters
@@ -31,7 +31,7 @@ func init() {
 // convention established by [database/sql.Register].
 //
 // Register is safe for concurrent use.
-func Register(name string, ctor CtorFunc) {
+func Register(name string, ctor SplitterFunc) {
 	splittersMu.Lock()
 	defer splittersMu.Unlock()
 	if name == "" {
