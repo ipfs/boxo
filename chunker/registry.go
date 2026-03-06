@@ -18,9 +18,9 @@ var (
 )
 
 func init() {
-	splitters["size"] = parseSizeString
-	splitters["rabin"] = parseRabinString
-	splitters["buzhash"] = parseBuzhashString
+	Register("size", parseSizeString)
+	Register("rabin", parseRabinString)
+	Register("buzhash", parseBuzhashString)
 }
 
 // Register makes a custom chunker available to [FromString] under the given
