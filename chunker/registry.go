@@ -6,10 +6,11 @@ import (
 	"sync"
 )
 
-// SplitterFunc is a constructor that creates a [Splitter] from a reader and
-// the full chunker specification string (e.g. "mychunker-param1-param2").
-// The specification string includes both the name and any parameters
-// separated by dashes.
+// SplitterFunc creates a [Splitter] from a reader and a specification
+// string such as "mychunker-param1-param2". It is used to register
+// custom chunkers via [Register] so they become available globally
+// through [FromString]. The function is responsible for parsing and
+// validating any parameters encoded in the string.
 type SplitterFunc func(r io.Reader, chunker string) (Splitter, error)
 
 var (

@@ -30,7 +30,10 @@ type Splitter interface {
 	NextBytes() ([]byte, error)
 }
 
-// SplitterGen is a splitter generator, given a reader.
+// SplitterGen creates a [Splitter] from a reader.
+// It is used at runtime by callers that already know which chunking
+// strategy and parameters they want (e.g. "fixed-size at 256 KiB").
+// See [SizeSplitterGen] for a convenient way to build one.
 type SplitterGen func(r io.Reader) Splitter
 
 // DefaultSplitter returns a SizeSplitter with the DefaultBlockSize.
@@ -38,8 +41,8 @@ func DefaultSplitter(r io.Reader) Splitter {
 	return NewSizeSplitter(r, DefaultBlockSize)
 }
 
-// SizeSplitterGen returns a SplitterGen function which will create
-// a splitter with the given size when called.
+// SizeSplitterGen returns a [SplitterGen] that creates a fixed-size
+// [Splitter] with the given block size.
 func SizeSplitterGen(size int64) SplitterGen {
 	return func(r io.Reader) Splitter {
 		return NewSizeSplitter(r, size)
