@@ -16,6 +16,8 @@ The following emojis are used to highlight certain changes:
 
 ### Added
 
+- `chunker`: added `Register` function to allow custom chunkers to be registered for use with `FromString`.
+
 ### Changed
 
 ### Removed
