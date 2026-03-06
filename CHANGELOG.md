@@ -20,6 +20,8 @@ The following emojis are used to highlight certain changes:
 
 ### Changed
 
+- `chunker`: `FromString` now rejects malformed `size-` strings with extra parameters (e.g. `size-123-extra` was previously silently accepted).
+
 ### Removed
 
 - `cmd/boxo-migrate`: removed code for go-ipfs migration -- no longer needed.
