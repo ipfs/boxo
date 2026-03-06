@@ -56,10 +56,7 @@ func FromString(r io.Reader, chunker string) (Splitter, error) {
 	if chunker == "" || chunker == "default" {
 		return DefaultSplitter(r), nil
 	}
-	name := chunker
-	if idx := strings.Index(chunker, "-"); idx != -1 {
-		name = chunker[:idx]
-	}
+	name, _, _ := strings.Cut(chunker, "-")
 	splittersMu.RLock()
 	ctor, ok := splitters[name]
 	splittersMu.RUnlock()
