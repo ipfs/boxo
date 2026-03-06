@@ -37,12 +37,12 @@ func init() {
 //	    })
 //	}
 //
-// Register panics if name is empty, contains a dash, ctor is nil, or a
+// Register panics if name is empty, contains a dash, fn is nil, or a
 // chunker with the same name is already registered. This follows the
 // convention established by [database/sql.Register].
 //
 // Register is safe for concurrent use.
-func Register(name string, ctor SplitterFunc) {
+func Register(name string, fn SplitterFunc) {
 	splittersMu.Lock()
 	defer splittersMu.Unlock()
 	if name == "" {
@@ -51,11 +51,11 @@ func Register(name string, ctor SplitterFunc) {
 	if strings.Contains(name, "-") {
 		panic("chunk: Register name must not contain a dash: " + name)
 	}
-	if ctor == nil {
-		panic("chunk: Register ctor is nil")
+	if fn == nil {
+		panic("chunk: Register fn is nil")
 	}
 	if _, dup := splitters[name]; dup {
 		panic("chunk: Register called twice for chunker " + name)
 	}
-	splitters[name] = ctor
+	splitters[name] = fn
 }
