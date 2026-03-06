@@ -2,11 +2,15 @@ package chunk
 
 import (
 	"io"
+	"sync"
 )
 
 type CtorFunc func(r io.Reader, chunker string) (Splitter, error)
 
-var splitters = map[string]CtorFunc{}
+var (
+	splittersMu sync.RWMutex
+	splitters   = map[string]CtorFunc{}
+)
 
 // init registers the default splitters
 func init() {
@@ -21,5 +25,7 @@ func init() {
 // chunker. For example, "rabin-{min}-{avg}-{max}" will select the "rabin"
 // chunker.
 func Register(name string, ctor CtorFunc) {
+	splittersMu.Lock()
+	defer splittersMu.Unlock()
 	splitters[name] = ctor
 }

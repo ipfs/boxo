@@ -50,7 +50,9 @@ func FromString(r io.Reader, chunker string) (Splitter, error) {
 	if idx := strings.Index(chunker, "-"); idx != -1 {
 		name = chunker[:idx]
 	}
+	splittersMu.RLock()
 	ctor, ok := splitters[name]
+	splittersMu.RUnlock()
 	if !ok {
 		return nil, fmt.Errorf("unrecognized chunker option: %s", chunker)
 	}
