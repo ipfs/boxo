@@ -39,9 +39,19 @@ var (
 	ErrSizeMax  = fmt.Errorf("chunker parameters may not exceed the maximum chunk size of %d", ChunkSizeLimit)
 )
 
-// FromString returns a Splitter depending on the given string:
-// it supports "default" (""), "size-{size}", "rabin", "rabin-{blocksize}",
-// "rabin-{min}-{avg}-{max}" and "buzhash".
+// FromString returns a [Splitter] for the given chunker specification string.
+//
+// Built-in chunkers:
+//
+//   - "" or "default" -- fixed-size chunks using [DefaultBlockSize]
+//   - "size-{size}" -- fixed-size chunks of the given byte size
+//   - "rabin" -- Rabin fingerprint chunking with [DefaultBlockSize] average
+//   - "rabin-{avg}" -- Rabin fingerprint chunking with the given average size
+//   - "rabin-{min}-{avg}-{max}" -- Rabin with explicit bounds
+//   - "buzhash" -- Buzhash content-defined chunking
+//
+// Custom chunkers registered via [Register] are also available.
+// The name is extracted as everything before the first dash.
 func FromString(r io.Reader, chunker string) (Splitter, error) {
 	if chunker == "" || chunker == "default" {
 		return DefaultSplitter(r), nil

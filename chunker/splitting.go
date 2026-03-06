@@ -1,7 +1,11 @@
 // Package chunk implements streaming block splitters.
-// Splitters read data from a reader and provide byte slices (chunks)
-// The size and contents of these slices depend on the splitting method
-// used.
+//
+// Splitters read data from a reader and produce byte slices (chunks).
+// The size and contents of these slices depend on the splitting method.
+//
+// Built-in methods include fixed-size, Rabin fingerprint, and Buzhash
+// content-defined chunking. Additional methods can be registered with
+// [Register] and instantiated through [FromString].
 package chunk
 
 import (

@@ -6,6 +6,10 @@ import (
 	"sync"
 )
 
+// SplitterFunc is a constructor that creates a [Splitter] from a reader and
+// the full chunker specification string (e.g. "mychunker-param1-param2").
+// The specification string includes both the name and any parameters
+// separated by dashes.
 type SplitterFunc func(r io.Reader, chunker string) (Splitter, error)
 
 var (
@@ -13,18 +17,25 @@ var (
 	splitters   = map[string]SplitterFunc{}
 )
 
-// init registers the default splitters
 func init() {
 	splitters["size"] = parseSizeString
 	splitters["rabin"] = parseRabinString
 	splitters["buzhash"] = parseBuzhashString
 }
 
-// Register allows users to register custom chunkers that can be instantiated by
-// [FromString]. The string passed to [FromString] is used to select the
-// chunker. Everything before the first dash is considered the "name" of the
-// chunker. For example, "rabin-{min}-{avg}-{max}" will select the "rabin"
-// chunker.
+// Register makes a custom chunker available to [FromString] under the given
+// name. The name is matched against the portion of the chunker string before
+// the first dash. For example, passing "mychunker-128" to [FromString]
+// selects the chunker registered as "mychunker", and the [SplitterFunc]
+// receives the full string "mychunker-128" so it can parse its own parameters.
+//
+// Register is typically called from an init function:
+//
+//	func init() {
+//	    chunk.Register("mychunker", func(r io.Reader, s string) (chunk.Splitter, error) {
+//	        // parse parameters from s, return a Splitter
+//	    })
+//	}
 //
 // Register panics if name is empty, contains a dash, ctor is nil, or a
 // chunker with the same name is already registered. This follows the
