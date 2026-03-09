@@ -1644,36 +1644,125 @@ func TestWantlistGrowsToLimit(t *testing.T) {
 	}
 }
 
+// TestIgnoresCidsAboveLimit verifies that CIDs exceeding MaxCidSize are
+// silently dropped from wantlist messages without killing the connection.
 func TestIgnoresCidsAboveLimit(t *testing.T) {
 	const cidLimit = 64
-	warsaw := newTestEngine("warsaw", WithMaxCidSize(cidLimit))
-	defer warsaw.Engine.Close()
-	riga := newTestEngine("riga")
-	defer riga.Engine.Close()
 
-	// Send in two messages to test reslicing.
-	m := message.New(true)
-
-	m.AddEntry(blocks.NewBlock([]byte("Hæ")).Cid(), 0, pb.Message_Wantlist_Block, true)
-
-	var hash mh.Multihash
-	hash = binary.AppendUvarint(hash, mh.BLAKE3)
-	hash = binary.AppendUvarint(hash, cidLimit)
-	startOfDigest := len(hash)
-	hash = append(hash, make(mh.Multihash, cidLimit)...)
-	rand.Read(hash[startOfDigest:])
-	m.AddEntry(cid.NewCidV1(cid.Raw, hash), 0, pb.Message_Wantlist_Block, true)
-
-	warsaw.Engine.MessageReceived(context.Background(), riga.Peer, m)
-
-	if warsaw.Peer == riga.Peer {
-		t.Fatal("Sanity Check: Peers have same Key!")
+	// mkOversizedCid builds a CIDv1 whose total byte length exceeds cidLimit.
+	mkOversizedCid := func() cid.Cid {
+		var hash mh.Multihash
+		hash = binary.AppendUvarint(hash, mh.BLAKE3)
+		hash = binary.AppendUvarint(hash, cidLimit)
+		startOfDigest := len(hash)
+		hash = append(hash, make(mh.Multihash, cidLimit)...)
+		rand.Read(hash[startOfDigest:])
+		return cid.NewCidV1(cid.Raw, hash)
 	}
 
-	wl := warsaw.Engine.WantlistForPeer(riga.Peer)
-	if len(wl) != 1 {
-		t.Fatalf("expected 1 entry in wantlist, got %d", len(wl))
-	}
+	t.Run("want-block filters oversized and keeps legitimate CID", func(t *testing.T) {
+		warsaw := newTestEngine("warsaw", WithMaxCidSize(cidLimit))
+		defer warsaw.Engine.Close()
+		riga := newTestEngine("riga")
+		defer riga.Engine.Close()
+
+		legitimateCid := blocks.NewBlock([]byte("legitimate")).Cid()
+		m := message.New(true)
+		m.AddEntry(legitimateCid, 0, pb.Message_Wantlist_Block, true)
+		m.AddEntry(mkOversizedCid(), 0, pb.Message_Wantlist_Block, true)
+
+		if warsaw.Engine.MessageReceived(t.Context(), riga.Peer, m) {
+			t.Fatal("connection should not be killed for oversized CIDs")
+		}
+
+		wl := warsaw.Engine.WantlistForPeer(riga.Peer)
+		if len(wl) != 1 {
+			t.Fatalf("expected 1 entry in wantlist, got %d", len(wl))
+		}
+		if wl[0].Cid != legitimateCid {
+			t.Fatalf("expected legitimate CID %s in wantlist, got %s", legitimateCid, wl[0].Cid)
+		}
+	})
+
+	// want-have entries take a separate code path (haveKs) in MessageReceived.
+	t.Run("want-have filters oversized and keeps legitimate CID", func(t *testing.T) {
+		warsaw := newTestEngine("warsaw", WithMaxCidSize(cidLimit))
+		defer warsaw.Engine.Close()
+		riga := newTestEngine("riga")
+		defer riga.Engine.Close()
+
+		legitimateCid := blocks.NewBlock([]byte("legitimate-have")).Cid()
+		m := message.New(true)
+		m.AddEntry(legitimateCid, 0, pb.Message_Wantlist_Have, true)
+		m.AddEntry(mkOversizedCid(), 0, pb.Message_Wantlist_Have, true)
+
+		if warsaw.Engine.MessageReceived(t.Context(), riga.Peer, m) {
+			t.Fatal("connection should not be killed for oversized CIDs")
+		}
+
+		wl := warsaw.Engine.WantlistForPeer(riga.Peer)
+		if len(wl) != 1 {
+			t.Fatalf("expected 1 entry in wantlist, got %d", len(wl))
+		}
+		if wl[0].Cid != legitimateCid {
+			t.Fatalf("expected legitimate CID %s in wantlist, got %s", legitimateCid, wl[0].Cid)
+		}
+	})
+
+	t.Run("oversized cancel does not affect existing wantlist", func(t *testing.T) {
+		warsaw := newTestEngine("warsaw", WithMaxCidSize(cidLimit))
+		defer warsaw.Engine.Close()
+		riga := newTestEngine("riga")
+		defer riga.Engine.Close()
+
+		firstCid := blocks.NewBlock([]byte("first")).Cid()
+		m := message.New(true)
+		m.AddEntry(firstCid, 0, pb.Message_Wantlist_Block, true)
+		warsaw.Engine.MessageReceived(t.Context(), riga.Peer, m)
+
+		// Send a second message: a new legitimate want + cancel of an oversized CID.
+		secondCid := blocks.NewBlock([]byte("second")).Cid()
+		m.Reset(false)
+		m.AddEntry(secondCid, 0, pb.Message_Wantlist_Block, true)
+		m.Cancel(mkOversizedCid())
+
+		if warsaw.Engine.MessageReceived(t.Context(), riga.Peer, m) {
+			t.Fatal("connection should not be killed for oversized CID in cancel")
+		}
+
+		wl := warsaw.Engine.WantlistForPeer(riga.Peer)
+		if len(wl) != 2 {
+			t.Fatalf("expected 2 entries in wantlist, got %d", len(wl))
+		}
+		if !findCid(firstCid, wl) {
+			t.Fatal("first legitimate want was removed by oversized cancel")
+		}
+		if !findCid(secondCid, wl) {
+			t.Fatal("second legitimate want was not added")
+		}
+	})
+
+	// When every entry is oversized, splitWantsCancelsDenials returns
+	// all-empty slices. Verify the engine handles this without crashing.
+	t.Run("message with only oversized CIDs", func(t *testing.T) {
+		warsaw := newTestEngine("warsaw", WithMaxCidSize(cidLimit))
+		defer warsaw.Engine.Close()
+		riga := newTestEngine("riga")
+		defer riga.Engine.Close()
+
+		m := message.New(true)
+		m.AddEntry(mkOversizedCid(), 0, pb.Message_Wantlist_Block, true)
+		m.AddEntry(mkOversizedCid(), 0, pb.Message_Wantlist_Have, true)
+
+		if warsaw.Engine.MessageReceived(t.Context(), riga.Peer, m) {
+			t.Fatal("connection should not be killed for oversized-only message")
+		}
+
+		wl := warsaw.Engine.WantlistForPeer(riga.Peer)
+		if len(wl) != 0 {
+			t.Fatalf("expected empty wantlist, got %d entries", len(wl))
+		}
+	})
 }
 
 // TestIgnoresIdentityCid verifies that identity CIDs (multihash type IDENTITY)
