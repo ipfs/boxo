@@ -1676,46 +1676,125 @@ func TestIgnoresCidsAboveLimit(t *testing.T) {
 	}
 }
 
+// TestIgnoresIdentityCid verifies that identity CIDs (multihash type IDENTITY)
+// are silently dropped from wantlist messages instead of killing the peer
+// connection. Some IPFS implementations naively send these.
 func TestIgnoresIdentityCid(t *testing.T) {
-	warsaw := newTestEngine("warsaw")
-	defer warsaw.Engine.Close()
-	riga := newTestEngine("riga")
-	defer riga.Engine.Close()
-
-	if warsaw.Peer == riga.Peer {
-		t.Fatal("Sanity Check: Peers have same Key!")
+	// mkIdentityCid builds a CIDv1 with a random IDENTITY multihash.
+	mkIdentityCid := func() cid.Cid {
+		var hash mh.Multihash
+		hash = binary.AppendUvarint(hash, mh.IDENTITY)
+		const digestSize = 32
+		hash = binary.AppendUvarint(hash, digestSize)
+		startOfDigest := len(hash)
+		hash = append(hash, make(mh.Multihash, digestSize)...)
+		rand.Read(hash[startOfDigest:])
+		return cid.NewCidV1(cid.Raw, hash)
 	}
 
-	m := message.New(true)
+	t.Run("want-block filters identity and keeps legitimate CID", func(t *testing.T) {
+		warsaw := newTestEngine("warsaw")
+		defer warsaw.Engine.Close()
+		riga := newTestEngine("riga")
+		defer riga.Engine.Close()
 
-	m.AddEntry(blocks.NewBlock([]byte("Hæ")).Cid(), 0, pb.Message_Wantlist_Block, true)
+		legitimateCid := blocks.NewBlock([]byte("legitimate")).Cid()
+		m := message.New(true)
+		m.AddEntry(legitimateCid, 0, pb.Message_Wantlist_Block, true)
+		m.AddEntry(mkIdentityCid(), 0, pb.Message_Wantlist_Block, true)
 
-	var hash mh.Multihash
-	hash = binary.AppendUvarint(hash, mh.IDENTITY)
-	const digestSize = 32
-	hash = binary.AppendUvarint(hash, digestSize)
-	startOfDigest := len(hash)
-	hash = append(hash, make(mh.Multihash, digestSize)...)
-	rand.Read(hash[startOfDigest:])
-	m.AddEntry(cid.NewCidV1(cid.Raw, hash), 0, pb.Message_Wantlist_Block, true)
+		if warsaw.Engine.MessageReceived(t.Context(), riga.Peer, m) {
+			t.Fatal("connection should not be killed for identity CIDs")
+		}
 
-	if warsaw.Engine.MessageReceived(context.Background(), riga.Peer, m) {
-		t.Fatal("connection should not be killed for identity CIDs")
-	}
+		wl := warsaw.Engine.WantlistForPeer(riga.Peer)
+		if len(wl) != 1 {
+			t.Fatalf("expected 1 entry in wantlist, got %d", len(wl))
+		}
+		if wl[0].Cid != legitimateCid {
+			t.Fatalf("expected legitimate CID %s in wantlist, got %s", legitimateCid, wl[0].Cid)
+		}
+	})
 
-	wl := warsaw.Engine.WantlistForPeer(riga.Peer)
-	if len(wl) != 1 {
-		t.Fatalf("expected 1 entry in wantlist (identity CID silently ignored), got %d", len(wl))
-	}
+	// want-have entries take a separate code path (haveKs) in MessageReceived.
+	t.Run("want-have filters identity and keeps legitimate CID", func(t *testing.T) {
+		warsaw := newTestEngine("warsaw")
+		defer warsaw.Engine.Close()
+		riga := newTestEngine("riga")
+		defer riga.Engine.Close()
 
-	m.Reset(true)
+		legitimateCid := blocks.NewBlock([]byte("legitimate-have")).Cid()
+		m := message.New(true)
+		m.AddEntry(legitimateCid, 0, pb.Message_Wantlist_Have, true)
+		m.AddEntry(mkIdentityCid(), 0, pb.Message_Wantlist_Have, true)
 
-	m.AddEntry(blocks.NewBlock([]byte("Hæ")).Cid(), 0, pb.Message_Wantlist_Block, true)
-	m.Cancel(cid.NewCidV1(cid.Raw, hash))
+		if warsaw.Engine.MessageReceived(t.Context(), riga.Peer, m) {
+			t.Fatal("connection should not be killed for identity CIDs")
+		}
 
-	if warsaw.Engine.MessageReceived(context.Background(), riga.Peer, m) {
-		t.Fatal("connection should not be killed for identity CID in cancel")
-	}
+		wl := warsaw.Engine.WantlistForPeer(riga.Peer)
+		if len(wl) != 1 {
+			t.Fatalf("expected 1 entry in wantlist, got %d", len(wl))
+		}
+		if wl[0].Cid != legitimateCid {
+			t.Fatalf("expected legitimate CID %s in wantlist, got %s", legitimateCid, wl[0].Cid)
+		}
+	})
+
+	t.Run("identity cancel does not affect existing wantlist", func(t *testing.T) {
+		warsaw := newTestEngine("warsaw")
+		defer warsaw.Engine.Close()
+		riga := newTestEngine("riga")
+		defer riga.Engine.Close()
+
+		firstCid := blocks.NewBlock([]byte("first")).Cid()
+		m := message.New(true)
+		m.AddEntry(firstCid, 0, pb.Message_Wantlist_Block, true)
+		warsaw.Engine.MessageReceived(t.Context(), riga.Peer, m)
+
+		// Send a second message: a new legitimate want + cancel of an identity CID.
+		secondCid := blocks.NewBlock([]byte("second")).Cid()
+		m.Reset(false)
+		m.AddEntry(secondCid, 0, pb.Message_Wantlist_Block, true)
+		m.Cancel(mkIdentityCid())
+
+		if warsaw.Engine.MessageReceived(t.Context(), riga.Peer, m) {
+			t.Fatal("connection should not be killed for identity CID in cancel")
+		}
+
+		wl := warsaw.Engine.WantlistForPeer(riga.Peer)
+		if len(wl) != 2 {
+			t.Fatalf("expected 2 entries in wantlist, got %d", len(wl))
+		}
+		if !findCid(firstCid, wl) {
+			t.Fatal("first legitimate want was removed by identity cancel")
+		}
+		if !findCid(secondCid, wl) {
+			t.Fatal("second legitimate want was not added")
+		}
+	})
+
+	// When every entry is an identity CID, splitWantsCancelsDenials returns
+	// all-empty slices. Verify the engine handles this without crashing.
+	t.Run("message with only identity CIDs", func(t *testing.T) {
+		warsaw := newTestEngine("warsaw")
+		defer warsaw.Engine.Close()
+		riga := newTestEngine("riga")
+		defer riga.Engine.Close()
+
+		m := message.New(true)
+		m.AddEntry(mkIdentityCid(), 0, pb.Message_Wantlist_Block, true)
+		m.AddEntry(mkIdentityCid(), 0, pb.Message_Wantlist_Have, true)
+
+		if warsaw.Engine.MessageReceived(t.Context(), riga.Peer, m) {
+			t.Fatal("connection should not be killed for identity-only message")
+		}
+
+		wl := warsaw.Engine.WantlistForPeer(riga.Peer)
+		if len(wl) != 0 {
+			t.Fatalf("expected empty wantlist, got %d entries", len(wl))
+		}
+	})
 }
 
 func TestWantlistBlocked(t *testing.T) {
