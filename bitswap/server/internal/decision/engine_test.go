@@ -1676,7 +1676,7 @@ func TestIgnoresCidsAboveLimit(t *testing.T) {
 	}
 }
 
-func TestKillConnectionForInlineCid(t *testing.T) {
+func TestIgnoresIdentityCid(t *testing.T) {
 	warsaw := newTestEngine("warsaw")
 	defer warsaw.Engine.Close()
 	riga := newTestEngine("riga")
@@ -1686,7 +1686,6 @@ func TestKillConnectionForInlineCid(t *testing.T) {
 		t.Fatal("Sanity Check: Peers have same Key!")
 	}
 
-	// Send in two messages to test reslicing.
 	m := message.New(true)
 
 	m.AddEntry(blocks.NewBlock([]byte("Hæ")).Cid(), 0, pb.Message_Wantlist_Block, true)
@@ -1700,8 +1699,13 @@ func TestKillConnectionForInlineCid(t *testing.T) {
 	rand.Read(hash[startOfDigest:])
 	m.AddEntry(cid.NewCidV1(cid.Raw, hash), 0, pb.Message_Wantlist_Block, true)
 
-	if !warsaw.Engine.MessageReceived(context.Background(), riga.Peer, m) {
-		t.Fatal("connection was not killed when receiving inline in cancel")
+	if warsaw.Engine.MessageReceived(context.Background(), riga.Peer, m) {
+		t.Fatal("connection should not be killed for identity CIDs")
+	}
+
+	wl := warsaw.Engine.WantlistForPeer(riga.Peer)
+	if len(wl) != 1 {
+		t.Fatalf("expected 1 entry in wantlist (identity CID silently ignored), got %d", len(wl))
 	}
 
 	m.Reset(true)
@@ -1709,8 +1713,8 @@ func TestKillConnectionForInlineCid(t *testing.T) {
 	m.AddEntry(blocks.NewBlock([]byte("Hæ")).Cid(), 0, pb.Message_Wantlist_Block, true)
 	m.Cancel(cid.NewCidV1(cid.Raw, hash))
 
-	if !warsaw.Engine.MessageReceived(context.Background(), riga.Peer, m) {
-		t.Fatal("connection was not killed when receiving inline in cancel")
+	if warsaw.Engine.MessageReceived(context.Background(), riga.Peer, m) {
+		t.Fatal("connection should not be killed for identity CID in cancel")
 	}
 }
 

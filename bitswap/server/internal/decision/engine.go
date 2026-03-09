@@ -4,7 +4,6 @@ package decision
 import (
 	"cmp"
 	"context"
-	"errors"
 	"fmt"
 	"slices"
 	"sync"
@@ -889,7 +888,12 @@ func (e *Engine) splitWantsCancelsDenials(p peer.ID, m bsmsg.BitSwapMessage) ([]
 			continue
 		}
 		if c.Prefix().MhType == mh.IDENTITY {
-			return nil, nil, nil, errors.New("peer canceled an identity CID")
+			// Ignore identity CIDs rather than killing the connection.
+			// Some implementations naively send these without malicious
+			// intent, and peers don't update fast enough to justify
+			// disconnecting them.
+			log.Debugw("ignoring identity CID in wantlist", "local", e.self, "from", p, "cid", c)
+			continue
 		}
 
 		if et.Cancel {
