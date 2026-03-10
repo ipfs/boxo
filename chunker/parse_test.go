@@ -102,4 +102,43 @@ func TestParseSize(t *testing.T) {
 	if err != ErrSizeMax {
 		t.Fatalf("Expected 'ErrSizeMax', got: %#v", err)
 	}
+
+	_, err = FromString(r, "size-123-extra")
+	if err == nil {
+		t.Fatal("expected error for size string with extra parameters")
+	}
+}
+
+func TestParseDefault(t *testing.T) {
+	t.Parallel()
+
+	r := bytes.NewReader(randBuf(t, 1000))
+
+	s, err := FromString(r, "")
+	if err != nil {
+		t.Fatalf("expected success for empty string, got: %v", err)
+	}
+	if s == nil {
+		t.Fatal("expected non-nil splitter for empty string")
+	}
+
+	r.Reset(randBuf(t, 1000))
+	s, err = FromString(r, "default")
+	if err != nil {
+		t.Fatalf("expected success for \"default\", got: %v", err)
+	}
+	if s == nil {
+		t.Fatal("expected non-nil splitter for \"default\"")
+	}
+}
+
+func TestParseUnknown(t *testing.T) {
+	t.Parallel()
+
+	r := bytes.NewReader(randBuf(t, 1000))
+
+	_, err := FromString(r, "unknown-chunker")
+	if err == nil {
+		t.Fatal("expected error for unregistered chunker")
+	}
 }

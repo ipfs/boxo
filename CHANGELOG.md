@@ -16,7 +16,11 @@ The following emojis are used to highlight certain changes:
 
 ### Added
 
+- `chunker`: added `Register` function to allow custom chunkers to be registered for use with `FromString`.
+
 ### Changed
+
+- `chunker`: `FromString` now rejects malformed `size-` strings with extra parameters (e.g. `size-123-extra` was previously silently accepted).
 
 ### Removed
 
