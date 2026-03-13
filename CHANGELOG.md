@@ -30,6 +30,8 @@ The following emojis are used to highlight certain changes:
 
 ### Fixed
 
+- `bitswap/server`: incoming identity CIDs in wantlist messages are now silently ignored instead of killing the connection to the remote peer. Some IPFS implementations naively send identity CIDs, and disconnecting them for it caused unnecessary churn. [#1117](https://github.com/ipfs/boxo/pull/1117)
+
 ### Security
 
 
