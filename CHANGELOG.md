@@ -24,6 +24,7 @@ The following emojis are used to highlight certain changes:
 
 ### Removed
 
+- `gateway`: removed dead DoH resolver for `.crypto` TLD (Unstoppable Domains) [#772](https://github.com/ipfs/boxo/issues/772)
 - `cmd/boxo-migrate`: removed code for go-ipfs migration -- no longer needed.
 - `cmd/deprecator`: removed code to deprecare relocated ipfs packages -- no longer needed.
 
