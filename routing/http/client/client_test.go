@@ -1151,36 +1151,30 @@ func TestClient_IPNS(t *testing.T) {
 }
 
 func TestProviderAddrs(t *testing.T) {
-	t.Run("returns static addresses when addrsFunc is nil", func(t *testing.T) {
-		_, addrs, _ := makeProviderAndIdentity()
-
+	t.Run("returns static addresses from WithProviderInfo", func(t *testing.T) {
+		// When constructed with WithProviderInfo, providerAddrs must return
+		// the same addresses the client was initialized with.
 		deps := makeTestDeps(t, nil, nil, nil)
+		got := deps.client.providerAddrs()
 
-		client := deps.client
-		providerAddrs := client.providerAddrs()
-
-		require.Len(t, providerAddrs, len(addrs))
-		for i, addr := range addrs {
-			require.Equal(t, addr, providerAddrs[i].Multiaddr)
+		require.Len(t, got, len(deps.addrs))
+		for i, addr := range deps.addrs {
+			require.Equal(t, addr, got[i].Multiaddr)
 		}
 	})
 
-	t.Run("returns dynamic addresses when addrsFunc is set", func(t *testing.T) {
-		makeProviderAndIdentity()
-		ma1, err := multiaddr.NewMultiaddr("/ip4/203.0.113.1/tcp/4001")
+	t.Run("returns dynamic addresses from WithProviderInfoFunc", func(t *testing.T) {
+		// When constructed with WithProviderInfoFunc, providerAddrs must call
+		// the callback and return its result instead of static addresses.
+		resolved, err := multiaddr.NewMultiaddr("/ip4/203.0.113.1/tcp/4001")
 		require.NoError(t, err)
 
-		addrsFunc := func() []multiaddr.Multiaddr {
-			return []multiaddr.Multiaddr{ma1}
-		}
+		deps := makeTestDeps(t, nil, nil, func() []multiaddr.Multiaddr {
+			return []multiaddr.Multiaddr{resolved}
+		})
+		got := deps.client.providerAddrs()
 
-		deps := makeTestDeps(t, nil, nil, addrsFunc)
-
-		client := deps.client
-		providerAddrs := client.providerAddrs()
-
-		// Should use dynamic addresses, not static ones
-		require.Len(t, providerAddrs, 1)
-		require.Equal(t, ma1, providerAddrs[0].Multiaddr)
+		require.Len(t, got, 1)
+		require.Equal(t, resolved, got[0].Multiaddr)
 	})
 }
