@@ -16,6 +16,7 @@ The following emojis are used to highlight certain changes:
 
 ### Added
 
+- `routing/http/client`: `WithProviderInfoFunc` option resolves provider addresses at provide-time instead of client construction time. This only impacts legacy HTTP-only custom routing setups that depend on [IPIP-526](https://github.com/ipfs/specs/pull/526) and were sending unresolved `0.0.0.0` addresses in provider records instead of actual interface addresses. [#1115](https://github.com/ipfs/boxo/pull/1115)
 - `chunker`: added `Register` function to allow custom chunkers to be registered for use with `FromString`.
 
 ### Changed
