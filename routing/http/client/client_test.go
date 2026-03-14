@@ -1177,4 +1177,40 @@ func TestProviderAddrs(t *testing.T) {
 		require.Len(t, got, 1)
 		require.Equal(t, resolved, got[0].Multiaddr)
 	})
+
+	t.Run("ProvideBitswap sends dynamic addresses from WithProviderInfoFunc", func(t *testing.T) {
+		// Verify that addresses from WithProviderInfoFunc propagate all the
+		// way through to the HTTP request body, not just providerAddrs().
+		synctest.Test(t, func(t *testing.T) {
+			resolved, err := multiaddr.NewMultiaddr("/ip4/203.0.113.1/tcp/4001")
+			require.NoError(t, err)
+
+			deps := makeTestDeps(t, nil, nil, func() []multiaddr.Multiaddr {
+				return []multiaddr.Multiaddr{resolved}
+			})
+
+			cids := []cid.Cid{makeCID()}
+			ttl := 5 * time.Minute
+
+			//nolint:staticcheck
+			//lint:ignore SA1019 // ignore staticcheck
+			expectedReq := &server.BitswapWriteProvideRequest{
+				Keys:        cids,
+				Timestamp:   time.Now().Truncate(time.Millisecond),
+				AdvisoryTTL: ttl,
+				ID:          deps.peerID,
+				Addrs:       []multiaddr.Multiaddr{resolved},
+			}
+
+			expectedTTL := 10 * time.Minute
+			deps.router.On("ProvideBitswap", mock.Anything, expectedReq).
+				Return(expectedTTL, nil)
+
+			//nolint:staticcheck
+			//lint:ignore SA1019 // ignore staticcheck
+			advisoryTTL, err := deps.client.ProvideBitswap(context.Background(), cids, ttl)
+			require.NoError(t, err)
+			require.Equal(t, expectedTTL, advisoryTTL)
+		})
+	})
 }
