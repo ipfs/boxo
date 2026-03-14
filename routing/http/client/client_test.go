@@ -1206,8 +1206,6 @@ func TestProviderAddrs(t *testing.T) {
 			deps.router.On("ProvideBitswap", mock.Anything, expectedReq).
 				Return(expectedTTL, nil)
 
-			//nolint:staticcheck
-			//lint:ignore SA1019 // ignore staticcheck
 			advisoryTTL, err := deps.client.ProvideBitswap(context.Background(), cids, ttl)
 			require.NoError(t, err)
 			require.Equal(t, expectedTTL, advisoryTTL)
