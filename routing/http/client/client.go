@@ -188,6 +188,10 @@ func WithProviderInfo(peerID peer.ID, addrs []multiaddr.Multiaddr) Option {
 	}
 }
 
+// WithProviderInfoFunc is like [WithProviderInfo] but accepts a callback that
+// is evaluated each time a provide request is made. Use this when addresses
+// may change over the lifetime of the client (e.g., resolved from a libp2p
+// host instead of static configuration).
 func WithProviderInfoFunc(peerID peer.ID, addrsFunc func() []multiaddr.Multiaddr) Option {
 	return func(c *Client) error {
 		c.peerID = peerID
