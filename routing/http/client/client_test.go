@@ -103,9 +103,7 @@ func (c *recordingHTTPClient) Do(req *http.Request) (*http.Response, error) {
 	return resp, err
 }
 
-type AddrResolver func() []multiaddr.Multiaddr
-
-func makeTestDeps(t *testing.T, clientsOpts []Option, serverOpts []server.Option, resolver AddrResolver) testDeps {
+func makeTestDeps(t *testing.T, clientsOpts []Option, serverOpts []server.Option, resolver func() []multiaddr.Multiaddr) testDeps {
 	const testUserAgent = "testUserAgent"
 	peerID, addrs, identity := makeProviderAndIdentity()
 	router := &mockContentRouter{}
