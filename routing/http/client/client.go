@@ -178,6 +178,9 @@ func WithUserAgent(ua string) Option {
 	}
 }
 
+// WithProviderInfo sets the peer ID and static addresses used in provide requests.
+// Mutually exclusive with [WithProviderInfoFunc]; if both are provided,
+// [WithProviderInfoFunc] takes precedence.
 func WithProviderInfo(peerID peer.ID, addrs []multiaddr.Multiaddr) Option {
 	return func(c *Client) error {
 		c.peerID = peerID
@@ -192,6 +195,8 @@ func WithProviderInfo(peerID peer.ID, addrs []multiaddr.Multiaddr) Option {
 // is evaluated each time a provide request is made. Use this when addresses
 // may change over the lifetime of the client (e.g., resolved from a libp2p
 // host instead of static configuration).
+// Mutually exclusive with [WithProviderInfo]; if both are provided,
+// WithProviderInfoFunc takes precedence.
 func WithProviderInfoFunc(peerID peer.ID, addrsFunc func() []multiaddr.Multiaddr) Option {
 	return func(c *Client) error {
 		c.peerID = peerID
