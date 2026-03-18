@@ -22,6 +22,7 @@ The following emojis are used to highlight certain changes:
 ### Changed
 
 - `chunker`: `FromString` now rejects malformed `size-` strings with extra parameters (e.g. `size-123-extra` was previously silently accepted).
+- upgrade to `go-libp2p` [v0.48.0](https://github.com/libp2p/go-libp2p/releases/tag/v0.48.0)
 
 ### Removed
 
