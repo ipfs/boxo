@@ -1,6 +1,3 @@
-// package mfs implements an in memory model of a mutable IPFS filesystem.
-// TODO: Develop on this line (and move it to `doc.go`).
-
 package mfs
 
 import (

@@ -1,5 +1,7 @@
-// Package client implements the IPFS exchange interface with the BitSwap
+// Package client implements the IPFS exchange interface with the [Bitswap]
 // bilateral exchange protocol.
+//
+// [Bitswap]: https://specs.ipfs.tech/bitswap-protocol/
 package client
 
 import (

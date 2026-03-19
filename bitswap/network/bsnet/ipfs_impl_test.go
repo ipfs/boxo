@@ -24,7 +24,7 @@ import (
 	"github.com/multiformats/go-multistream"
 )
 
-// Receiver is an interface for receiving messages from the GraphSyncNetwork.
+// Receiver is an interface for receiving messages from the BitSwap network.
 type receiver struct {
 	peers           map[peer.ID]struct{}
 	messageReceived chan struct{}
