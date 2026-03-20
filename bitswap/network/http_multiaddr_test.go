@@ -91,6 +91,35 @@ func TestExtractHTTPAddress(t *testing.T) {
 			},
 			expectErr: false,
 		},
+		// Mismatched default ports: port must be preserved when it does
+		// not match the schema default (e.g. http+443, https+80).
+		{
+			name:  "HTTP with port 443 preserves port (non-local, errors)",
+			maStr: "/dns/example.com/tcp/443/http",
+			want: &url.URL{
+				Scheme: "http",
+				Host:   "example.com:443",
+			},
+			expectErr: true, // non-local without TLS
+		},
+		{
+			name:  "HTTPS with port 80 preserves port",
+			maStr: "/dns/example.com/tcp/80/https",
+			want: &url.URL{
+				Scheme: "https",
+				Host:   "example.com:80",
+			},
+			expectErr: false,
+		},
+		{
+			name:  "HTTP with port 443 on loopback preserves port",
+			maStr: "/ip4/127.0.0.1/tcp/443/http",
+			want: &url.URL{
+				Scheme: "http",
+				Host:   "127.0.0.1:443",
+			},
+			expectErr: false,
+		},
 		// Regression tests: some HTTP providers advertise /dns/host/https
 		// without the /tcp/443 component. Port 443 must be inferred for
 		// https and port 80 for http to match the behavior of browsers
