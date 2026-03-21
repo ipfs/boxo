@@ -144,13 +144,14 @@ func NewConcatProvider(streams ...KeyChanFunc) KeyChanFunc {
 					log.Errorf("error in concat strategy while handling CID stream %d: %s", i, err)
 					continue
 				}
+			drain:
 				for {
 					select {
 					case <-ctx.Done():
 						return
 					case c, ok := <-ch:
 						if !ok {
-							goto nextStream
+							break drain
 						}
 						select {
 						case <-ctx.Done():
@@ -159,7 +160,6 @@ func NewConcatProvider(streams ...KeyChanFunc) KeyChanFunc {
 						}
 					}
 				}
-			nextStream:
 			}
 		}()
 
