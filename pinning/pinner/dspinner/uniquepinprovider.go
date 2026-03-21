@@ -8,6 +8,7 @@ import (
 	ipfspinner "github.com/ipfs/boxo/pinning/pinner"
 	"github.com/ipfs/boxo/provider"
 	"github.com/ipfs/go-cid"
+	mh "github.com/multiformats/go-multihash"
 )
 
 // NewUniquePinnedProvider returns a [provider.KeyChanFunc] that emits
@@ -59,6 +60,10 @@ func NewUniquePinnedProvider(
 				if sc.Err != nil {
 					log.Errorf("unique provide direct pins: %s", sc.Err)
 					return
+				}
+				// skip identity CIDs: content is inline, no need to provide
+				if sc.Pin.Key.Prefix().MhType == mh.IDENTITY {
+					continue
 				}
 				if tracker.Visit(sc.Pin.Key) {
 					if !emit(sc.Pin.Key) {
@@ -118,6 +123,10 @@ func NewPinnedEntityRootsProvider(
 				if sc.Err != nil {
 					log.Errorf("entity provide direct pins: %s", sc.Err)
 					return
+				}
+				// skip identity CIDs: content is inline, no need to provide
+				if sc.Pin.Key.Prefix().MhType == mh.IDENTITY {
+					continue
 				}
 				if tracker.Visit(sc.Pin.Key) {
 					if !emit(sc.Pin.Key) {

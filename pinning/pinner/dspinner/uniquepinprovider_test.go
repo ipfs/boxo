@@ -16,6 +16,7 @@ import (
 	"github.com/ipfs/go-datastore"
 	dssync "github.com/ipfs/go-datastore/sync"
 	format "github.com/ipfs/go-ipld-format"
+	mh "github.com/multiformats/go-multihash"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -232,4 +233,101 @@ func TestPinnedEntityRootsProvider_DedupAcrossPins(t *testing.T) {
 	assert.Equal(t, 1, visited[sharedFile.Cid()],
 		"shared file emitted once across both pins")
 	assert.Len(t, visited, 5, "dir1 + dir2 + shared + unique1 + unique2")
+}
+
+// --- identity CID filtering ---
+
+func makeIdentityCID(t *testing.T, data []byte) cid.Cid {
+	t.Helper()
+	hash, err := mh.Encode(data, mh.IDENTITY)
+	require.NoError(t, err)
+	return cid.NewCidV1(cid.Raw, hash)
+}
+
+// TestUniquePinnedProvider_IdentityDirectPin verifies that a
+// directly-pinned identity CID is not emitted. Identity CIDs embed
+// data inline, so providing them to the DHT is wasteful.
+func TestUniquePinnedProvider_IdentityDirectPin(t *testing.T) {
+	bs, pinner, dserv := setupPinTest(t)
+
+	normal := merkledag.NodeWithData([]byte("normal"))
+	require.NoError(t, dserv.Add(t.Context(), normal))
+
+	idCid := makeIdentityCID(t, []byte("inline"))
+
+	require.NoError(t, pinner.PinWithMode(t.Context(), normal.Cid(), ipfspinner.Direct, "normal"))
+	require.NoError(t, pinner.PinWithMode(t.Context(), idCid, ipfspinner.Direct, "identity"))
+
+	tracker := walker.NewMapTracker()
+	keyChanF := NewUniquePinnedProvider(pinner, bs, tracker)
+	ch, err := keyChanF(t.Context())
+	require.NoError(t, err)
+
+	var visited []cid.Cid
+	for c := range ch {
+		visited = append(visited, c)
+	}
+
+	assert.Contains(t, visited, normal.Cid(), "normal direct pin emitted")
+	assert.NotContains(t, visited, idCid, "identity direct pin must not be emitted")
+}
+
+// TestUniquePinnedProvider_IdentityInRecursiveDAG verifies that
+// identity CIDs within a recursive pin DAG are not emitted. The
+// walker traverses through them but skips emission.
+func TestUniquePinnedProvider_IdentityInRecursiveDAG(t *testing.T) {
+	bs, pinner, dserv := setupPinTest(t)
+
+	idChild := makeIdentityCID(t, []byte("inline-leaf"))
+
+	root := merkledag.NodeWithData([]byte("root-with-id"))
+	require.NoError(t, root.AddRawLink("inline", &format.Link{Cid: idChild}))
+	require.NoError(t, dserv.Add(t.Context(), root))
+
+	require.NoError(t, pinner.PinWithMode(t.Context(), root.Cid(), ipfspinner.Recursive, "rec"))
+
+	tracker := walker.NewMapTracker()
+	keyChanF := NewUniquePinnedProvider(pinner, bs, tracker)
+	ch, err := keyChanF(t.Context())
+	require.NoError(t, err)
+
+	var visited []cid.Cid
+	for c := range ch {
+		visited = append(visited, c)
+	}
+
+	assert.Contains(t, visited, root.Cid(), "non-identity root emitted")
+	assert.NotContains(t, visited, idChild, "identity child must not be emitted")
+}
+
+// TestPinnedEntityRootsProvider_IdentityDirectPin verifies that the
+// entity roots provider also filters identity CIDs from direct pins.
+func TestPinnedEntityRootsProvider_IdentityDirectPin(t *testing.T) {
+	bs, pinner, dserv := setupPinTest(t)
+
+	normal := merkledag.NodeWithData(func() []byte {
+		fsn := ft.NewFSNode(ft.TFile)
+		fsn.SetData([]byte("normal"))
+		b, _ := fsn.GetBytes()
+		return b
+	}())
+	require.NoError(t, dserv.Add(t.Context(), normal))
+
+	idCid := makeIdentityCID(t, []byte("inline"))
+
+	require.NoError(t, pinner.PinWithMode(t.Context(), normal.Cid(), ipfspinner.Direct, "normal"))
+	require.NoError(t, pinner.PinWithMode(t.Context(), idCid, ipfspinner.Direct, "identity"))
+
+	tracker := walker.NewMapTracker()
+	keyChanF := NewPinnedEntityRootsProvider(pinner, bs, tracker)
+	ch, err := keyChanF(t.Context())
+	require.NoError(t, err)
+
+	var visited []cid.Cid
+	for c := range ch {
+		visited = append(visited, c)
+	}
+
+	assert.Contains(t, visited, normal.Cid(), "normal direct pin emitted")
+	assert.NotContains(t, visited, idCid, "identity direct pin must not be emitted")
 }

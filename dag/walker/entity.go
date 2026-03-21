@@ -6,6 +6,7 @@ import (
 	blockstore "github.com/ipfs/boxo/blockstore"
 	"github.com/ipfs/boxo/ipld/unixfs"
 	cid "github.com/ipfs/go-cid"
+	mh "github.com/multiformats/go-multihash"
 	ipld "github.com/ipld/go-ipld-prime"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	basicnode "github.com/ipld/go-ipld-prime/node/basic"
@@ -167,10 +168,10 @@ func WalkEntityRoots(
 			stack = append(stack, children...)
 		}
 
-		// identity CIDs embed data inline -- never emit them, but
+		// skip identity CIDs: content is inline, no need to provide.
 		// we still descend (above) so an inlined dag-pb directory's
-		// normal children get provided
-		if isIdentityCID(c) {
+		// normal children get provided.
+		if c.Prefix().MhType == mh.IDENTITY {
 			continue
 		}
 
