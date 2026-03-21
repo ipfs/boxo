@@ -1,10 +1,7 @@
 package walker
 
 import (
-	"bytes"
 	"context"
-	"fmt"
-	"io"
 
 	blockstore "github.com/ipfs/boxo/blockstore"
 	"github.com/ipfs/boxo/ipld/unixfs"
@@ -33,7 +30,8 @@ type NodeFetcher func(ctx context.Context, c cid.Cid) (linkCIDs []cid.Cid, entit
 
 // NodeFetcherFromBlockstore creates a [NodeFetcher] backed by a local
 // blockstore. Like [LinksFetcherFromBlockstore], it decodes blocks via
-// ipld-prime's global multicodec registry (dag-pb, dag-cbor, raw, etc.).
+// ipld-prime's global multicodec registry (dag-pb, dag-cbor, raw, etc.)
+// and handles identity CIDs transparently via [blockstore.NewIdStore].
 //
 // Entity type detection:
 //   - dag-pb with valid UnixFS Data: file, directory, HAMT shard, or symlink
@@ -41,19 +39,7 @@ type NodeFetcher func(ctx context.Context, c cid.Cid) (linkCIDs []cid.Cid, entit
 //   - raw codec: EntityFile (small file stored as a single raw block)
 //   - all other codecs (dag-cbor, dag-json, etc.): EntityUnknown
 func NodeFetcherFromBlockstore(bs blockstore.Blockstore) NodeFetcher {
-	ls := cidlink.DefaultLinkSystem()
-	ls.TrustedStorage = true
-	ls.StorageReadOpener = func(lctx ipld.LinkContext, lnk ipld.Link) (io.Reader, error) {
-		cl, ok := lnk.(cidlink.Link)
-		if !ok {
-			return nil, fmt.Errorf("unsupported link type: %T", lnk)
-		}
-		blk, err := bs.Get(lctx.Ctx, cl.Cid)
-		if err != nil {
-			return nil, err
-		}
-		return bytes.NewReader(blk.RawData()), nil
-	}
+	ls := linkSystemForBlockstore(bs)
 
 	return func(ctx context.Context, c cid.Cid) ([]cid.Cid, EntityType, error) {
 		lnk := cidlink.Link{Cid: c}

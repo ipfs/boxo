@@ -127,14 +127,14 @@ func WalkDAG(
 	return nil
 }
 
-// LinksFetcherFromBlockstore creates a [LinksFetcher] backed by a
-// local blockstore. Blocks are decoded using the codecs registered in
-// the global multicodec registry (via ipld-prime's
-// [cidlink.DefaultLinkSystem]).
-//
-// For custom link extraction, pass your own [LinksFetcher] to
-// [WalkDAG] directly.
-func LinksFetcherFromBlockstore(bs blockstore.Blockstore) LinksFetcher {
+// linkSystemForBlockstore creates an ipld.LinkSystem backed by a
+// blockstore, used by both [LinksFetcherFromBlockstore] and
+// [NodeFetcherFromBlockstore]. The blockstore is wrapped with
+// [blockstore.NewIdStore] so identity CIDs (multihash code 0x00,
+// data inline in the CID) are decoded transparently without
+// requiring a datastore lookup.
+func linkSystemForBlockstore(bs blockstore.Blockstore) ipld.LinkSystem {
+	idBS := blockstore.NewIdStore(bs)
 	ls := cidlink.DefaultLinkSystem()
 	ls.TrustedStorage = true
 	ls.StorageReadOpener = func(lctx ipld.LinkContext, lnk ipld.Link) (io.Reader, error) {
@@ -142,12 +142,25 @@ func LinksFetcherFromBlockstore(bs blockstore.Blockstore) LinksFetcher {
 		if !ok {
 			return nil, fmt.Errorf("unsupported link type: %T", lnk)
 		}
-		blk, err := bs.Get(lctx.Ctx, cl.Cid)
+		blk, err := idBS.Get(lctx.Ctx, cl.Cid)
 		if err != nil {
 			return nil, err
 		}
 		return bytes.NewReader(blk.RawData()), nil
 	}
+	return ls
+}
+
+// LinksFetcherFromBlockstore creates a [LinksFetcher] backed by a
+// local blockstore. Blocks are decoded using the codecs registered in
+// the global multicodec registry (via ipld-prime's
+// [cidlink.DefaultLinkSystem]). Identity CIDs are handled
+// transparently via [blockstore.NewIdStore].
+//
+// For custom link extraction, pass your own [LinksFetcher] to
+// [WalkDAG] directly.
+func LinksFetcherFromBlockstore(bs blockstore.Blockstore) LinksFetcher {
+	ls := linkSystemForBlockstore(bs)
 
 	return func(ctx context.Context, c cid.Cid) ([]cid.Cid, error) {
 		lnk := cidlink.Link{Cid: c}
