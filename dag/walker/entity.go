@@ -61,13 +61,15 @@ func NodeFetcherFromBlockstore(bs blockstore.Blockstore) NodeFetcher {
 // it as UnixFS protobuf. For raw codec nodes, it returns EntityFile.
 // For everything else, it returns EntityUnknown.
 func detectEntityType(c cid.Cid, nd ipld.Node) EntityType {
+	codec := c.Prefix().Codec
+
 	// raw codec: small file stored as a single block
-	if c.Prefix().Codec == cid.Raw {
+	if codec == cid.Raw {
 		return EntityFile
 	}
 
 	// only dag-pb has UnixFS semantics; other codecs are unknown
-	if c.Prefix().Codec != cid.DagProtobuf {
+	if codec != cid.DagProtobuf {
 		return EntityUnknown
 	}
 

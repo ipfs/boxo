@@ -188,9 +188,10 @@ func LinksFetcherFromBlockstore(bs blockstore.Blockstore) LinksFetcher {
 	}
 }
 
-// collectLinks recursively extracts all link CIDs from an ipld-prime
-// node. Handles maps, lists, and scalar link values. parent is the CID
-// of the block being inspected (used for debug logging only).
+// collectLinks extracts all link CIDs from an ipld-prime node by
+// recursively traversing maps, lists, and scalar link values. Only map
+// values are inspected, not keys (no known IPLD codec uses link-typed
+// map keys). parent is used for debug logging only.
 func collectLinks(parent cid.Cid, nd ipld.Node) []cid.Cid {
 	var links []cid.Cid
 	collectLinksRecursive(parent, nd, &links)

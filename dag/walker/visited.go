@@ -282,6 +282,10 @@ func (bt *BloomTracker) Count() uint64 { return bt.totalInserts }
 
 // grow appends a new bloom filter to the chain at BloomGrowthFactor
 // times the previous capacity with fresh random SipHash keys.
+//
+// The grown capacity is always >= BloomGrowthFactor * MinBloomCapacity
+// because NewBloomTracker enforces expectedItems >= MinBloomCapacity,
+// so the double-hashing FP rate issue with small bitsets cannot occur.
 func (bt *BloomTracker) grow() {
 	newCap := bt.lastCap * BloomGrowthFactor
 	b, err := newBloom(newCap, bt.bitsPerElem, bt.hashLocs)
