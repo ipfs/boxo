@@ -15,6 +15,7 @@ import (
 	cid "github.com/ipfs/go-cid"
 	ds "github.com/ipfs/go-datastore"
 	dssync "github.com/ipfs/go-datastore/sync"
+	format "github.com/ipfs/go-ipld-format"
 	mh "github.com/multiformats/go-multihash"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -396,6 +397,78 @@ func TestWalkDAG_ErrorHandling(t *testing.T) {
 			assert.True(t, tracker.Has(child),
 				"CID %s must be marked visited even after fetch error", child)
 		}
+	})
+}
+
+// makeIdentityCID creates a CIDv1 with an identity multihash (data
+// inline in the CID). codec determines the CID codec prefix.
+func makeIdentityCID(t *testing.T, data []byte, codec uint64) cid.Cid {
+	t.Helper()
+	hash, err := mh.Encode(data, mh.IDENTITY)
+	require.NoError(t, err)
+	return cid.NewCidV1(codec, hash)
+}
+
+func TestWalkDAG_IdentityCID(t *testing.T) {
+	// Identity CIDs (multihash 0x00) embed data inline in the CID.
+	// The walker must traverse through them (following links) but
+	// never emit them -- providing an identity CID to the DHT is
+	// pointless since any peer can decode the content from the CID.
+
+	t.Run("identity raw CID as root is not emitted", func(t *testing.T) {
+		bs := newTestBlockstore()
+		idCid := makeIdentityCID(t, []byte("inline"), cid.Raw)
+
+		visited := collectWalk(t, bs, idCid)
+		assert.Empty(t, visited,
+			"identity CID root must not be emitted")
+	})
+
+	t.Run("dag-pb linking to identity child skips identity", func(t *testing.T) {
+		bs := newTestBlockstore()
+		dserv := merkledag.NewDAGService(mdtest.Bserv())
+
+		idChild := makeIdentityCID(t, []byte("inline-child"), cid.Raw)
+
+		root := merkledag.NodeWithData([]byte("root"))
+		require.NoError(t, root.AddRawLink("inline", &format.Link{Cid: idChild}))
+		require.NoError(t, dserv.Add(t.Context(), root))
+		require.NoError(t, bs.Put(t.Context(), root))
+
+		visited := collectWalk(t, bs, root.Cid())
+		assert.Len(t, visited, 1, "only the non-identity root")
+		assert.Equal(t, root.Cid(), visited[0])
+		assert.NotContains(t, visited, idChild,
+			"identity child must not be emitted")
+	})
+
+	t.Run("identity dag-pb directory with normal raw child", func(t *testing.T) {
+		// simulates `ipfs add --inline` producing a small dag-pb
+		// directory with identity multihash, linking to a normal
+		// raw block. The identity directory must not be emitted,
+		// but its normal child must be.
+		bs := newTestBlockstore()
+
+		normalChild := putRawBlock(t, bs, []byte("normal-data"))
+
+		// build a dag-pb directory node
+		dir := ft.EmptyDirNode()
+		require.NoError(t, dir.AddRawLink("child.bin", &format.Link{Cid: normalChild}))
+
+		// re-encode the directory with an identity multihash to
+		// simulate what ipfs add --inline produces for small dirs
+		dirData := dir.RawData()
+		idHash, err := mh.Encode(dirData, mh.IDENTITY)
+		require.NoError(t, err)
+		idDirCid := cid.NewCidV1(cid.DagProtobuf, idHash)
+		// NOT stored in blockstore -- NewIdStore decodes from CID
+
+		visited := collectWalk(t, bs, idDirCid)
+		assert.Len(t, visited, 1, "only the normal raw child")
+		assert.Equal(t, normalChild, visited[0],
+			"normal child reachable through identity dir must be emitted")
+		assert.NotContains(t, visited, idDirCid,
+			"identity directory must not be emitted")
 	})
 }
 

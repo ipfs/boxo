@@ -161,29 +161,21 @@ func WalkEntityRoots(
 			continue
 		}
 
-		switch entityType {
-		case EntityFile, EntitySymlink:
-			// leaf entity: emit, do NOT descend into chunks
-			if !emit(c) {
-				return nil
-			}
-
-		case EntityDirectory, EntityHAMTShard:
-			// container entity: emit and recurse into children
-			if !emit(c) {
-				return nil
-			}
+		// decide whether to descend into children
+		descend := entityType != EntityFile && entityType != EntitySymlink
+		if descend {
 			stack = append(stack, children...)
+		}
 
-		default:
-			// non-UnixFS (dag-cbor, dag-json, non-UnixFS dag-pb, etc.):
-			// emit the CID AND follow links. The +entities optimization
-			// (skip chunks) only applies to UnixFS files. For all other
-			// codecs, every reachable CID is emitted.
-			if !emit(c) {
-				return nil
-			}
-			stack = append(stack, children...)
+		// identity CIDs embed data inline -- never emit them, but
+		// we still descend (above) so an inlined dag-pb directory's
+		// normal children get provided
+		if isIdentityCID(c) {
+			continue
+		}
+
+		if !emit(c) {
+			return nil
 		}
 	}
 

@@ -17,6 +17,7 @@ import (
 	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
 	format "github.com/ipfs/go-ipld-format"
+	mh "github.com/multiformats/go-multihash"
 	ipld "github.com/ipld/go-ipld-prime"
 	_ "github.com/ipld/go-ipld-prime/codec/dagcbor"
 	"github.com/ipld/go-ipld-prime/fluent/qp"
@@ -416,6 +417,80 @@ func TestEntityWalk_ContextCancellation(t *testing.T) {
 		return true
 	})
 	assert.ErrorIs(t, err, context.Canceled)
+}
+
+// --- identity CIDs ---
+//
+// Identity CIDs (multihash 0x00) embed data inline. The entity walker
+// must traverse through them (following links to discover children)
+// but never emit them. This covers the `ipfs add --inline` case where
+// small dag-pb directories get identity-hashed.
+
+func TestEntityWalk_IdentityFileNotEmitted(t *testing.T) {
+	// An identity raw CID (small inline file) should not be emitted.
+	bs := newTestBlockstore()
+	hash, err := mh.Encode([]byte("tiny"), mh.IDENTITY)
+	require.NoError(t, err)
+	idFile := cid.NewCidV1(cid.Raw, hash)
+
+	visited := collectEntityWalk(t, bs, idFile)
+	assert.Empty(t, visited, "identity file must not be emitted")
+}
+
+func TestEntityWalk_IdentityDirWithNormalChildren(t *testing.T) {
+	// An identity dag-pb directory (like `ipfs add --inline` produces
+	// for small dirs) linking to normal files. The identity directory
+	// must not be emitted, but its normal children must be.
+	bs := newTestBlockstore()
+	dserv := newTestDAGService(bs)
+
+	file1 := fileNodeWithData(t, []byte("file1"))
+	file2 := fileNodeWithData(t, []byte("file2"))
+	require.NoError(t, dserv.Add(t.Context(), file1))
+	require.NoError(t, dserv.Add(t.Context(), file2))
+
+	// build a dag-pb directory linking to the files
+	dir := ft.EmptyDirNode()
+	dir.AddNodeLink("f1.txt", file1)
+	dir.AddNodeLink("f2.txt", file2)
+
+	// re-encode with identity multihash
+	dirData := dir.RawData()
+	idHash, err := mh.Encode(dirData, mh.IDENTITY)
+	require.NoError(t, err)
+	idDirCid := cid.NewCidV1(cid.DagProtobuf, idHash)
+
+	visited := collectEntityWalk(t, bs, idDirCid)
+	assert.Len(t, visited, 2, "both normal files emitted")
+	assert.Contains(t, visited, file1.Cid())
+	assert.Contains(t, visited, file2.Cid())
+	assert.NotContains(t, visited, idDirCid,
+		"identity directory must not be emitted")
+}
+
+func TestEntityWalk_NormalDirWithIdentityChild(t *testing.T) {
+	// A normal directory containing an identity CID child. The
+	// directory is emitted, the identity child is not.
+	bs := newTestBlockstore()
+	dserv := newTestDAGService(bs)
+
+	idHash, err := mh.Encode([]byte("inline-file"), mh.IDENTITY)
+	require.NoError(t, err)
+	idChild := cid.NewCidV1(cid.Raw, idHash)
+
+	normalFile := fileNodeWithData(t, []byte("normal"))
+	require.NoError(t, dserv.Add(t.Context(), normalFile))
+
+	dir := ft.EmptyDirNode()
+	require.NoError(t, dir.AddRawLink("inline.bin", &format.Link{Cid: idChild}))
+	dir.AddNodeLink("normal.txt", normalFile)
+	require.NoError(t, dserv.Add(t.Context(), dir))
+
+	visited := collectEntityWalk(t, bs, dir.Cid())
+	assert.Contains(t, visited, dir.Cid(), "normal directory emitted")
+	assert.Contains(t, visited, normalFile.Cid(), "normal file emitted")
+	assert.NotContains(t, visited, idChild,
+		"identity child must not be emitted")
 }
 
 // --- error handling ---

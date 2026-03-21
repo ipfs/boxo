@@ -9,10 +9,21 @@ import (
 	blockstore "github.com/ipfs/boxo/blockstore"
 	cid "github.com/ipfs/go-cid"
 	logging "github.com/ipfs/go-log/v2"
+	mh "github.com/multiformats/go-multihash"
 	ipld "github.com/ipld/go-ipld-prime"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	basicnode "github.com/ipld/go-ipld-prime/node/basic"
 )
+
+// isIdentityCID returns true if the CID uses an identity multihash
+// (code 0x00). Identity CIDs embed their data inline, so they are
+// always available without a network or blockstore lookup. The walker
+// traverses through them (following any links they contain) but never
+// emits them, because providing an identity CID to the DHT is
+// pointless -- any peer can decode the content from the CID itself.
+func isIdentityCID(c cid.Cid) bool {
+	return c.Prefix().MhType == mh.IDENTITY
+}
 
 var log = logging.Logger("dagwalker")
 
@@ -118,7 +129,11 @@ func WalkDAG(
 		// step 4: push children
 		stack = append(stack, children...)
 
-		// step 5: emit
+		// step 5: emit (skip identity CIDs -- their content is inline
+		// in the CID itself, so providing them to the DHT is wasteful)
+		if isIdentityCID(c) {
+			continue
+		}
 		if !emit(c) {
 			return nil
 		}
