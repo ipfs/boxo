@@ -215,6 +215,33 @@ func TestEntityWalk_Directory(t *testing.T) {
 	assert.Contains(t, visited, file2.Cid())
 }
 
+func TestEntityWalk_SiblingOrder(t *testing.T) {
+	// Siblings must be visited in left-to-right link order, matching
+	// the legacy BlockAll traversal and WalkDAG's order.
+	bs := newTestBlockstore()
+	dserv := newTestDAGService(bs)
+
+	fileA := fileNodeWithData(t, []byte("aaa"))
+	fileB := fileNodeWithData(t, []byte("bbb"))
+	fileC := fileNodeWithData(t, []byte("ccc"))
+	require.NoError(t, dserv.Add(t.Context(), fileA))
+	require.NoError(t, dserv.Add(t.Context(), fileB))
+	require.NoError(t, dserv.Add(t.Context(), fileC))
+
+	dir := ft.EmptyDirNode()
+	dir.AddNodeLink("a.txt", fileA)
+	dir.AddNodeLink("b.txt", fileB)
+	dir.AddNodeLink("c.txt", fileC)
+	require.NoError(t, dserv.Add(t.Context(), dir))
+
+	visited := collectEntityWalk(t, bs, dir.Cid())
+	require.Len(t, visited, 4)
+	assert.Equal(t, dir.Cid(), visited[0], "dir first (pre-order)")
+	assert.Equal(t, fileA.Cid(), visited[1], "first link visited first")
+	assert.Equal(t, fileB.Cid(), visited[2], "second link visited second")
+	assert.Equal(t, fileC.Cid(), visited[3], "third link visited third")
+}
+
 func TestEntityWalk_DirectoryWithRawFiles(t *testing.T) {
 	// Directory containing raw codec files. Both the directory and the
 	// raw files should be emitted (raw = file entity).

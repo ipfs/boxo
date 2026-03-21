@@ -93,6 +93,39 @@ func TestWalkDAG_Traversal(t *testing.T) {
 		assert.Equal(t, root, visited[0])
 	})
 
+	// Siblings must be visited in left-to-right link order, matching
+	// the legacy fetcherhelpers.BlockAll selector traversal and the
+	// conventional DFS order from IPIP-0412.
+	t.Run("siblings visited in left-to-right link order", func(t *testing.T) {
+		bs := newTestBlockstore()
+		dserv := merkledag.NewDAGService(mdtest.Bserv())
+
+		// three distinct leaves with deterministic link order
+		leafA := merkledag.NodeWithData([]byte("leaf-A"))
+		leafB := merkledag.NodeWithData([]byte("leaf-B"))
+		leafC := merkledag.NodeWithData([]byte("leaf-C"))
+		require.NoError(t, dserv.Add(t.Context(), leafA))
+		require.NoError(t, dserv.Add(t.Context(), leafB))
+		require.NoError(t, dserv.Add(t.Context(), leafC))
+
+		root := merkledag.NodeWithData([]byte("root"))
+		root.AddNodeLink("a", leafA)
+		root.AddNodeLink("b", leafB)
+		root.AddNodeLink("c", leafC)
+		require.NoError(t, dserv.Add(t.Context(), root))
+
+		for _, nd := range []merkledag.ProtoNode{*root, *leafA, *leafB, *leafC} {
+			require.NoError(t, bs.Put(t.Context(), &nd))
+		}
+
+		visited := collectWalk(t, bs, root.Cid())
+		require.Len(t, visited, 4)
+		assert.Equal(t, root.Cid(), visited[0], "root first (pre-order)")
+		assert.Equal(t, leafA.Cid(), visited[1], "first link visited first")
+		assert.Equal(t, leafB.Cid(), visited[2], "second link visited second")
+		assert.Equal(t, leafC.Cid(), visited[3], "third link visited third")
+	})
+
 	// A single raw block with no links should be walked as a
 	// single-node DAG (common case: small files stored as raw leaves).
 	t.Run("single leaf node with no children", func(t *testing.T) {

@@ -2,14 +2,15 @@ package walker
 
 import (
 	"context"
+	"slices"
 
 	blockstore "github.com/ipfs/boxo/blockstore"
 	"github.com/ipfs/boxo/ipld/unixfs"
 	cid "github.com/ipfs/go-cid"
-	mh "github.com/multiformats/go-multihash"
 	ipld "github.com/ipld/go-ipld-prime"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	basicnode "github.com/ipld/go-ipld-prime/node/basic"
+	mh "github.com/multiformats/go-multihash"
 )
 
 // EntityType represents the semantic type of a DAG entity.
@@ -113,8 +114,10 @@ func detectEntityType(c cid.Cid, nd ipld.Node) EntityType {
 //     every reachable CID is emitted.
 //   - Raw leaf nodes: emitted (no children to recurse)
 //
-// Uses the same option types as [WalkDAG]: [WithVisitedTracker] for
-// bloom/map dedup across walks, [WithLocality] for MFS locality checks.
+// Same traversal order as [WalkDAG]: pre-order DFS with left-to-right
+// sibling visiting. Uses the same option types: [WithVisitedTracker]
+// for bloom/map dedup across walks, [WithLocality] for MFS locality
+// checks.
 func WalkEntityRoots(
 	ctx context.Context,
 	root cid.Cid,
@@ -165,6 +168,9 @@ func WalkEntityRoots(
 		// decide whether to descend into children
 		descend := entityType != EntityFile && entityType != EntitySymlink
 		if descend {
+			// reverse so first link is popped next (left-to-right
+			// sibling order, matching WalkDAG and legacy BlockAll)
+			slices.Reverse(children)
 			stack = append(stack, children...)
 		}
 

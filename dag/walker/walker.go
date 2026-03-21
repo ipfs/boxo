@@ -5,14 +5,15 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"slices"
 
 	blockstore "github.com/ipfs/boxo/blockstore"
 	cid "github.com/ipfs/go-cid"
 	logging "github.com/ipfs/go-log/v2"
-	mh "github.com/multiformats/go-multihash"
 	ipld "github.com/ipld/go-ipld-prime"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	basicnode "github.com/ipld/go-ipld-prime/node/basic"
+	mh "github.com/multiformats/go-multihash"
 )
 
 var log = logging.Logger("dagwalker")
@@ -66,7 +67,13 @@ func WithLocality(check func(context.Context, cid.Cid) (bool, error)) Option {
 //  4. Push child link CIDs to stack (deduped when popped at step 1).
 //  5. Call emit(c) -- return false to stop the walk.
 //
-// The root CID is always the first CID emitted (DFS pre-order).
+// # Traversal order
+//
+// Pre-order DFS with left-to-right sibling visiting: the root CID is
+// always emitted first, and children are visited in the order they
+// appear in the block's link list. This matches the legacy
+// fetcherhelpers.BlockAll selector traversal and the conventional DFS
+// order described in IPIP-0412.
 func WalkDAG(
 	ctx context.Context,
 	root cid.Cid,
@@ -116,7 +123,12 @@ func WalkDAG(
 			continue
 		}
 
-		// step 4: push children
+		// step 4: push children in reverse order so the first link
+		// is on top of the stack and gets popped next. This gives
+		// left-to-right sibling visit order, matching the legacy
+		// BlockAll selector traversal and the conventional DFS order
+		// from IPIP-0412 (depth-first, pre-order, left-to-right).
+		slices.Reverse(children)
 		stack = append(stack, children...)
 
 		// skip identity CIDs: content is inline, no need to provide
