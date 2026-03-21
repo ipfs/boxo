@@ -44,22 +44,25 @@ func NewUniquePinnedProvider(
 
 			fetch := walker.LinksFetcherFromBlockstore(bs)
 
-			// 1. Walk recursive pin DAGs (bulk of dedup benefit)
+			// 1. Walk recursive pin DAGs (bulk of dedup benefit).
+			// A corrupted pin entry is logged and skipped so it does
+			// not prevent remaining pins from being provided.
 			for sc := range pinning.RecursiveKeys(ctx, false) {
 				if sc.Err != nil {
 					log.Errorf("unique provide recursive pins: %s", sc.Err)
-					return
+					continue
 				}
 				if err := walker.WalkDAG(ctx, sc.Pin.Key, fetch, emit, walker.WithVisitedTracker(tracker)); err != nil {
 					return // context cancelled
 				}
 			}
 
-			// 2. Direct pins (emit if not already visited)
+			// 2. Direct pins (emit if not already visited).
+			// Same best-effort: skip corrupted entries.
 			for sc := range pinning.DirectKeys(ctx, false) {
 				if sc.Err != nil {
 					log.Errorf("unique provide direct pins: %s", sc.Err)
-					return
+					continue
 				}
 				// skip identity CIDs: content is inline, no need to provide
 				if sc.Pin.Key.Prefix().MhType == mh.IDENTITY {
@@ -107,22 +110,25 @@ func NewPinnedEntityRootsProvider(
 
 			fetch := walker.NodeFetcherFromBlockstore(bs)
 
-			// 1. Walk recursive pin DAGs for entity roots
+			// 1. Walk recursive pin DAGs for entity roots.
+			// A corrupted pin entry is logged and skipped so it does
+			// not prevent remaining pins from being provided.
 			for sc := range pinning.RecursiveKeys(ctx, false) {
 				if sc.Err != nil {
 					log.Errorf("entity provide recursive pins: %s", sc.Err)
-					return
+					continue
 				}
 				if err := walker.WalkEntityRoots(ctx, sc.Pin.Key, fetch, emit, walker.WithVisitedTracker(tracker)); err != nil {
-					return
+					return // context cancelled
 				}
 			}
 
-			// 2. Direct pins (always entity roots by definition)
+			// 2. Direct pins (always entity roots by definition).
+			// Same best-effort: skip corrupted entries.
 			for sc := range pinning.DirectKeys(ctx, false) {
 				if sc.Err != nil {
 					log.Errorf("entity provide direct pins: %s", sc.Err)
-					return
+					continue
 				}
 				// skip identity CIDs: content is inline, no need to provide
 				if sc.Pin.Key.Prefix().MhType == mh.IDENTITY {

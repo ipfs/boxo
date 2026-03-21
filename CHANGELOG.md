@@ -34,6 +34,7 @@ The following emojis are used to highlight certain changes:
 
 ### Fixed
 
+- `pinner`: `NewUniquePinnedProvider` and `NewPinnedEntityRootsProvider` now log and skip corrupted pin entries instead of aborting the entire provide cycle, allowing remaining pins to still be provided. [#1124](https://github.com/ipfs/boxo/pull/1124)
 - `bitswap/server`: incoming identity CIDs in wantlist messages are now silently ignored instead of killing the connection to the remote peer. Some IPFS implementations naively send identity CIDs, and disconnecting them for it caused unnecessary churn. [#1117](https://github.com/ipfs/boxo/pull/1117)
 
 ### Security
