@@ -147,6 +147,52 @@ func TestEntityWalk_RawNodeIsFile(t *testing.T) {
 	assert.Equal(t, raw.Cid(), visited[0])
 }
 
+func TestEntityWalk_Symlink(t *testing.T) {
+	// A UnixFS symlink is a leaf entity, like a file. It is emitted
+	// but its children (none, by definition) are not descended.
+	bs := newTestBlockstore()
+	dserv := newTestDAGService(bs)
+
+	fsn := ft.NewFSNode(ft.TSymlink)
+	fsn.SetData([]byte("/some/target/path"))
+	symData, err := fsn.GetBytes()
+	require.NoError(t, err)
+	symNode := merkledag.NodeWithData(symData)
+	require.NoError(t, dserv.Add(t.Context(), symNode))
+
+	visited := collectEntityWalk(t, bs, symNode.Cid())
+	assert.Len(t, visited, 1)
+	assert.Equal(t, symNode.Cid(), visited[0])
+}
+
+func TestEntityWalk_DirectoryWithSymlink(t *testing.T) {
+	// A directory containing a symlink. Both the directory and the
+	// symlink should be emitted (symlink is a leaf entity).
+	bs := newTestBlockstore()
+	dserv := newTestDAGService(bs)
+
+	fsn := ft.NewFSNode(ft.TSymlink)
+	fsn.SetData([]byte("../other"))
+	symData, err := fsn.GetBytes()
+	require.NoError(t, err)
+	symNode := merkledag.NodeWithData(symData)
+	require.NoError(t, dserv.Add(t.Context(), symNode))
+
+	file := fileNodeWithData(t, []byte("real-file"))
+	require.NoError(t, dserv.Add(t.Context(), file))
+
+	dir := ft.EmptyDirNode()
+	dir.AddNodeLink("link.txt", symNode)
+	dir.AddNodeLink("real.txt", file)
+	require.NoError(t, dserv.Add(t.Context(), dir))
+
+	visited := collectEntityWalk(t, bs, dir.Cid())
+	assert.Len(t, visited, 3, "dir + symlink + file")
+	assert.Equal(t, dir.Cid(), visited[0], "directory emitted first")
+	assert.Contains(t, visited, symNode.Cid())
+	assert.Contains(t, visited, file.Cid())
+}
+
 func TestEntityWalk_Directory(t *testing.T) {
 	// A UnixFS directory is a container entity. It is emitted and its
 	// children (files) are recursed into. Each file is also emitted.
