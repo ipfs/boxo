@@ -16,7 +16,7 @@ The following emojis are used to highlight certain changes:
 
 ### Added
 
-- `dag/walker`: new package with `VisitedTracker` interface for memory-efficient DAG traversal deduplication. `BloomTracker` uses a scalable bloom filter chain (~4 bytes/CID vs ~75 bytes for a map), enabling dedup on repositories with tens of millions of CIDs that were previously impractical due to memory constraints. `MapTracker` provides an exact alternative for tests and small datasets. [#1124](https://github.com/ipfs/boxo/pull/1124)
+- `dag/walker`: new package for memory-efficient DAG traversal with deduplication. `VisitedTracker` interface with `BloomTracker` (scalable bloom filter chain, ~4 bytes/CID vs ~75 bytes for a map) and `MapTracker` (exact, for tests). `WalkDAG` provides iterative DFS traversal with integrated dedup, supporting dag-pb, dag-cbor, raw, and other registered codecs. ~2x faster than the legacy go-ipld-prime selector-based traversal. [#1124](https://github.com/ipfs/boxo/pull/1124)
 - `routing/http/client`: `WithProviderInfoFunc` option resolves provider addresses at provide-time instead of client construction time. This only impacts legacy HTTP-only custom routing setups that depend on [IPIP-526](https://github.com/ipfs/specs/pull/526) and were sending unresolved `0.0.0.0` addresses in provider records instead of actual interface addresses. [#1115](https://github.com/ipfs/boxo/pull/1115)
 - `chunker`: added `Register` function to allow custom chunkers to be registered for use with `FromString`.
 
