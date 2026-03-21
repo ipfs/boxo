@@ -151,12 +151,46 @@ func TestBloomTracker(t *testing.T) {
 		assert.Contains(t, err.Error(), "fpRate must be > 0")
 	})
 
-	t.Run("false positive rate within bounds", func(t *testing.T) {
-		// At DefaultBloomFPRate (~1 in 4.75 million, ~0.00002%), with
-		// 100K inserts and 100K probes the expected FP count is:
-		//   100K / 4.75M = ~0.02 (almost certainly zero)
-		// We use 0.01% (1 in 10K) as a generous upper bound to avoid
-		// flaky failures from statistical noise.
+	t.Run("FP regression at measurable rate", func(t *testing.T) {
+		// Use fpRate=1000 (1 in 1000) so we get enough FPs in 100K
+		// probes to be statistically measurable.
+		//
+		// Catches regressions in BloomParams derivation, bbloom
+		// behavior, or parameter coupling bugs. We allow 5x tolerance
+		// because bbloom's power-of-two rounding makes the actual rate
+		// better than target.
+		const (
+			fpTarget = 1000
+			n        = 50_000
+			probes   = 100_000
+		)
+		bt, err := NewBloomTracker(uint(n), fpTarget)
+		require.NoError(t, err)
+
+		for _, c := range makeCIDs(n) {
+			bt.Visit(c)
+		}
+
+		fpCount := 0
+		for i := n; i < n+probes; i++ {
+			if bt.Has(makeCID(i)) {
+				fpCount++
+			}
+		}
+		observedRate := float64(fpCount) / float64(probes)
+		expectedRate := 1.0 / float64(fpTarget)
+
+		t.Logf("FP regression: %d / %d = %.4f%% (target: %.4f%%, 1 in %d)",
+			fpCount, probes, observedRate*100, expectedRate*100, fpTarget)
+
+		assert.Less(t, observedRate, expectedRate*5,
+			"FP rate %.4f%% is >5x worse than target %.4f%%", observedRate*100, expectedRate*100)
+	})
+
+	t.Run("FP regression at default rate", func(t *testing.T) {
+		// DefaultBloomFPRate is ~1 in 4.75M. With 100K probes the
+		// expected FP count is 100K/4.75M = ~0.02, so we should see
+		// exactly 0. Any non-zero result indicates a regression.
 		const n = 100_000
 		bt, err := NewBloomTracker(uint(n), DefaultBloomFPRate)
 		require.NoError(t, err)
@@ -171,25 +205,10 @@ func TestBloomTracker(t *testing.T) {
 				fpCount++
 			}
 		}
-		fpRate := float64(fpCount) / float64(n)
-		t.Logf("false positives: %d / %d = %.6f%% (target: ~1 in %d)",
-			fpCount, n, fpRate*100, DefaultBloomFPRate)
-		assert.Less(t, fpRate, 0.0001,
-			"FP rate %.4f%% exceeds test upper bound of 0.01%% (1 in 10K)", fpRate*100)
-	})
-
-	t.Run("custom FP rate", func(t *testing.T) {
-		bt, err := NewBloomTracker(10_000, 100)
-		require.NoError(t, err)
-
-		cids := makeCIDs(1000)
-		for _, c := range cids {
-			bt.Visit(c)
-		}
-		// all inserted CIDs must be found (no false negatives)
-		for _, c := range cids {
-			assert.True(t, bt.Has(c))
-		}
+		t.Logf("default rate FPs: %d / %d (expected: 0 at ~1 in %d)",
+			fpCount, n, DefaultBloomFPRate)
+		assert.Equal(t, 0, fpCount,
+			"at ~1 in 4.75M FP rate, 100K probes should produce 0 FPs")
 	})
 }
 
