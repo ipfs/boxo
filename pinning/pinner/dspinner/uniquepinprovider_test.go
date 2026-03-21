@@ -37,7 +37,6 @@ func setupPinTest(t *testing.T) (blockstore.Blockstore, ipfspinner.Pinner, forma
 // plus a small delta, sharing the majority of their DAGs.
 func TestUniquePinnedProvider_DedupAcrossPins(t *testing.T) {
 	bs, pinner, dserv := setupPinTest(t)
-	daggen := mdutils.NewDAGGenerator()
 
 	// two DAGs that share a common subtree
 	shared := merkledag.NodeWithData([]byte("shared"))
@@ -69,7 +68,6 @@ func TestUniquePinnedProvider_DedupAcrossPins(t *testing.T) {
 	assert.Equal(t, 1, visited[root1.Cid()])
 	assert.Equal(t, 1, visited[root2.Cid()])
 	assert.Len(t, visited, 3, "root1 + root2 + shared")
-	_ = daggen
 }
 
 // TestUniquePinnedProvider_DirectPins verifies that direct pins are

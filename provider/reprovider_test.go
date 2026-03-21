@@ -416,6 +416,29 @@ func TestPrioritizedProvider_AllStreamsFail(t *testing.T) {
 	require.Empty(t, received)
 }
 
+// TestPrioritizedProvider_ErrorContinues verifies that a failing stream
+// does not prevent subsequent streams from being processed. This is a
+// regression test for a bug where the goroutine returned on error
+// instead of continuing to the next stream.
+func TestPrioritizedProvider_ErrorContinues(t *testing.T) {
+	cids := makeCIDs(3)
+	fail := func(_ context.Context) (<-chan cid.Cid, error) {
+		return nil, fmt.Errorf("stream error")
+	}
+	good := newMockKeyChanFunc(cids)
+
+	stream := NewPrioritizedProvider(fail, good)
+	ch, err := stream(t.Context())
+	require.NoError(t, err)
+
+	var received []cid.Cid
+	for c := range ch {
+		received = append(received, c)
+	}
+	require.Equal(t, cids, received,
+		"CIDs from the good stream must still be emitted after a prior stream fails")
+}
+
 // TestNewConcatProvider verifies that ConcatProvider concatenates
 // streams in order without deduplication. Unlike PrioritizedProvider,
 // duplicate CIDs across streams are NOT filtered.
