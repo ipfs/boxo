@@ -430,7 +430,7 @@ func (bs *Client) GetBlock(ctx context.Context, k cid.Cid) (blocks.Block, error)
 }
 
 // GetBlocks returns a channel where the caller may receive blocks that
-// correspond to the provided |keys|. Returns an error if BitSwap is unable to
+// correspond to the provided |keys|. Returns an error if Bitswap is unable to
 // begin this request within the deadline enforced by the context.
 //
 // If [WithTraceBlock] option is set true, then returns a channel of

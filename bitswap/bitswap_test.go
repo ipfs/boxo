@@ -853,7 +853,7 @@ func TestWithScoreLedger(t *testing.T) {
 	}
 }
 
-// TestWithServerDisabled tests that BitSwap can function properly with the server disabled.
+// TestWithServerDisabled tests that Bitswap can function properly with the server disabled.
 // In this mode, it should still be able to request and receive blocks from other peers,
 // but should not respond to requests from others.
 func TestWithServerDisabled(t *testing.T) {
