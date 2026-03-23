@@ -24,7 +24,8 @@ import (
 	"github.com/multiformats/go-multistream"
 )
 
-// Receiver is an interface for receiving messages from the BitSwap network.
+// receiver implements the Receiver interface for receiving messages from the
+// Bitswap network.
 type receiver struct {
 	peers           map[peer.ID]struct{}
 	messageReceived chan struct{}
