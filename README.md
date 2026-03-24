@@ -153,6 +153,7 @@ The exhaustive list is https://github.com/ipfs/boxo/network/dependents. Some not
 3. [rainbow](https://github.com/ipfs/rainbow), a specialized IPFS gateway
 4. [ipfs-check](https://github.com/ipfs/ipfs-check), checks IPFS data availability
 5. [someguy](https://github.com/ipfs/someguy), a dedicated Delegated Routing V1 server and client
+6. [IPFS Desktop](https://github.com/ipfs/ipfs-desktop), a desktop application for running an IPFS node
 
 ### Governance and Access
 
