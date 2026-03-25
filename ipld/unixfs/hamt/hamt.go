@@ -53,6 +53,84 @@ func init() {
 	internal.HAMTHashFunction = murmur3Hash
 }
 
+// IsInternalHAMTShard reports whether nd is an internal HAMT shard node
+// (not the root of a HAMT directory). It verifies hash-based bucket
+// alignment for a sample entry: if the entry's hash prefix (at bit
+// offset 0) disagrees with its actual position, this shard is at a
+// deeper trie level.
+//
+// Internal shards are only reachable by directly requesting their CID.
+// Legitimate HAMT path traversal always resolves to value link targets
+// (files/directories), never to internal shard nodes.
+//
+// Phase 1 (zero I/O): checks a value link in the current node.
+// Phase 2 (one block load): if all children are sub-shards, loads one
+// child to find a testable value link.
+func IsInternalHAMTShard(ctx context.Context, nd *dag.ProtoNode, ds ipld.DAGService) bool {
+	fsn, err := format.FSNodeFromBytes(nd.Data())
+	if err != nil || fsn.Type() != format.THAMTShard {
+		return false
+	}
+	fanout := fsn.Fanout()
+	if fanout == 0 {
+		return false
+	}
+	lg2, err := Logtwo(int(fanout))
+	if err != nil {
+		return false
+	}
+	padLen := len(fmt.Sprintf("%X", fanout-1))
+	padFmt := fmt.Sprintf("%%0%dX", padLen)
+
+	// Phase 1: check first value link in this node (zero I/O).
+	for _, lnk := range nd.Links() {
+		if len(lnk.Name) <= padLen {
+			continue
+		}
+		hv := newHashBits(lnk.Name[padLen:])
+		idx, err := hv.Next(lg2)
+		if err != nil {
+			return false
+		}
+		return lnk.Name[:padLen] != fmt.Sprintf(padFmt, idx)
+	}
+
+	// Phase 2: no value links in this node (all children are sub-shards).
+	// Load one child and find a value link there. All shards in a HAMT
+	// directory share the same fanout, so we reuse the parent's parameters.
+	if ds == nil {
+		return false
+	}
+	for _, lnk := range nd.Links() {
+		if len(lnk.Name) != padLen {
+			continue
+		}
+		childNd, err := ds.Get(ctx, lnk.Cid)
+		if err != nil {
+			continue
+		}
+		childPn, ok := childNd.(*dag.ProtoNode)
+		if !ok {
+			continue
+		}
+		for _, cl := range childPn.Links() {
+			if len(cl.Name) <= padLen {
+				continue
+			}
+			// Hash this entry's filename and check if the first
+			// hash bits match the PARENT's bucket index for this child.
+			// They will match iff the parent is the root (depth 0).
+			hv := newHashBits(cl.Name[padLen:])
+			idx, err := hv.Next(lg2)
+			if err != nil {
+				return false
+			}
+			return lnk.Name != fmt.Sprintf(padFmt, idx)
+		}
+	}
+	return false
+}
+
 func (ds *Shard) isValueNode() bool {
 	return ds.key != "" && ds.val != nil
 }

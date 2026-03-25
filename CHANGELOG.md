@@ -34,6 +34,7 @@ The following emojis are used to highlight certain changes:
 
 - `bitswap/server`: incoming identity CIDs in wantlist messages are now silently ignored instead of killing the connection to the remote peer. Some IPFS implementations naively send identity CIDs, and disconnecting them for it caused unnecessary churn. [#1117](https://github.com/ipfs/boxo/pull/1117)
 - `bitswap/network`: `ExtractHTTPAddress` now infers default ports for portless HTTP multiaddrs (e.g. `/dns/host/https` without `/tcp/443`). [#1123](https://github.com/ipfs/boxo/pull/1123)
+- `gateway`: internal HAMT shard blocks requested by CID now return HTTP 501 instead of rendering a directory listing with broken links. [#1127](https://github.com/ipfs/boxo/pull/1127)
 
 ### Security
 

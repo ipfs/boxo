@@ -67,6 +67,10 @@ func (i *handler) serveDefaults(ctx context.Context, w http.ResponseWriter, r *h
 		// related DAGs.
 		pathMetadata, getResp, err = i.backend.Get(ctx, rq.mostlyResolvedPath(), ranges...)
 		if err != nil {
+			if errors.Is(err, errInternalHAMTShardBlock) {
+				i.webError(w, r, err, http.StatusNotImplemented)
+				return false
+			}
 			if isWebRequest(rq.responseFormat) {
 				forwardedPath, continueProcessing := i.handleWebRequestErrors(w, r, rq.mostlyResolvedPath(), rq.immutablePath, rq.contentPath, err, rq.logger)
 				if !continueProcessing {

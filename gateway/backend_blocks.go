@@ -17,6 +17,7 @@ import (
 	"github.com/ipfs/boxo/files"
 	"github.com/ipfs/boxo/ipld/merkledag"
 	ufile "github.com/ipfs/boxo/ipld/unixfs/file"
+	"github.com/ipfs/boxo/ipld/unixfs/hamt"
 	uio "github.com/ipfs/boxo/ipld/unixfs/io"
 	"github.com/ipfs/boxo/path"
 	"github.com/ipfs/boxo/path/resolver"
@@ -197,6 +198,9 @@ func (bb *BlocksBackend) Get(ctx context.Context, path path.ImmutablePath, range
 	}
 
 	if d, ok := f.(files.Directory); ok {
+		if pn, ok := nd.(*merkledag.ProtoNode); ok && hamt.IsInternalHAMTShard(ctx, pn, bb.dagService) {
+			return ContentPathMetadata{}, nil, errInternalHAMTShardBlock
+		}
 		dir, err := uio.NewDirectoryFromNode(bb.dagService, nd)
 		if err != nil {
 			return md, nil, err

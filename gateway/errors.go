@@ -35,6 +35,7 @@ var (
 	errUnsupportedCarOrder      = errors.New("unsupported application/vnd.ipld.car order parameter")
 	errUnsupportedCarDups       = errors.New("unsupported application/vnd.ipld.car dups parameter")
 	errIndexNotReadable         = errors.New("index.html could not be read: not a file")
+	errInternalHAMTShardBlock   = errors.New("CID points to an internal HAMT shard block, not a browsable directory")
 )
 
 // ErrorRetryAfter wraps any error with "retry after" hint. When an error of this type

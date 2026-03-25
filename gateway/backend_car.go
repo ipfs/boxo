@@ -14,6 +14,7 @@ import (
 	"github.com/ipfs/boxo/files"
 	"github.com/ipfs/boxo/ipld/merkledag"
 	"github.com/ipfs/boxo/ipld/unixfs"
+	"github.com/ipfs/boxo/ipld/unixfs/hamt"
 	"github.com/ipfs/boxo/path"
 	"github.com/ipfs/boxo/path/resolver"
 	"github.com/ipfs/boxo/retrieval"
@@ -537,6 +538,9 @@ func loadTerminalEntity(ctx context.Context, c cid.Cid, blk blocks.Block, lsys *
 			}
 			return NewGetResponseFromDirectoryListing(dirDagSize, ch, nil), nil
 		case ufsData.Data_HAMTShard:
+			if hamt.IsInternalHAMTShard(ctx, pn, nil) {
+				return nil, errInternalHAMTShardBlock
+			}
 			dirNd, err := unixfsnode.Reify(lctx, pbn, lsys)
 			if err != nil {
 				return nil, fmt.Errorf("could not reify sharded directory: %w", err)

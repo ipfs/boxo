@@ -776,3 +776,70 @@ func TestHamtNilLinkAndShard(t *testing.T) {
 		t.Fatal("nextShard should be nil")
 	}
 }
+
+// TestIsInternalHAMTShard verifies detection of internal HAMT shard nodes.
+//
+// A HAMT directory is a trie: the root shard fans out into child shards,
+// which may fan out further. When a user requests the root shard CID,
+// the gateway can render a working directory listing. But when a user
+// requests an internal (non-root) shard CID directly, the listing looks
+// fine yet every link 404s because the HAMT lookup starts at the wrong
+// hash bit offset.
+//
+// IsInternalHAMTShard lets the gateway detect this situation and refuse
+// to render a broken listing.
+func TestIsInternalHAMTShard(t *testing.T) {
+	ds := mdtest.Mock()
+	ctx := context.Background()
+
+	// Build a HAMT directory large enough to produce internal shard nodes.
+	_, s, err := makeDirWidth(ds, 1000, 256)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rootNd, err := s.Node()
+	if err != nil {
+		t.Fatal(err)
+	}
+	rootPn := rootNd.(*dag.ProtoNode)
+
+	t.Run("root HAMT shard is not internal", func(t *testing.T) {
+		// The root shard is the directory itself; requesting its CID
+		// produces a working listing, so it must NOT be flagged.
+		if IsInternalHAMTShard(ctx, rootPn, ds) {
+			t.Fatal("root shard incorrectly detected as internal")
+		}
+	})
+
+	t.Run("child shard is internal", func(t *testing.T) {
+		// A child shard is an internal trie node. Requesting its CID
+		// directly produces a listing with broken links, so it MUST
+		// be flagged.
+		fsn, _ := ft.FSNodeFromBytes(rootPn.Data())
+		padLen := len(fmt.Sprintf("%X", fsn.Fanout()-1))
+		var tested bool
+		for _, lnk := range rootPn.Links() {
+			if len(lnk.Name) == padLen { // sub-shard link (name is just the hex prefix)
+				childNd, err := ds.Get(ctx, lnk.Cid)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if !IsInternalHAMTShard(ctx, childNd.(*dag.ProtoNode), ds) {
+					t.Fatal("internal shard not detected")
+				}
+				tested = true
+				break
+			}
+		}
+		if !tested {
+			t.Fatal("no internal shard found; increase entry count")
+		}
+	})
+
+	t.Run("plain directory is not internal", func(t *testing.T) {
+		// A regular (non-HAMT) directory should never be flagged.
+		if IsInternalHAMTShard(ctx, ft.EmptyDirNode(), ds) {
+			t.Fatal("plain directory incorrectly detected as internal HAMT shard")
+		}
+	})
+}
