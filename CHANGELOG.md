@@ -21,6 +21,7 @@ The following emojis are used to highlight certain changes:
 
 ### Changed
 
+- 🛠 `files`: `File` interface no longer embeds `io.Seeker`. Implementations that support seeking (e.g. `ReaderFile` wrapping a seekable reader, `Symlink`, UnixFS files) still have a `Seek` method, but callers must type-assert to `io.Seeker` instead of assuming all files are seekable. This fixes interface-sniffing bugs where non-seekable readers (HTTP multipart streams, `WebFile`) falsely advertised seek support and caused runtime errors in downstream consumers like `go-car`. [#1128](https://github.com/ipfs/boxo/pull/1128)
 - `chunker`: `FromString` now rejects malformed `size-` strings with extra parameters (e.g. `size-123-extra` was previously silently accepted).
 - upgrade to `go-libp2p` [v0.48.0](https://github.com/libp2p/go-libp2p/releases/tag/v0.48.0)
 
