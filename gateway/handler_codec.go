@@ -78,7 +78,12 @@ func (i *handler) serveCodec(ctx context.Context, w http.ResponseWriter, r *http
 		return false
 	}
 
-	return i.renderCodec(ctx, w, r, rq, blockSize, data)
+	rsc, ok := data.(io.ReadSeekCloser)
+	if !ok {
+		i.webError(w, r, fmt.Errorf("block data does not support seeking"), http.StatusInternalServerError)
+		return false
+	}
+	return i.renderCodec(ctx, w, r, rq, blockSize, rsc)
 }
 
 func (i *handler) renderCodec(ctx context.Context, w http.ResponseWriter, r *http.Request, rq *requestData, blockSize int64, blockData io.ReadSeekCloser) bool {
