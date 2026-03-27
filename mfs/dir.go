@@ -370,6 +370,7 @@ func (d *Directory) ForEachEntry(ctx context.Context, f func(NodeListing) error)
 
 func (d *Directory) Mkdir(name string) (*Directory, error) {
 	return d.MkdirWithOpts(name, MkdirOpts{
+		CidBuilder:       d.unixfsDir.GetCidBuilder(),
 		MaxLinks:         d.unixfsDir.GetMaxLinks(),
 		MaxHAMTFanout:    d.unixfsDir.GetMaxHAMTFanout(),
 		HAMTShardingSize: d.unixfsDir.GetHAMTShardingSize(),
@@ -392,10 +393,6 @@ func (d *Directory) MkdirWithOpts(name string, opts MkdirOpts) (*Directory, erro
 		}
 	}
 
-	// hector: no idea why this option is overridden, but it must be to
-	// keep backwards compatibility. CidBuilder from the options is
-	// manually set in `Mkdir` (ops.go) though.
-	opts.CidBuilder = d.GetCidBuilder()
 	dirobj, err := NewEmptyDirectory(d.ctx, name, d, d.dagService, d.prov, opts)
 	if err != nil {
 		return nil, err

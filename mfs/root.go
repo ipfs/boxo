@@ -132,6 +132,9 @@ func NewRoot(ctx context.Context, ds ipld.DAGService, node *dag.ProtoNode, pf Pu
 		}
 
 		// Apply root-level directory settings
+		if mkdirOpts.CidBuilder != nil {
+			newDir.unixfsDir.SetCidBuilder(mkdirOpts.CidBuilder)
+		}
 		if mkdirOpts.MaxLinks > 0 {
 			newDir.unixfsDir.SetMaxLinks(mkdirOpts.MaxLinks)
 		}
