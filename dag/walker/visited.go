@@ -114,7 +114,8 @@ var (
 //
 // NOT safe for concurrent use.
 type MapTracker struct {
-	set map[string]struct{}
+	set          map[string]struct{}
+	deduplicated uint64
 }
 
 // NewMapTracker creates a new map-based visited tracker.
@@ -125,6 +126,7 @@ func NewMapTracker() *MapTracker {
 func (m *MapTracker) Visit(c cid.Cid) bool {
 	key := string(c.Hash())
 	if _, ok := m.set[key]; ok {
+		m.deduplicated++
 		return false
 	}
 	m.set[key] = struct{}{}
@@ -135,6 +137,10 @@ func (m *MapTracker) Has(c cid.Cid) bool {
 	_, ok := m.set[string(c.Hash())]
 	return ok
 }
+
+// Deduplicated returns the number of Visit calls that returned false
+// (CID already seen). Useful for logging how much dedup occurred.
+func (m *MapTracker) Deduplicated() uint64 { return m.deduplicated }
 
 // BloomTracker tracks visited CIDs using a chain of bloom filters that
 // grows automatically when the current filter becomes saturated.
@@ -196,6 +202,7 @@ type BloomTracker struct {
 	lastCap      uint64          // designed capacity of the latest bloom
 	curInserts   uint64          // inserts into current (latest) bloom
 	totalInserts uint64          // inserts across all blooms in chain
+	deduplicated uint64          // Visit calls that returned false
 	bitsPerElem  uint            // bits per element (derived from FP rate)
 	hashLocs     uint            // hash function count (derived from FP rate)
 }
@@ -264,6 +271,7 @@ func (bt *BloomTracker) Visit(c cid.Cid) bool {
 	earlier := bt.chain[:len(bt.chain)-1]
 	for _, b := range earlier {
 		if b.Has(key) {
+			bt.deduplicated++
 			return false
 		}
 	}
@@ -276,6 +284,7 @@ func (bt *BloomTracker) Visit(c cid.Cid) bool {
 	// to be silently skipped).
 	cur := bt.chain[len(bt.chain)-1]
 	if !cur.AddIfNotHas(key) {
+		bt.deduplicated++
 		return false
 	}
 	bt.curInserts++
@@ -289,6 +298,11 @@ func (bt *BloomTracker) Visit(c cid.Cid) bool {
 // Count returns the total number of unique CIDs added across all blooms.
 // Used to persist the cycle count for sizing the next cycle's bloom.
 func (bt *BloomTracker) Count() uint64 { return bt.totalInserts }
+
+// Deduplicated returns the number of Visit calls that returned false
+// (CID already seen or bloom false positive). Useful for logging how
+// much dedup occurred in a reprovide cycle.
+func (bt *BloomTracker) Deduplicated() uint64 { return bt.deduplicated }
 
 // grow appends a new bloom filter to the chain at BloomGrowthFactor
 // times the previous capacity with fresh random SipHash keys.
