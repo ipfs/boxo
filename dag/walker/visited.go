@@ -232,6 +232,11 @@ func NewBloomTracker(expectedItems uint, fpRate uint) (*BloomTracker, error) {
 	if err != nil {
 		return nil, fmt.Errorf("bloom tracker: %w", err)
 	}
+	log.Infow("bloom tracker created",
+		"capacity", expectedItems,
+		"fpRate", fmt.Sprintf("1 in %d (~%.6f%%)", fpRate, 100.0/float64(fpRate)),
+		"bitsPerElem", bpe,
+		"hashFunctions", hlocs)
 	return &BloomTracker{
 		chain:       []*bbloom.Bloom{b},
 		lastCap:     uint64(expectedItems),
@@ -299,6 +304,11 @@ func (bt *BloomTracker) grow() {
 		// so this is unreachable unless something is deeply wrong.
 		panic(fmt.Sprintf("bloom grow: %v", err))
 	}
+	log.Infow("bloom tracker autoscaled",
+		"prevCapacity", bt.lastCap,
+		"newCapacity", newCap,
+		"totalInserts", bt.totalInserts,
+		"chainLength", len(bt.chain)+1)
 	bt.chain = append(bt.chain, b)
 	bt.lastCap = newCap
 	bt.curInserts = 0
