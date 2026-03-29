@@ -68,10 +68,14 @@ func NewUniquePinnedProvider(
 				if sc.Pin.Key.Prefix().MhType == mh.IDENTITY {
 					continue
 				}
-				if tracker.Visit(sc.Pin.Key) {
-					if !emit(sc.Pin.Key) {
-						return
-					}
+				// skip if already visited (by a recursive pin walk above)
+				if !tracker.Visit(sc.Pin.Key) {
+					continue
+				}
+				// emit returns false when context is cancelled
+				// (consumer stopped reading from the channel)
+				if !emit(sc.Pin.Key) {
+					return
 				}
 			}
 		}()
@@ -134,10 +138,14 @@ func NewPinnedEntityRootsProvider(
 				if sc.Pin.Key.Prefix().MhType == mh.IDENTITY {
 					continue
 				}
-				if tracker.Visit(sc.Pin.Key) {
-					if !emit(sc.Pin.Key) {
-						return
-					}
+				// skip if already visited (by a recursive pin walk above)
+				if !tracker.Visit(sc.Pin.Key) {
+					continue
+				}
+				// emit returns false when context is cancelled
+				// (consumer stopped reading from the channel)
+				if !emit(sc.Pin.Key) {
+					return
 				}
 			}
 		}()

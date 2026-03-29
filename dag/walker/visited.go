@@ -86,6 +86,11 @@ func BloomParams(fpRate uint) (bitsPerElem uint, hashLocs uint) {
 // Implementations use c.Hash() (multihash bytes) as the key, so CIDv0
 // and CIDv1 of the same content are treated as the same entry.
 //
+// Implementations may be exact ([MapTracker]) or probabilistic
+// ([BloomTracker]). Probabilistic implementations must keep the false
+// positive rate negligible for the expected dataset size, or allow
+// callers to adjust it (see [NewBloomTracker]).
+//
 // NOT safe for concurrent use. The provide pipeline runs on a single
 // goroutine per reprovide cycle. Adding parallelism requires switching
 // to thread-safe variants (bbloom AddTS/HasTS) or external
