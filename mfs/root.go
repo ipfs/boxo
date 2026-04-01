@@ -10,7 +10,6 @@ import (
 	chunker "github.com/ipfs/boxo/chunker"
 	dag "github.com/ipfs/boxo/ipld/merkledag"
 	ft "github.com/ipfs/boxo/ipld/unixfs"
-	uio "github.com/ipfs/boxo/ipld/unixfs/io"
 	"github.com/ipfs/boxo/provider"
 	ipld "github.com/ipfs/go-ipld-format"
 	logging "github.com/ipfs/go-log/v2"
@@ -103,72 +102,19 @@ type Root struct {
 	repub   *Republisher
 	prov    provider.MultihashProvider
 	chunker chunker.SplitterGen // chunker factory for files, nil means default
-
-	// Directory settings to propagate to child directories when loaded from disk.
-	maxLinks           int
-	maxHAMTFanout      int
-	hamtShardingSize   int
-	sizeEstimationMode *uio.SizeEstimationMode
-}
-
-// RootOption is a functional option for configuring a Root.
-type RootOption func(*Root)
-
-// WithChunker sets the chunker factory for files created in this MFS.
-// If not set (or nil), chunker.DefaultSplitter is used.
-func WithChunker(c chunker.SplitterGen) RootOption {
-	return func(r *Root) {
-		r.chunker = c
-	}
-}
-
-// WithMaxLinks sets the max links for directories created in this MFS.
-// This is used to determine when to switch between BasicDirectory and HAMTDirectory.
-func WithMaxLinks(n int) RootOption {
-	return func(r *Root) {
-		r.maxLinks = n
-	}
-}
-
-// WithSizeEstimationMode sets the size estimation mode for directories in this MFS.
-// This controls how directory size is estimated for HAMT sharding decisions.
-func WithSizeEstimationMode(mode uio.SizeEstimationMode) RootOption {
-	return func(r *Root) {
-		r.sizeEstimationMode = &mode
-	}
-}
-
-// WithMaxHAMTFanout sets the max fanout (width) for HAMT directories in this MFS.
-// This controls the maximum number of children per HAMT bucket.
-// Must be a power of 2 and multiple of 8.
-func WithMaxHAMTFanout(n int) RootOption {
-	return func(r *Root) {
-		r.maxHAMTFanout = n
-	}
-}
-
-// WithHAMTShardingSize sets the per-directory size threshold for switching to HAMT.
-// When a directory's estimated size exceeds this threshold, it converts to HAMT.
-// If not set (0), the global uio.HAMTShardingSize is used.
-func WithHAMTShardingSize(size int) RootOption {
-	return func(r *Root) {
-		r.hamtShardingSize = size
-	}
 }
 
 // NewRoot creates a new Root and starts up a republisher routine for it.
-func NewRoot(ctx context.Context, ds ipld.DAGService, node *dag.ProtoNode, pf PubFunc, prov provider.MultihashProvider, opts ...RootOption) (*Root, error) {
+func NewRoot(ctx context.Context, ds ipld.DAGService, node *dag.ProtoNode, pf PubFunc, prov provider.MultihashProvider, mkdirOpts MkdirOpts) (*Root, error) {
 	var repub *Republisher
 	if pf != nil {
 		repub = NewRepublisher(pf, repubQuick, repubLong, node.Cid())
 	}
 
 	root := &Root{
-		repub: repub,
-	}
-
-	for _, opt := range opts {
-		opt(root)
+		repub:   repub,
+		prov:    prov,
+		chunker: mkdirOpts.Chunker,
 	}
 
 	fsn, err := ft.FSNodeFromBytes(node.Data())
@@ -186,17 +132,17 @@ func NewRoot(ctx context.Context, ds ipld.DAGService, node *dag.ProtoNode, pf Pu
 		}
 
 		// Apply root-level directory settings
-		if root.maxLinks > 0 {
-			newDir.unixfsDir.SetMaxLinks(root.maxLinks)
+		if mkdirOpts.MaxLinks > 0 {
+			newDir.unixfsDir.SetMaxLinks(mkdirOpts.MaxLinks)
 		}
-		if root.maxHAMTFanout > 0 {
-			newDir.unixfsDir.SetMaxHAMTFanout(root.maxHAMTFanout)
+		if mkdirOpts.MaxHAMTFanout > 0 {
+			newDir.unixfsDir.SetMaxHAMTFanout(mkdirOpts.MaxHAMTFanout)
 		}
-		if root.hamtShardingSize > 0 {
-			newDir.unixfsDir.SetHAMTShardingSize(root.hamtShardingSize)
+		if mkdirOpts.HAMTShardingSize > 0 {
+			newDir.unixfsDir.SetHAMTShardingSize(mkdirOpts.HAMTShardingSize)
 		}
-		if root.sizeEstimationMode != nil {
-			newDir.unixfsDir.SetSizeEstimationMode(*root.sizeEstimationMode)
+		if mkdirOpts.SizeEstimationMode != nil {
+			newDir.unixfsDir.SetSizeEstimationMode(*mkdirOpts.SizeEstimationMode)
 		}
 
 		root.dir = newDir
@@ -212,22 +158,10 @@ func NewRoot(ctx context.Context, ds ipld.DAGService, node *dag.ProtoNode, pf Pu
 
 // NewEmptyRoot creates an empty Root directory with the given directory
 // options. A republisher is created if PubFunc is not nil.
-func NewEmptyRoot(ctx context.Context, ds ipld.DAGService, pf PubFunc, prov provider.MultihashProvider, mkdirOpts MkdirOpts, rootOpts ...RootOption) (*Root, error) {
-	root := new(Root)
-
-	for _, opt := range rootOpts {
-		opt(root)
-	}
-
-	// Pass settings from root opts to mkdir opts if not already set
-	if mkdirOpts.Chunker == nil {
-		mkdirOpts.Chunker = root.chunker
-	}
-	if mkdirOpts.MaxHAMTFanout == 0 && root.maxHAMTFanout > 0 {
-		mkdirOpts.MaxHAMTFanout = root.maxHAMTFanout
-	}
-	if mkdirOpts.HAMTShardingSize == 0 && root.hamtShardingSize > 0 {
-		mkdirOpts.HAMTShardingSize = root.hamtShardingSize
+func NewEmptyRoot(ctx context.Context, ds ipld.DAGService, pf PubFunc, prov provider.MultihashProvider, mkdirOpts MkdirOpts) (*Root, error) {
+	root := &Root{
+		prov:    prov,
+		chunker: mkdirOpts.Chunker,
 	}
 
 	dir, err := NewEmptyDirectory(ctx, "", root, ds, prov, mkdirOpts)
