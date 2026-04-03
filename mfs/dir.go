@@ -526,6 +526,20 @@ func (d *Directory) getNode(cacheClean bool) (ipld.Node, error) {
 	return nd.Copy(), err
 }
 
+// Mode returns the directory's POSIX permission bits from UnixFS metadata.
+// Returns 0 when no mode is stored.
+func (d *Directory) Mode() (os.FileMode, error) {
+	nd, err := d.GetNode()
+	if err != nil {
+		return 0, err
+	}
+	fsn, err := ft.ExtractFSNode(nd)
+	if err != nil {
+		return 0, err
+	}
+	return fsn.Mode() & 0xFFF, nil
+}
+
 func (d *Directory) SetMode(mode os.FileMode) error {
 	nd, err := d.GetNode()
 	if err != nil {
@@ -550,6 +564,20 @@ func (d *Directory) SetMode(mode os.FileMode) error {
 
 	d.unixfsDir.SetStat(mode, time.Time{})
 	return nil
+}
+
+// ModTime returns the directory's last modification time from UnixFS metadata.
+// Returns zero time when no mtime is stored.
+func (d *Directory) ModTime() (time.Time, error) {
+	nd, err := d.GetNode()
+	if err != nil {
+		return time.Time{}, err
+	}
+	fsn, err := ft.ExtractFSNode(nd)
+	if err != nil {
+		return time.Time{}, err
+	}
+	return fsn.ModTime(), nil
 }
 
 func (d *Directory) SetModTime(ts time.Time) error {
