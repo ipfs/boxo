@@ -24,6 +24,7 @@ The following emojis are used to highlight certain changes:
 - `chunker`: `FromString` now rejects malformed `size-` strings with extra parameters (e.g. `size-123-extra` was previously silently accepted).
 - `gateway`: compliance with gateway-conformance [v0.13](https://github.com/ipfs/gateway-conformance/releases/tag/v0.13)
 - upgrade to `go-libp2p` [v0.48.0](https://github.com/libp2p/go-libp2p/releases/tag/v0.48.0)
+- 🛠 `mfs`: replaced `RootOption` with a unified `Option` functional options pattern (e.g. `WithCidBuilder`, `WithChunker`, `WithMaxLinks`). `NewRoot`, `NewEmptyRoot`, `MkdirWithOpts`, and `NewEmptyDirectory` now accept `...Option`. `Mkdir` takes a `MkdirOpts` struct (narrowed to `Mkparents` and `Flush` flags) followed by `...Option` for directory configuration. [#1125](https://github.com/ipfs/boxo/pull/1125)
 
 ### Removed
 

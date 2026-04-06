@@ -104,8 +104,12 @@ type Root struct {
 	chunker chunker.SplitterGen // chunker factory for files, nil means default
 }
 
-// NewRoot creates a new Root and starts up a republisher routine for it.
-func NewRoot(ctx context.Context, ds ipld.DAGService, node *dag.ProtoNode, pf PubFunc, prov provider.MultihashProvider, mkdirOpts MkdirOpts) (*Root, error) {
+// NewRoot creates a new Root from an existing DAG node and starts a
+// republisher routine for it. The provided [Option]s configure the
+// root directory's DAG-shape settings (CidBuilder, MaxLinks, etc.).
+func NewRoot(ctx context.Context, ds ipld.DAGService, node *dag.ProtoNode, pf PubFunc, prov provider.MultihashProvider, opts ...Option) (*Root, error) {
+	o := resolveOpts(opts)
+
 	var repub *Republisher
 	if pf != nil {
 		repub = NewRepublisher(pf, repubQuick, repubLong, node.Cid())
@@ -114,7 +118,7 @@ func NewRoot(ctx context.Context, ds ipld.DAGService, node *dag.ProtoNode, pf Pu
 	root := &Root{
 		repub:   repub,
 		prov:    prov,
-		chunker: mkdirOpts.Chunker,
+		chunker: o.chunker,
 	}
 
 	fsn, err := ft.FSNodeFromBytes(node.Data())
@@ -131,21 +135,23 @@ func NewRoot(ctx context.Context, ds ipld.DAGService, node *dag.ProtoNode, pf Pu
 			return nil, err
 		}
 
-		// Apply root-level directory settings
-		if mkdirOpts.CidBuilder != nil {
-			newDir.unixfsDir.SetCidBuilder(mkdirOpts.CidBuilder)
+		// Apply root-level directory settings to the loaded directory.
+		// These are not persisted in the DAG node, so they must be
+		// re-applied every time the root is opened.
+		if o.cidBuilder != nil {
+			newDir.unixfsDir.SetCidBuilder(o.cidBuilder)
 		}
-		if mkdirOpts.MaxLinks > 0 {
-			newDir.unixfsDir.SetMaxLinks(mkdirOpts.MaxLinks)
+		if o.maxLinks > 0 {
+			newDir.unixfsDir.SetMaxLinks(o.maxLinks)
 		}
-		if mkdirOpts.MaxHAMTFanout > 0 {
-			newDir.unixfsDir.SetMaxHAMTFanout(mkdirOpts.MaxHAMTFanout)
+		if o.maxHAMTFanout > 0 {
+			newDir.unixfsDir.SetMaxHAMTFanout(o.maxHAMTFanout)
 		}
-		if mkdirOpts.HAMTShardingSize > 0 {
-			newDir.unixfsDir.SetHAMTShardingSize(mkdirOpts.HAMTShardingSize)
+		if o.hamtShardingSize > 0 {
+			newDir.unixfsDir.SetHAMTShardingSize(o.hamtShardingSize)
 		}
-		if mkdirOpts.SizeEstimationMode != nil {
-			newDir.unixfsDir.SetSizeEstimationMode(*mkdirOpts.SizeEstimationMode)
+		if o.sizeEstimationMode != nil {
+			newDir.unixfsDir.SetSizeEstimationMode(*o.sizeEstimationMode)
 		}
 
 		root.dir = newDir
@@ -159,15 +165,17 @@ func NewRoot(ctx context.Context, ds ipld.DAGService, node *dag.ProtoNode, pf Pu
 	return root, nil
 }
 
-// NewEmptyRoot creates an empty Root directory with the given directory
-// options. A republisher is created if PubFunc is not nil.
-func NewEmptyRoot(ctx context.Context, ds ipld.DAGService, pf PubFunc, prov provider.MultihashProvider, mkdirOpts MkdirOpts) (*Root, error) {
+// NewEmptyRoot creates an empty Root directory with the given [Option]s.
+// A republisher is created if PubFunc is not nil.
+func NewEmptyRoot(ctx context.Context, ds ipld.DAGService, pf PubFunc, prov provider.MultihashProvider, opts ...Option) (*Root, error) {
+	o := resolveOpts(opts)
+
 	root := &Root{
 		prov:    prov,
-		chunker: mkdirOpts.Chunker,
+		chunker: o.chunker,
 	}
 
-	dir, err := NewEmptyDirectory(ctx, "", root, ds, prov, mkdirOpts)
+	dir, err := newEmptyDirectory(ctx, "", root, ds, prov, o)
 	if err != nil {
 		return nil, err
 	}

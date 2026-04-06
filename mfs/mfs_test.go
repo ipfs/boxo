@@ -223,7 +223,7 @@ func setupRoot(ctx context.Context, t testing.TB) (ipld.DAGService, *Root) {
 	rt, err := NewRoot(ctx, ds, root, func(ctx context.Context, c cid.Cid) error {
 		fmt.Println("PUBLISHED: ", c)
 		return nil
-	}, prov, MkdirOpts{})
+	}, prov)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1133,7 +1133,7 @@ func TestMfsHugeDir(t *testing.T) {
 	_, rt := setupRoot(ctx, t)
 
 	for i := range 10000 {
-		err := Mkdir(rt, fmt.Sprintf("/dir%d", i), MkdirOpts{Mkparents: false, Flush: false})
+		err := Mkdir(rt, fmt.Sprintf("/dir%d", i), MkdirOpts{})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1764,10 +1764,7 @@ func FuzzMkdirAndWriteConcurrently(f *testing.F) {
 	_, root := setupRoot(context.Background(), f)
 
 	f.Fuzz(func(t *testing.T, flush bool, mkparents bool, dir string, filepath string, filecontent []byte) {
-		err := Mkdir(root, dir, MkdirOpts{
-			Mkparents: mkparents,
-			Flush:     flush,
-		})
+		err := Mkdir(root, dir, MkdirOpts{Mkparents: mkparents, Flush: flush})
 		if err != nil {
 			t.Logf("error making dir %s: %s", dir, err)
 			return
@@ -1800,8 +1797,6 @@ func FuzzMkdirAndWriteConcurrently(f *testing.F) {
 func TestRootOptionChunker(t *testing.T) {
 	ctx := t.Context()
 	ds := getDagserv(t)
-	opts := MkdirOpts{}
-
 	// Use 512-byte chunks (non-default: default is 256KB = 262144 bytes).
 	// With default chunker, 2048 bytes would produce 1 chunk.
 	// With our custom 512-byte chunker, it must produce exactly 4 chunks.
@@ -1813,10 +1808,8 @@ func TestRootOptionChunker(t *testing.T) {
 		t.Fatalf("test uses default chunk size %d; use a non-default value", chunkSize)
 	}
 
-	opts.Chunker = chunker.SizeSplitterGen(chunkSize)
-
 	// Create root with custom chunker (512 bytes)
-	root, err := NewEmptyRoot(ctx, ds, nil, nil, opts)
+	root, err := NewEmptyRoot(ctx, ds, nil, nil, WithChunker(chunker.SizeSplitterGen(chunkSize)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1882,8 +1875,6 @@ func TestRootOptionChunker(t *testing.T) {
 func TestRootOptionMaxLinks(t *testing.T) {
 	ctx := t.Context()
 	ds := getDagserv(t)
-	opts := MkdirOpts{}
-
 	// Use MaxLinks=3 (non-default: default is ~174 from helpers.DefaultLinksPerBlock).
 	// With default MaxLinks, 4 files would NOT trigger HAMT sharding.
 	// With our custom MaxLinks=3, adding 4 files MUST trigger HAMT.
@@ -1898,19 +1889,15 @@ func TestRootOptionMaxLinks(t *testing.T) {
 		t.Fatal("test uses default SizeEstimationMode; use a non-default value")
 	}
 
-	opts.MaxLinks = maxLinks
-	opts.SizeEstimationMode = &sizeEstimationDisabled
-
-	root, err := NewEmptyRoot(ctx, ds, nil, nil, opts)
+	root, err := NewEmptyRoot(ctx, ds, nil, nil,
+		WithMaxLinks(maxLinks),
+		WithSizeEstimationMode(sizeEstimationDisabled))
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Create subdirectory with explicit opts to ensure MaxLinks and SizeEstimationMode propagate
-	if err := Mkdir(root, "/subdir", MkdirOpts{
-		MaxLinks:           maxLinks,
-		SizeEstimationMode: &sizeEstimationDisabled,
-	}); err != nil {
+	if err := Mkdir(root, "/subdir", MkdirOpts{Mkparents: true, Flush: true}); err != nil {
 		t.Fatal(err)
 	}
 	subdir, err := Lookup(root, "/subdir")
@@ -1978,8 +1965,6 @@ func TestRootOptionMaxLinks(t *testing.T) {
 func TestRootOptionSizeEstimationMode(t *testing.T) {
 	ctx := t.Context()
 	ds := getDagserv(t)
-	opts := MkdirOpts{}
-
 	// Use SizeEstimationDisabled (non-default: default is SizeEstimationLinks=0).
 	// This mode ignores size-based thresholds and only considers link count.
 	// With default SizeEstimationLinks, the size threshold might prevent HAMT
@@ -1992,11 +1977,10 @@ func TestRootOptionSizeEstimationMode(t *testing.T) {
 	// Use MaxLinks=3 (non-default: default is ~174).
 	const maxLinks = 3
 
-	opts.MaxLinks = maxLinks
-	opts.SizeEstimationMode = &mode
-
 	// Create root with non-default settings
-	root, err := NewEmptyRoot(ctx, ds, nil, nil, opts)
+	root, err := NewEmptyRoot(ctx, ds, nil, nil,
+		WithMaxLinks(maxLinks),
+		WithSizeEstimationMode(mode))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2030,7 +2014,7 @@ func TestRootOptionSizeEstimationMode(t *testing.T) {
 
 	// Create new root from persisted node with same settings.
 	// This tests that settings propagate to directories loaded from DAG via cacheNode().
-	root2, err := NewRoot(ctx, ds, rootNode.(*dag.ProtoNode), nil, nil, opts)
+	root2, err := NewRoot(ctx, ds, rootNode.(*dag.ProtoNode), nil, nil, WithMaxLinks(maxLinks), WithSizeEstimationMode(mode))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2099,8 +2083,6 @@ func TestRootOptionSizeEstimationMode(t *testing.T) {
 func TestChunkerInheritance(t *testing.T) {
 	ctx := t.Context()
 	ds := getDagserv(t)
-	opts := MkdirOpts{}
-
 	// Use 256-byte chunks (non-default: default is 256KB = 262144 bytes).
 	// With default chunker, 1024 bytes would produce 1 chunk.
 	// With our custom 256-byte chunker, it must produce exactly 4 chunks.
@@ -2113,10 +2095,8 @@ func TestChunkerInheritance(t *testing.T) {
 		t.Fatalf("test uses default chunk size %d; use a non-default value", chunkSize)
 	}
 
-	opts.Chunker = chunker.SizeSplitterGen(chunkSize)
-
 	// Create root with custom chunker
-	root, err := NewEmptyRoot(ctx, ds, nil, nil, opts)
+	root, err := NewEmptyRoot(ctx, ds, nil, nil, WithChunker(chunker.SizeSplitterGen(chunkSize)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2187,8 +2167,6 @@ func TestChunkerInheritance(t *testing.T) {
 func TestRootOptionMaxHAMTFanout(t *testing.T) {
 	ctx := t.Context()
 	ds := getDagserv(t)
-	opts := MkdirOpts{}
-
 	// Use custom fanout of 64 (non-default: default is 256).
 	const customFanout = 64
 
@@ -2196,21 +2174,16 @@ func TestRootOptionMaxHAMTFanout(t *testing.T) {
 	sizeEstimationDisabled := uio.SizeEstimationDisabled
 	const maxLinks = 3
 
-	opts.MaxLinks = maxLinks
-	opts.MaxHAMTFanout = customFanout
-	opts.SizeEstimationMode = &sizeEstimationDisabled
-
-	root, err := NewEmptyRoot(ctx, ds, nil, nil, opts)
+	root, err := NewEmptyRoot(ctx, ds, nil, nil,
+		WithMaxLinks(maxLinks),
+		WithMaxHAMTFanout(customFanout),
+		WithSizeEstimationMode(sizeEstimationDisabled))
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Create subdirectory
-	if err := Mkdir(root, "/subdir", MkdirOpts{
-		MaxLinks:           maxLinks,
-		MaxHAMTFanout:      customFanout,
-		SizeEstimationMode: &sizeEstimationDisabled,
-	}); err != nil {
+	if err := Mkdir(root, "/subdir", MkdirOpts{Mkparents: true, Flush: true}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -2265,8 +2238,6 @@ func TestRootOptionMaxHAMTFanout(t *testing.T) {
 func TestRootOptionHAMTShardingSize(t *testing.T) {
 	ctx := t.Context()
 	ds := getDagserv(t)
-	opts := MkdirOpts{}
-
 	// Use very small threshold of 100 bytes (non-default: default is 256KiB).
 	// This should trigger HAMT conversion with just a few small files.
 	const customShardingSize = 100
@@ -2274,18 +2245,15 @@ func TestRootOptionHAMTShardingSize(t *testing.T) {
 	// Use SizeEstimationBlock for accurate size tracking.
 	sizeEstimationBlock := uio.SizeEstimationBlock
 
-	opts.HAMTShardingSize = customShardingSize
-	opts.SizeEstimationMode = &sizeEstimationBlock
-
-	root, err := NewEmptyRoot(ctx, ds, nil, nil, opts)
+	root, err := NewEmptyRoot(ctx, ds, nil, nil,
+		WithHAMTShardingSize(customShardingSize),
+		WithSizeEstimationMode(sizeEstimationBlock))
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Create subdirectory
-	if err := Mkdir(root, "/subdir", MkdirOpts{
-		SizeEstimationMode: &sizeEstimationBlock,
-	}); err != nil {
+	if err := Mkdir(root, "/subdir", MkdirOpts{Mkparents: true, Flush: true}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -2348,17 +2316,14 @@ func TestRootOptionHAMTShardingSize(t *testing.T) {
 func TestHAMTShardingSizeInheritance(t *testing.T) {
 	ctx := t.Context()
 	ds := getDagserv(t)
-	opts := MkdirOpts{}
-
 	// Use very small threshold
 	const customShardingSize = 150
 	sizeEstimationBlock := uio.SizeEstimationBlock
 
-	opts.HAMTShardingSize = customShardingSize
-	opts.SizeEstimationMode = &sizeEstimationBlock
-
 	// Create root with custom settings
-	root, err := NewEmptyRoot(ctx, ds, nil, nil, opts)
+	root, err := NewEmptyRoot(ctx, ds, nil, nil,
+		WithHAMTShardingSize(customShardingSize),
+		WithSizeEstimationMode(sizeEstimationBlock))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2389,7 +2354,7 @@ func TestHAMTShardingSizeInheritance(t *testing.T) {
 	}
 
 	// Create new root from persisted node with same settings
-	root2, err := NewRoot(ctx, ds, rootNode.(*dag.ProtoNode), nil, nil, opts)
+	root2, err := NewRoot(ctx, ds, rootNode.(*dag.ProtoNode), nil, nil, WithHAMTShardingSize(customShardingSize), WithSizeEstimationMode(sizeEstimationBlock))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2440,16 +2405,12 @@ func TestHAMTShardingSizeInheritance(t *testing.T) {
 func TestMkdirParentsChunker(t *testing.T) {
 	ctx := t.Context()
 	ds := getDagserv(t)
-	opts := MkdirOpts{}
-
 	// Create root with 256-byte chunker (the "default" for this test).
 	// This is what intermediate directories would incorrectly inherit
 	// if the bug exists.
 	rootChunkSize := int64(256)
 
-	opts.Chunker = chunker.SizeSplitterGen(rootChunkSize)
-
-	root, err := NewEmptyRoot(ctx, ds, nil, nil, opts)
+	root, err := NewEmptyRoot(ctx, ds, nil, nil, WithChunker(chunker.SizeSplitterGen(rootChunkSize)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2458,10 +2419,7 @@ func TestMkdirParentsChunker(t *testing.T) {
 	// The bug: intermediate directory /a inherits root's 256-byte chunker
 	// instead of the 128-byte chunker specified in opts.
 	optsChunkSize := int64(128)
-	err = Mkdir(root, "/a/b/c", MkdirOpts{
-		Mkparents: true,
-		Chunker:   chunker.SizeSplitterGen(optsChunkSize),
-	})
+	err = Mkdir(root, "/a/b/c", MkdirOpts{Mkparents: true}, WithChunker(chunker.SizeSplitterGen(optsChunkSize)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2519,7 +2477,7 @@ func TestCidBuilderPreservedAfterFileMetadataChange(t *testing.T) {
 	// Use SHA2_512 so a silent reset to the default SHA2_256 is detectable.
 	builder := cid.V1Builder{Codec: cid.DagProtobuf, MhType: multihash.SHA2_512}
 
-	root, err := NewEmptyRoot(ctx, ds, nil, nil, MkdirOpts{CidBuilder: builder})
+	root, err := NewEmptyRoot(ctx, ds, nil, nil, WithCidBuilder(builder))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2574,7 +2532,7 @@ func TestCidBuilderPreservedAfterDirMetadataChange(t *testing.T) {
 
 	builder := cid.V1Builder{Codec: cid.DagProtobuf, MhType: multihash.SHA2_512}
 
-	root, err := NewEmptyRoot(ctx, ds, nil, nil, MkdirOpts{CidBuilder: builder})
+	root, err := NewEmptyRoot(ctx, ds, nil, nil, WithCidBuilder(builder))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2620,10 +2578,9 @@ func TestMkdirInheritsCidBuilderAndSizeEstimation(t *testing.T) {
 	builder := cid.V1Builder{Codec: cid.DagProtobuf, MhType: multihash.SHA2_512}
 	sizeMode := uio.SizeEstimationDisabled
 
-	root, err := NewEmptyRoot(ctx, ds, nil, nil, MkdirOpts{
-		CidBuilder:         builder,
-		SizeEstimationMode: &sizeMode,
-	})
+	root, err := NewEmptyRoot(ctx, ds, nil, nil,
+		WithCidBuilder(builder),
+		WithSizeEstimationMode(sizeMode))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2658,10 +2615,9 @@ func TestOpsMkdirFallbackToRootDefaults(t *testing.T) {
 	builder := cid.V1Builder{Codec: cid.DagProtobuf, MhType: multihash.SHA2_512}
 	sizeMode := uio.SizeEstimationDisabled
 
-	root, err := NewEmptyRoot(ctx, ds, nil, nil, MkdirOpts{
-		CidBuilder:         builder,
-		SizeEstimationMode: &sizeMode,
-	})
+	root, err := NewEmptyRoot(ctx, ds, nil, nil,
+		WithCidBuilder(builder),
+		WithSizeEstimationMode(sizeMode))
 	if err != nil {
 		t.Fatal(err)
 	}
