@@ -2509,3 +2509,185 @@ func TestMkdirParentsChunker(t *testing.T) {
 		t.Fatalf("intermediate dir should use opts.Chunker (128-byte, 4 chunks), not root's (256-byte, 2 chunks); got %d links", len(links))
 	}
 }
+
+// TestCidBuilderPreservedAfterFileMetadataChange verifies that calling
+// SetMode or SetModTime on a file does not silently reset its CidBuilder.
+func TestCidBuilderPreservedAfterFileMetadataChange(t *testing.T) {
+	ctx := t.Context()
+	ds := getDagserv(t)
+
+	// Use SHA2_512 so a silent reset to the default SHA2_256 is detectable.
+	builder := cid.V1Builder{Codec: cid.DagProtobuf, MhType: multihash.SHA2_512}
+
+	root, err := NewEmptyRoot(ctx, ds, nil, nil, MkdirOpts{CidBuilder: builder})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rootdir := root.GetDirectory()
+
+	// Create an empty file with the same CidBuilder.
+	nd := dag.NodeWithData(ft.FilePBData(nil, 0))
+	nd.SetCidBuilder(builder)
+	if err := ds.Add(ctx, nd); err != nil {
+		t.Fatal(err)
+	}
+	if err := rootdir.AddChild("file", nd); err != nil {
+		t.Fatal(err)
+	}
+
+	fi, err := rootdir.Child("file")
+	if err != nil {
+		t.Fatal(err)
+	}
+	file := fi.(*File)
+
+	// Verify CidBuilder survives SetMode.
+	if err := file.SetMode(0o644); err != nil {
+		t.Fatal(err)
+	}
+	gotNode, err := file.GetNode()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotNode.Cid().Prefix().MhType != multihash.SHA2_512 {
+		t.Fatalf("after SetMode: expected SHA2_512 hash, got %v", gotNode.Cid().Prefix().MhType)
+	}
+
+	// Verify CidBuilder survives SetModTime.
+	if err := file.SetModTime(time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	gotNode, err = file.GetNode()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotNode.Cid().Prefix().MhType != multihash.SHA2_512 {
+		t.Fatalf("after SetModTime: expected SHA2_512 hash, got %v", gotNode.Cid().Prefix().MhType)
+	}
+}
+
+// TestCidBuilderPreservedAfterDirMetadataChange verifies that calling
+// SetMode or SetModTime on a directory does not silently reset its CidBuilder.
+func TestCidBuilderPreservedAfterDirMetadataChange(t *testing.T) {
+	ctx := t.Context()
+	ds := getDagserv(t)
+
+	builder := cid.V1Builder{Codec: cid.DagProtobuf, MhType: multihash.SHA2_512}
+
+	root, err := NewEmptyRoot(ctx, ds, nil, nil, MkdirOpts{CidBuilder: builder})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rootdir := root.GetDirectory()
+
+	child, err := rootdir.Mkdir("subdir")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify CidBuilder survives SetMode.
+	if err := child.SetMode(0o755); err != nil {
+		t.Fatal(err)
+	}
+	nd, err := child.GetNode()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if nd.Cid().Prefix().MhType != multihash.SHA2_512 {
+		t.Fatalf("after SetMode: expected SHA2_512 hash, got %v", nd.Cid().Prefix().MhType)
+	}
+
+	// Verify CidBuilder survives SetModTime.
+	if err := child.SetModTime(time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	nd, err = child.GetNode()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if nd.Cid().Prefix().MhType != multihash.SHA2_512 {
+		t.Fatalf("after SetModTime: expected SHA2_512 hash, got %v", nd.Cid().Prefix().MhType)
+	}
+}
+
+// TestMkdirInheritsCidBuilderAndSizeEstimation verifies that Directory.Mkdir
+// (the convenience method without explicit opts) inherits CidBuilder and
+// SizeEstimationMode from its parent.
+func TestMkdirInheritsCidBuilderAndSizeEstimation(t *testing.T) {
+	ctx := t.Context()
+	ds := getDagserv(t)
+
+	builder := cid.V1Builder{Codec: cid.DagProtobuf, MhType: multihash.SHA2_512}
+	sizeMode := uio.SizeEstimationDisabled
+
+	root, err := NewEmptyRoot(ctx, ds, nil, nil, MkdirOpts{
+		CidBuilder:         builder,
+		SizeEstimationMode: &sizeMode,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	child, err := root.GetDirectory().Mkdir("child")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify CidBuilder inherited.
+	nd, err := child.GetNode()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if nd.Cid().Prefix().MhType != multihash.SHA2_512 {
+		t.Fatalf("child dir: expected SHA2_512 hash, got %v", nd.Cid().Prefix().MhType)
+	}
+
+	// Verify SizeEstimationMode inherited.
+	if got := child.unixfsDir.GetSizeEstimationMode(); got != uio.SizeEstimationDisabled {
+		t.Fatalf("child dir: expected SizeEstimationDisabled, got %v", got)
+	}
+}
+
+// TestOpsMkdirFallbackToRootDefaults verifies that Mkdir (the top-level
+// function in ops.go) inherits CidBuilder and SizeEstimationMode from the
+// root directory when the caller does not set them explicitly.
+func TestOpsMkdirFallbackToRootDefaults(t *testing.T) {
+	ctx := t.Context()
+	ds := getDagserv(t)
+
+	builder := cid.V1Builder{Codec: cid.DagProtobuf, MhType: multihash.SHA2_512}
+	sizeMode := uio.SizeEstimationDisabled
+
+	root, err := NewEmptyRoot(ctx, ds, nil, nil, MkdirOpts{
+		CidBuilder:         builder,
+		SizeEstimationMode: &sizeMode,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create nested dirs without specifying CidBuilder or SizeEstimationMode.
+	err = Mkdir(root, "/a/b/c", MkdirOpts{Mkparents: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, p := range []string{"a", "a/b", "a/b/c"} {
+		fsn, err := Lookup(root, "/"+p)
+		if err != nil {
+			t.Fatalf("lookup %s: %v", p, err)
+		}
+		dir := fsn.(*Directory)
+
+		nd, err := dir.GetNode()
+		if err != nil {
+			t.Fatalf("%s GetNode: %v", p, err)
+		}
+		if nd.Cid().Prefix().MhType != multihash.SHA2_512 {
+			t.Fatalf("/%s: expected SHA2_512 hash, got %v", p, nd.Cid().Prefix().MhType)
+		}
+		if got := dir.unixfsDir.GetSizeEstimationMode(); got != uio.SizeEstimationDisabled {
+			t.Fatalf("/%s: expected SizeEstimationDisabled, got %v", p, got)
+		}
+	}
+}

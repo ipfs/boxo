@@ -369,11 +369,13 @@ func (d *Directory) ForEachEntry(ctx context.Context, f func(NodeListing) error)
 }
 
 func (d *Directory) Mkdir(name string) (*Directory, error) {
+	mode := d.unixfsDir.GetSizeEstimationMode()
 	return d.MkdirWithOpts(name, MkdirOpts{
-		CidBuilder:       d.unixfsDir.GetCidBuilder(),
-		MaxLinks:         d.unixfsDir.GetMaxLinks(),
-		MaxHAMTFanout:    d.unixfsDir.GetMaxHAMTFanout(),
-		HAMTShardingSize: d.unixfsDir.GetHAMTShardingSize(),
+		CidBuilder:         d.unixfsDir.GetCidBuilder(),
+		MaxLinks:           d.unixfsDir.GetMaxLinks(),
+		MaxHAMTFanout:      d.unixfsDir.GetMaxHAMTFanout(),
+		HAMTShardingSize:   d.unixfsDir.GetHAMTShardingSize(),
+		SizeEstimationMode: &mode,
 	})
 }
 
@@ -578,6 +580,11 @@ func (d *Directory) setNodeData(data []byte, links []*ipld.Link) error {
 	nd := dag.NodeWithData(data)
 	nd.SetLinks(links)
 
+	// Preserve previous node's CidBuilder
+	if builder := d.unixfsDir.GetCidBuilder(); builder != nil {
+		nd.SetCidBuilder(builder)
+	}
+
 	err := d.dagService.Add(d.ctx, nd)
 	if err != nil {
 		return err
@@ -602,11 +609,11 @@ func (d *Directory) setNodeData(data []byte, links []*ipld.Link) error {
 		return err
 	}
 
-	// We need to carry our desired settings.
-	// Note: SizeEstimationMode is set at creation time and cannot be changed.
+	// Carry over settings that are not persisted in the DAG node.
 	db.SetMaxLinks(d.unixfsDir.GetMaxLinks())
 	db.SetMaxHAMTFanout(d.unixfsDir.GetMaxHAMTFanout())
 	db.SetHAMTShardingSize(d.unixfsDir.GetHAMTShardingSize())
+	db.SetSizeEstimationMode(d.unixfsDir.GetSizeEstimationMode())
 	d.unixfsDir = db
 
 	return nil
