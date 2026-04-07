@@ -18,6 +18,7 @@ The following emojis are used to highlight certain changes:
 
 - `routing/http/client`: `WithProviderInfoFunc` option resolves provider addresses at provide-time instead of client construction time. This only impacts legacy HTTP-only custom routing setups that depend on [IPIP-526](https://github.com/ipfs/specs/pull/526) and were sending unresolved `0.0.0.0` addresses in provider records instead of actual interface addresses. [#1115](https://github.com/ipfs/boxo/pull/1115)
 - `chunker`: added `Register` function to allow custom chunkers to be registered for use with `FromString`.
+- `mfs`: added `Directory.Mode()` and `Directory.ModTime()` getters to match the existing `File.Mode()` and `File.ModTime()` API. [#1131](https://github.com/ipfs/boxo/pull/1131)
 
 ### Changed
 
@@ -36,6 +37,7 @@ The following emojis are used to highlight certain changes:
 
 - `bitswap/server`: incoming identity CIDs in wantlist messages are now silently ignored instead of killing the connection to the remote peer. Some IPFS implementations naively send identity CIDs, and disconnecting them for it caused unnecessary churn. [#1117](https://github.com/ipfs/boxo/pull/1117)
 - `bitswap/network`: `ExtractHTTPAddress` now infers default ports for portless HTTP multiaddrs (e.g. `/dns/host/https` without `/tcp/443`). [#1123](https://github.com/ipfs/boxo/pull/1123)
+- `mfs`: concurrent `Flush` and `Close` on the same file descriptor no longer panic, fixing a crash seen under FUSE. `Flush` after `Close` now returns `ErrClosed`. [#1131](https://github.com/ipfs/boxo/pull/1131)
 - `mfs`: preserve `CidBuilder` and `SizeEstimationMode` across `setNodeData()`, `Mkdir()` and `NewRoot()`. [#1125](https://github.com/ipfs/boxo/pull/1125)
 
 ### Security

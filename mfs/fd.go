@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"sync"
 
 	mod "github.com/ipfs/boxo/ipld/unixfs/mod"
 	ipld "github.com/ipfs/go-ipld-format"
@@ -45,6 +46,12 @@ type fileDescriptor struct {
 	mod   *mod.DagModifier
 	flags Flags
 
+	// mu serializes Flush and Close to prevent concurrent access to
+	// the underlying DagModifier, which is not safe for concurrent use.
+	// Without this, a caller that invokes Flush and Close from separate
+	// goroutines (e.g. FUSE dispatching FLUSH and RELEASE concurrently)
+	// can trigger a data race inside DagModifier.Sync.
+	mu    sync.Mutex
 	state state
 }
 
@@ -110,6 +117,8 @@ func (fi *fileDescriptor) CtxReadFull(ctx context.Context, b []byte) (int, error
 // Close flushes, then propagates the modified dag node up the directory structure
 // and signals a republish to occur
 func (fi *fileDescriptor) Close() error {
+	fi.mu.Lock()
+	defer fi.mu.Unlock()
 	if fi.state == stateClosed {
 		return ErrClosed
 	}
@@ -128,6 +137,11 @@ func (fi *fileDescriptor) Close() error {
 // the entry in the parent directory (setting `fullSync` to
 // propagate the update all the way to the root).
 func (fi *fileDescriptor) Flush() error {
+	fi.mu.Lock()
+	defer fi.mu.Unlock()
+	if fi.state == stateClosed {
+		return ErrClosed
+	}
 	return fi.flushUp(true)
 }
 

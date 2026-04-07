@@ -1447,6 +1447,65 @@ func TestConcurrentWrites(t *testing.T) {
 	}
 }
 
+// TestConcurrentFlushAndClose verifies that calling Flush and Close on the
+// same fileDescriptor from different goroutines does not panic or corrupt
+// data. This guards against the race where a FUSE daemon dispatches FLUSH
+// and RELEASE concurrently for the same file handle (e.g. when FLUSH is
+// interrupted by SIGURG and the kernel sends RELEASE while the flush
+// goroutine is still running).
+func TestConcurrentFlushAndClose(t *testing.T) {
+	ctx := t.Context()
+	ds, rt := setupRoot(ctx, t)
+	dir := rt.GetDirectory()
+
+	nd := dag.NodeWithData(ft.FilePBData(nil, 0))
+	prov := new(fakeProvider)
+
+	// Run many iterations to increase the chance of hitting the race.
+	for range 200 {
+		fi, err := NewFile("test", nd, dir, ds, prov)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		fd, err := fi.Open(Flags{Read: true, Write: true, Sync: true})
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if _, err := fd.Write([]byte("hello")); err != nil {
+			t.Fatal(err)
+		}
+
+		// Launch Flush and Close concurrently. One of them will
+		// acquire the internal mutex first; the other must wait
+		// and then observe a consistent state (either flushed or
+		// closed). Neither should panic.
+		var wg sync.WaitGroup
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			// Flush may succeed or return ErrClosed if Close wins.
+			err := fd.Flush()
+			if err != nil && !errors.Is(err, ErrClosed) {
+				t.Errorf("Flush: unexpected error: %v", err)
+			}
+		}()
+		go func() {
+			defer wg.Done()
+			if err := fd.Close(); err != nil {
+				t.Errorf("Close: %v", err)
+			}
+		}()
+		wg.Wait()
+
+		// A second Close must return ErrClosed.
+		if err := fd.Close(); !errors.Is(err, ErrClosed) {
+			t.Fatalf("expected ErrClosed on double close, got: %v", err)
+		}
+	}
+}
+
 func TestFileDescriptors(t *testing.T) {
 	ctx := t.Context()
 
