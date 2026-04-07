@@ -423,6 +423,14 @@ func (d *Directory) Unlink(name string) error {
 	d.lock.Lock()
 	defer d.lock.Unlock()
 
+	if child, ok := d.entriesCache[name]; ok {
+		switch c := child.(type) {
+		case *File:
+			c.unlinked.Store(true)
+		case *Directory:
+			c.unlinked.Store(true)
+		}
+	}
 	delete(d.entriesCache, name)
 
 	return d.unixfsDir.RemoveChild(d.ctx, name)

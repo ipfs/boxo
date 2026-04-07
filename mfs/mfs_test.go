@@ -2706,3 +2706,76 @@ func TestOpsMkdirFallbackToRootDefaults(t *testing.T) {
 		}
 	}
 }
+
+// TestFlushUpAfterUnlink verifies that a file's flushUp (triggered by
+// Close) does not re-add a directory entry that was removed by Unlink.
+// This race occurs in FUSE mounts where Close (RELEASE) and Rename
+// are dispatched in separate goroutines.
+func TestFlushUpAfterUnlink(t *testing.T) {
+	ctx := context.Background()
+	dagserv := getDagserv(t)
+
+	root, err := NewEmptyRoot(ctx, dagserv, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := root.GetDirectory()
+
+	// Create a file and flush so it's committed to the DAG.
+	fileNode := dag.NodeWithData(ft.FilePBData(nil, 0))
+	if err := dir.AddChild("victim", fileNode); err != nil {
+		t.Fatal(err)
+	}
+	if err := dir.Flush(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Open the file for writing (like FUSE Open does).
+	child, err := dir.Child("victim")
+	if err != nil {
+		t.Fatal(err)
+	}
+	fi := child.(*File)
+	fd, err := fi.Open(Flags{Write: true, Sync: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Write some data so the file is dirty.
+	if _, err := fd.Write([]byte("data")); err != nil {
+		t.Fatal(err)
+	}
+
+	// Unlink the file (like FUSE Rename does: unlink source).
+	if err := dir.Unlink("victim"); err != nil {
+		t.Fatal(err)
+	}
+
+	// Now close the file descriptor. This triggers flushUp which
+	// propagates the dirty node to the parent directory via
+	// localUpdate. Without the fix, localUpdate would re-add
+	// "victim" to the directory.
+	if err := fd.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	// The directory should NOT contain "victim".
+	names, err := dir.ListNames(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if slices.Contains(names, "victim") {
+		t.Fatalf("unlinked file re-appeared in directory listing: %v", names)
+	}
+
+	// List should agree with ListNames.
+	listing, err := dir.List(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range listing {
+		if entry.Name == "victim" {
+			t.Fatalf("unlinked file re-appeared in List: %v", listing)
+		}
+	}
+}

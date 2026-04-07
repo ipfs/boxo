@@ -186,8 +186,9 @@ func (fi *fileDescriptor) flushUp(fullSync bool) error {
 		name := fi.inode.name
 		fi.inode.nodeLock.Unlock()
 
-		// Bubble up the update's to the parent, only if fullSync is set to true.
-		if fullSync {
+		// Bubble up the update to the parent, unless the file was
+		// unlinked (see inode.unlinked for details).
+		if fullSync && !fi.inode.unlinked.Load() {
 			if err := parent.updateChildEntry(child{name, nd}); err != nil {
 				return err
 			}
