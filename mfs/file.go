@@ -272,6 +272,14 @@ func (fi *File) SetModTime(ts time.Time) error {
 
 func (fi *File) setNodeData(data []byte) error {
 	nd := dag.NodeWithData(data)
+
+	// Preserve previous node's CidBuilder
+	if oldNode, ok := fi.node.(*dag.ProtoNode); ok {
+		if builder := oldNode.CidBuilder(); builder != nil {
+			nd.SetCidBuilder(builder)
+		}
+	}
+
 	err := fi.dagService.Add(context.TODO(), nd)
 	if err != nil {
 		return err
