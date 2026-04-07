@@ -46,11 +46,10 @@ type fileDescriptor struct {
 	mod   *mod.DagModifier
 	flags Flags
 
-	// mu serializes Flush and Close to prevent concurrent access to
-	// the underlying DagModifier, which is not safe for concurrent use.
-	// Without this, a caller that invokes Flush and Close from separate
-	// goroutines (e.g. FUSE dispatching FLUSH and RELEASE concurrently)
-	// can trigger a data race inside DagModifier.Sync.
+	// mu serializes all operations that access the underlying DagModifier,
+	// which is not safe for concurrent use. FUSE mounts and Kubo RPC
+	// commands (`ipfs files read/write`) may dispatch Read, Write, Seek,
+	// Flush, and Close from separate goroutines.
 	mu    sync.Mutex
 	state state
 }
@@ -77,11 +76,15 @@ func (fi *fileDescriptor) checkRead() error {
 
 // Size returns the size of the file referred to by this descriptor
 func (fi *fileDescriptor) Size() (int64, error) {
+	fi.mu.Lock()
+	defer fi.mu.Unlock()
 	return fi.mod.Size()
 }
 
 // Truncate truncates the file to size
 func (fi *fileDescriptor) Truncate(size int64) error {
+	fi.mu.Lock()
+	defer fi.mu.Unlock()
 	if err := fi.checkWrite(); err != nil {
 		return fmt.Errorf("truncate failed: %s", err)
 	}
@@ -91,6 +94,8 @@ func (fi *fileDescriptor) Truncate(size int64) error {
 
 // Write writes the given data to the file at its current offset
 func (fi *fileDescriptor) Write(b []byte) (int, error) {
+	fi.mu.Lock()
+	defer fi.mu.Unlock()
 	if err := fi.checkWrite(); err != nil {
 		return 0, fmt.Errorf("write failed: %s", err)
 	}
@@ -100,14 +105,19 @@ func (fi *fileDescriptor) Write(b []byte) (int, error) {
 
 // Read reads into the given buffer from the current offset
 func (fi *fileDescriptor) Read(b []byte) (int, error) {
+	fi.mu.Lock()
+	defer fi.mu.Unlock()
 	if err := fi.checkRead(); err != nil {
 		return 0, fmt.Errorf("read failed: %s", err)
 	}
 	return fi.mod.Read(b)
 }
 
-// Read reads into the given buffer from the current offset
+// CtxReadFull reads into the given buffer from the current offset,
+// using the provided context for cancellation of block fetches.
 func (fi *fileDescriptor) CtxReadFull(ctx context.Context, b []byte) (int, error) {
+	fi.mu.Lock()
+	defer fi.mu.Unlock()
 	if err := fi.checkRead(); err != nil {
 		return 0, fmt.Errorf("read failed: %s", err)
 	}
@@ -194,14 +204,18 @@ func (fi *fileDescriptor) flushUp(fullSync bool) error {
 
 // Seek implements io.Seeker
 func (fi *fileDescriptor) Seek(offset int64, whence int) (int64, error) {
+	fi.mu.Lock()
+	defer fi.mu.Unlock()
 	if fi.state == stateClosed {
 		return 0, fmt.Errorf("seek failed: %s", ErrClosed)
 	}
 	return fi.mod.Seek(offset, whence)
 }
 
-// Write At writes the given bytes at the offset 'at'
+// WriteAt writes the given bytes at the offset 'at'
 func (fi *fileDescriptor) WriteAt(b []byte, at int64) (int, error) {
+	fi.mu.Lock()
+	defer fi.mu.Unlock()
 	if err := fi.checkWrite(); err != nil {
 		return 0, fmt.Errorf("write-at failed: %s", err)
 	}

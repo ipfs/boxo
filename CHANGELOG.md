@@ -37,7 +37,7 @@ The following emojis are used to highlight certain changes:
 
 - `bitswap/server`: incoming identity CIDs in wantlist messages are now silently ignored instead of killing the connection to the remote peer. Some IPFS implementations naively send identity CIDs, and disconnecting them for it caused unnecessary churn. [#1117](https://github.com/ipfs/boxo/pull/1117)
 - `bitswap/network`: `ExtractHTTPAddress` now infers default ports for portless HTTP multiaddrs (e.g. `/dns/host/https` without `/tcp/443`). [#1123](https://github.com/ipfs/boxo/pull/1123)
-- `mfs`: concurrent `Flush` and `Close` on the same file descriptor no longer panic, fixing a crash seen under FUSE. `Flush` after `Close` now returns `ErrClosed`. [#1131](https://github.com/ipfs/boxo/pull/1131)
+- `mfs`: `FileDescriptor` operations are serialized with a mutex, preventing data races on the underlying `DagModifier` when FUSE mounts or Kubo RPC commands dispatch concurrent Read, Write, Seek, Truncate, Flush, or Close calls. `Flush` after `Close` returns `ErrClosed`. [#1131](https://github.com/ipfs/boxo/pull/1131) [#1133](https://github.com/ipfs/boxo/pull/1133)
 - `mfs`: preserve `CidBuilder` and `SizeEstimationMode` across `setNodeData()`, `Mkdir()` and `NewRoot()`. [#1125](https://github.com/ipfs/boxo/pull/1125)
 
 ### Security
