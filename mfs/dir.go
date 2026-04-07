@@ -88,26 +88,30 @@ func NewDirectory(ctx context.Context, name string, node ipld.Node, parent paren
 	}, nil
 }
 
-// NewEmptyDirectory creates an empty MFS directory with the given options.
+// NewEmptyDirectory creates an empty MFS directory with the given [Option]s.
 // The directory is added to the DAGService. To create a new MFS
-// root use NewEmptyRootFolder instead.
-func NewEmptyDirectory(ctx context.Context, name string, parent parent, dserv ipld.DAGService, prov provider.MultihashProvider, opts MkdirOpts) (*Directory, error) {
+// root use [NewEmptyRoot] instead.
+func NewEmptyDirectory(ctx context.Context, name string, p parent, dserv ipld.DAGService, prov provider.MultihashProvider, opts ...Option) (*Directory, error) {
+	return newEmptyDirectory(ctx, name, p, dserv, prov, resolveOpts(opts))
+}
+
+func newEmptyDirectory(ctx context.Context, name string, p parent, dserv ipld.DAGService, prov provider.MultihashProvider, o options) (*Directory, error) {
 	dirOpts := []uio.DirectoryOption{
-		uio.WithMaxLinks(opts.MaxLinks),
-		uio.WithMaxHAMTFanout(opts.MaxHAMTFanout),
-		uio.WithStat(opts.Mode, opts.ModTime),
-		uio.WithCidBuilder(opts.CidBuilder),
+		uio.WithMaxLinks(o.maxLinks),
+		uio.WithMaxHAMTFanout(o.maxHAMTFanout),
+		uio.WithStat(o.mode, o.modTime),
+		uio.WithCidBuilder(o.cidBuilder),
 	}
-	if opts.SizeEstimationMode != nil {
-		dirOpts = append(dirOpts, uio.WithSizeEstimationMode(*opts.SizeEstimationMode))
+	if o.sizeEstimationMode != nil {
+		dirOpts = append(dirOpts, uio.WithSizeEstimationMode(*o.sizeEstimationMode))
 	}
 	db, err := uio.NewDirectory(dserv, dirOpts...)
 	if err != nil {
 		return nil, err
 	}
 	// Set HAMTShardingSize after creation (not a DirectoryOption)
-	if opts.HAMTShardingSize > 0 {
-		db.SetHAMTShardingSize(opts.HAMTShardingSize)
+	if o.hamtShardingSize > 0 {
+		db.SetHAMTShardingSize(o.hamtShardingSize)
 	}
 
 	nd, err := db.GetNode()
@@ -123,15 +127,15 @@ func NewEmptyDirectory(ctx context.Context, name string, parent parent, dserv ip
 	// note: we don't provide the empty unixfs dir as it is always local.
 
 	// Use chunker from opts if set, otherwise inherit from parent
-	c := opts.Chunker
+	c := o.chunker
 	if c == nil {
-		c = parent.getChunker()
+		c = p.getChunker()
 	}
 
 	return &Directory{
 		inode: inode{
 			name:       name,
-			parent:     parent,
+			parent:     p,
 			dagService: dserv,
 		},
 		ctx:          ctx,
@@ -368,15 +372,19 @@ func (d *Directory) ForEachEntry(ctx context.Context, f func(NodeListing) error)
 	})
 }
 
+// Mkdir creates a child directory that inherits settings from this directory.
 func (d *Directory) Mkdir(name string) (*Directory, error) {
-	return d.MkdirWithOpts(name, MkdirOpts{
-		MaxLinks:         d.unixfsDir.GetMaxLinks(),
-		MaxHAMTFanout:    d.unixfsDir.GetMaxHAMTFanout(),
-		HAMTShardingSize: d.unixfsDir.GetHAMTShardingSize(),
-	})
+	var o options
+	o.fillFrom(d)
+	return d.mkdirWithOpts(name, o)
 }
 
-func (d *Directory) MkdirWithOpts(name string, opts MkdirOpts) (*Directory, error) {
+// MkdirWithOpts creates a child directory with explicit [Option]s.
+func (d *Directory) MkdirWithOpts(name string, opts ...Option) (*Directory, error) {
+	return d.mkdirWithOpts(name, resolveOpts(opts))
+}
+
+func (d *Directory) mkdirWithOpts(name string, o options) (*Directory, error) {
 	d.lock.Lock()
 	defer d.lock.Unlock()
 
@@ -392,11 +400,7 @@ func (d *Directory) MkdirWithOpts(name string, opts MkdirOpts) (*Directory, erro
 		}
 	}
 
-	// hector: no idea why this option is overridden, but it must be to
-	// keep backwards compatibility. CidBuilder from the options is
-	// manually set in `Mkdir` (ops.go) though.
-	opts.CidBuilder = d.GetCidBuilder()
-	dirobj, err := NewEmptyDirectory(d.ctx, name, d, d.dagService, d.prov, opts)
+	dirobj, err := newEmptyDirectory(d.ctx, name, d, d.dagService, d.prov, o)
 	if err != nil {
 		return nil, err
 	}
@@ -581,6 +585,11 @@ func (d *Directory) setNodeData(data []byte, links []*ipld.Link) error {
 	nd := dag.NodeWithData(data)
 	nd.SetLinks(links)
 
+	// Preserve previous node's CidBuilder
+	if builder := d.unixfsDir.GetCidBuilder(); builder != nil {
+		nd.SetCidBuilder(builder)
+	}
+
 	err := d.dagService.Add(d.ctx, nd)
 	if err != nil {
 		return err
@@ -605,11 +614,11 @@ func (d *Directory) setNodeData(data []byte, links []*ipld.Link) error {
 		return err
 	}
 
-	// We need to carry our desired settings.
-	// Note: SizeEstimationMode is set at creation time and cannot be changed.
+	// Carry over settings that are not persisted in the DAG node.
 	db.SetMaxLinks(d.unixfsDir.GetMaxLinks())
 	db.SetMaxHAMTFanout(d.unixfsDir.GetMaxHAMTFanout())
 	db.SetHAMTShardingSize(d.unixfsDir.GetHAMTShardingSize())
+	db.SetSizeEstimationMode(d.unixfsDir.GetSizeEstimationMode())
 	d.unixfsDir = db
 
 	return nil
