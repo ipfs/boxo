@@ -2,6 +2,8 @@ package gateway
 
 import (
 	"context"
+	"fmt"
+	"io"
 	"net/http"
 	"time"
 
@@ -44,7 +46,12 @@ func (i *handler) serveRawBlock(ctx context.Context, w http.ResponseWriter, r *h
 		return false
 	}
 
-	if !i.seekToStartOfFirstRange(w, r, data, sz) {
+	s, ok := data.(io.Seeker)
+	if !ok {
+		i.webError(w, r, fmt.Errorf("block data does not support seeking"), http.StatusInternalServerError)
+		return false
+	}
+	if !i.seekToStartOfFirstRange(w, r, s, sz) {
 		return false
 	}
 
