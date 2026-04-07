@@ -2779,3 +2779,45 @@ func TestFlushUpAfterUnlink(t *testing.T) {
 		}
 	}
 }
+
+// TestSetModePreservesContent verifies that SetMode does not drop the
+// file's content links. This was a bug where setNodeData created a
+// bare ProtoNode from metadata bytes without copying the child links
+// from the old node.
+func TestSetModePreservesContent(t *testing.T) {
+	ctx := context.Background()
+	dagserv := getDagserv(t)
+
+	root, err := NewEmptyRoot(ctx, dagserv, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := root.GetDirectory()
+
+	fileNode := dag.NodeWithData(ft.FilePBData(nil, 0))
+	dir.AddChild("test", fileNode)
+	dir.Flush()
+
+	child, _ := dir.Child("test")
+	fi := child.(*File)
+
+	// Write content and flush.
+	fd, _ := fi.Open(Flags{Write: true, Sync: true})
+	fd.Write([]byte("hello world"))
+	fd.Flush()
+	fd.Close()
+
+	// Set mode (this calls setNodeData internally).
+	fi.SetMode(0o755)
+
+	// Reopen and read: content must still be present.
+	fd2, _ := fi.Open(Flags{Read: true})
+	sz, _ := fd2.Size()
+	buf := make([]byte, 100)
+	n, _ := fd2.Read(buf)
+	fd2.Close()
+
+	if sz != 11 || n != 11 || string(buf[:n]) != "hello world" {
+		t.Fatalf("content lost after SetMode: size=%d read=%d data=%q", sz, n, buf[:n])
+	}
+}
