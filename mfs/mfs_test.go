@@ -2706,3 +2706,118 @@ func TestOpsMkdirFallbackToRootDefaults(t *testing.T) {
 		}
 	}
 }
+
+// TestFlushUpAfterUnlink verifies that a file's flushUp (triggered by
+// Close) does not re-add a directory entry that was removed by Unlink.
+// This race occurs in FUSE mounts where Close (RELEASE) and Rename
+// are dispatched in separate goroutines.
+func TestFlushUpAfterUnlink(t *testing.T) {
+	ctx := context.Background()
+	dagserv := getDagserv(t)
+
+	root, err := NewEmptyRoot(ctx, dagserv, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := root.GetDirectory()
+
+	// Create a file and flush so it's committed to the DAG.
+	fileNode := dag.NodeWithData(ft.FilePBData(nil, 0))
+	if err := dir.AddChild("victim", fileNode); err != nil {
+		t.Fatal(err)
+	}
+	if err := dir.Flush(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Open the file for writing (like FUSE Open does).
+	child, err := dir.Child("victim")
+	if err != nil {
+		t.Fatal(err)
+	}
+	fi := child.(*File)
+	fd, err := fi.Open(Flags{Write: true, Sync: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Write some data so the file is dirty.
+	if _, err := fd.Write([]byte("data")); err != nil {
+		t.Fatal(err)
+	}
+
+	// Unlink the file (like FUSE Rename does: unlink source).
+	if err := dir.Unlink("victim"); err != nil {
+		t.Fatal(err)
+	}
+
+	// Now close the file descriptor. This triggers flushUp which
+	// propagates the dirty node to the parent directory via
+	// localUpdate. Without the fix, localUpdate would re-add
+	// "victim" to the directory.
+	if err := fd.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	// The directory should NOT contain "victim".
+	names, err := dir.ListNames(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if slices.Contains(names, "victim") {
+		t.Fatalf("unlinked file re-appeared in directory listing: %v", names)
+	}
+
+	// List should agree with ListNames.
+	listing, err := dir.List(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range listing {
+		if entry.Name == "victim" {
+			t.Fatalf("unlinked file re-appeared in List: %v", listing)
+		}
+	}
+}
+
+// TestSetModePreservesContent verifies that SetMode does not drop the
+// file's content links. This was a bug where setNodeData created a
+// bare ProtoNode from metadata bytes without copying the child links
+// from the old node.
+func TestSetModePreservesContent(t *testing.T) {
+	ctx := context.Background()
+	dagserv := getDagserv(t)
+
+	root, err := NewEmptyRoot(ctx, dagserv, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := root.GetDirectory()
+
+	fileNode := dag.NodeWithData(ft.FilePBData(nil, 0))
+	dir.AddChild("test", fileNode)
+	dir.Flush()
+
+	child, _ := dir.Child("test")
+	fi := child.(*File)
+
+	// Write content and flush.
+	fd, _ := fi.Open(Flags{Write: true, Sync: true})
+	fd.Write([]byte("hello world"))
+	fd.Flush()
+	fd.Close()
+
+	// Set mode (this calls setNodeData internally).
+	fi.SetMode(0o755)
+
+	// Reopen and read: content must still be present.
+	fd2, _ := fi.Open(Flags{Read: true})
+	sz, _ := fd2.Size()
+	buf := make([]byte, 100)
+	n, _ := fd2.Read(buf)
+	fd2.Close()
+
+	if sz != 11 || n != 11 || string(buf[:n]) != "hello world" {
+		t.Fatalf("content lost after SetMode: size=%d read=%d data=%q", sz, n, buf[:n])
+	}
+}
