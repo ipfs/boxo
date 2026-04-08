@@ -254,6 +254,12 @@ func NewBloomTracker(expectedItems uint, fpRate uint) (*BloomTracker, error) {
 
 func (bt *BloomTracker) Has(c cid.Cid) bool {
 	key := []byte(c.Hash())
+	// Iterate oldest to newest: frequently-repeated CIDs (e.g. shared
+	// sub-DAGs across many pins) land in the earliest filter, so
+	// checking old-first finds them with fewer probes. The alternative
+	// (newest-first) would help if duplicates cluster near each other
+	// in traversal order, but real DAG walks revisit globally popular
+	// subtrees more often than recent ones.
 	for _, b := range bt.chain {
 		if b.Has(key) {
 			return true
@@ -265,9 +271,10 @@ func (bt *BloomTracker) Has(c cid.Cid) bool {
 func (bt *BloomTracker) Visit(c cid.Cid) bool {
 	key := []byte(c.Hash())
 
-	// Check earlier blooms for the CID. If any reports it as
-	// present (true positive from a prior growth epoch, or rare
-	// cross-bloom false positive), skip it.
+	// Check earlier blooms for the CID (oldest to newest, same
+	// rationale as Has). If any reports it as present (true positive
+	// from a prior growth epoch, or rare cross-bloom false positive),
+	// skip it.
 	earlier := bt.chain[:len(bt.chain)-1]
 	for _, b := range earlier {
 		if b.Has(key) {
