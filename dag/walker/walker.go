@@ -60,8 +60,8 @@ func WithLocality(check func(context.Context, cid.Cid) (bool, error)) Option {
 //  1. [VisitedTracker].Visit -- if already visited, skip entire subtree.
 //     The CID is marked visited immediately (before fetch). If fetch
 //     later fails, the CID stays in the tracker and won't be retried
-//     this cycle -- caught in the next cycle (22h). This avoids a
-//     double bloom scan per CID.
+//     this cycle, but is caught in the next reprovide cycle. This
+//     avoids a double bloom scan per CID.
 //  2. If [WithLocality] is set, check locality -- if not local, skip.
 //  3. Fetch block via fetch -- on error, log and skip.
 //  4. Push child link CIDs to stack (deduped when popped at step 1).

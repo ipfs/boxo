@@ -23,7 +23,7 @@ const (
 	// This is low enough for most IPFS deployments. IPFS content
 	// typically has multiple providers, so a single node's false
 	// positive has no impact on content availability. Any CID skipped
-	// by a false positive is caught in the next reprovide cycle (22h).
+	// by a false positive is caught in the next reprovide cycle.
 	//
 	// Actual memory depends on how [BloomTracker] chains blooms; see
 	// the scaling table in its documentation. As a rough guide, a
