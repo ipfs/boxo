@@ -2,7 +2,6 @@ package walker
 
 import (
 	"context"
-	"slices"
 
 	blockstore "github.com/ipfs/boxo/blockstore"
 	"github.com/ipfs/boxo/ipld/unixfs"
@@ -10,7 +9,6 @@ import (
 	ipld "github.com/ipld/go-ipld-prime"
 	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
 	basicnode "github.com/ipld/go-ipld-prime/node/basic"
-	mh "github.com/multiformats/go-multihash"
 )
 
 // EntityType represents the semantic type of a DAG entity.
@@ -131,62 +129,17 @@ func WalkEntityRoots(
 	for _, o := range opts {
 		o(cfg)
 	}
-
-	stack := []cid.Cid{root}
-
-	for len(stack) > 0 {
-		if ctx.Err() != nil {
-			return ctx.Err()
-		}
-
-		// pop
-		c := stack[len(stack)-1]
-		stack = stack[:len(stack)-1]
-
-		// dedup via tracker
-		if cfg.tracker != nil && !cfg.tracker.Visit(c) {
-			continue
-		}
-
-		// locality check
-		if cfg.locality != nil {
-			local, err := cfg.locality(ctx, c)
-			if err != nil {
-				log.Errorf("entity walk: locality check %s: %s", c, err)
-				continue
-			}
-			if !local {
-				continue
-			}
-		}
-
-		// fetch block and detect entity type
+	return walkLoop(ctx, root, func(ctx context.Context, c cid.Cid) ([]cid.Cid, error) {
 		children, entityType, err := fetch(ctx, c)
 		if err != nil {
-			log.Errorf("entity walk: fetch %s: %s", c, err)
-			continue
+			return nil, err
 		}
-
-		// decide whether to descend into children
-		descend := entityType != EntityFile && entityType != EntitySymlink
-		if descend {
-			// reverse so first link is popped next (left-to-right
-			// sibling order, matching WalkDAG and legacy BlockAll)
-			slices.Reverse(children)
-			stack = append(stack, children...)
+		// Only descend into directories, HAMT shards, and unknown
+		// node types. File and symlink children (chunks) are not
+		// entity roots, so we stop here.
+		if entityType == EntityFile || entityType == EntitySymlink {
+			return nil, nil
 		}
-
-		// skip identity CIDs: content is inline, no need to provide.
-		// we still descend (above) so an inlined dag-pb directory's
-		// normal children get provided.
-		if c.Prefix().MhType == mh.IDENTITY {
-			continue
-		}
-
-		if !emit(c) {
-			return nil
-		}
-	}
-
-	return nil
+		return children, nil
+	}, emit, cfg)
 }

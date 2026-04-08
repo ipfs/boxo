@@ -85,7 +85,22 @@ func WalkDAG(
 	for _, o := range opts {
 		o(cfg)
 	}
+	return walkLoop(ctx, root, func(ctx context.Context, c cid.Cid) ([]cid.Cid, error) {
+		return fetch(ctx, c)
+	}, emit, cfg)
+}
 
+// walkLoop is the shared iterative DFS implementation used by both
+// [WalkDAG] and [WalkEntityRoots]. The fetch callback returns the
+// children to push onto the stack; returning nil means "do not descend"
+// (the CID is still emitted unless it is an identity CID).
+func walkLoop(
+	ctx context.Context,
+	root cid.Cid,
+	fetch func(context.Context, cid.Cid) ([]cid.Cid, error),
+	emit func(cid.Cid) bool,
+	cfg *walkConfig,
+) error {
 	stack := []cid.Cid{root}
 
 	for len(stack) > 0 {
@@ -97,14 +112,14 @@ func WalkDAG(
 		c := stack[len(stack)-1]
 		stack = stack[:len(stack)-1]
 
-		// step 1: visit (mark + dedup in one call). If the CID was
-		// already visited (by this walk or a prior walk sharing the
-		// tracker), skip it and its entire subtree.
+		// visit (mark + dedup in one call). If the CID was already
+		// visited (by this walk or a prior walk sharing the tracker),
+		// skip it and its entire subtree.
 		if cfg.tracker != nil && !cfg.tracker.Visit(c) {
 			continue
 		}
 
-		// step 2: locality check
+		// locality check
 		if cfg.locality != nil {
 			local, err := cfg.locality(ctx, c)
 			if err != nil {
@@ -116,22 +131,22 @@ func WalkDAG(
 			}
 		}
 
-		// step 3: fetch
+		// fetch and get children to descend into
 		children, err := fetch(ctx, c)
 		if err != nil {
 			log.Errorf("walk: fetch %s: %s", c, err)
 			continue
 		}
 
-		// step 4: push children in reverse order so the first link
-		// is on top of the stack and gets popped next. This gives
-		// left-to-right sibling visit order, matching the legacy
-		// BlockAll selector traversal and the conventional DFS order
-		// from IPIP-0412 (depth-first, pre-order, left-to-right).
+		// push children in reverse order so the first link is on top
+		// of the stack and gets popped next (left-to-right sibling
+		// visit order, matching IPIP-0412 pre-order DFS).
 		slices.Reverse(children)
 		stack = append(stack, children...)
 
-		// skip identity CIDs: content is inline, no need to provide
+		// skip identity CIDs: content is inline, no need to provide.
+		// children are still pushed (above) so an inlined dag-pb
+		// directory's normal children get walked.
 		if c.Prefix().MhType == mh.IDENTITY {
 			continue
 		}
