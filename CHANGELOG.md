@@ -16,12 +16,15 @@ The following emojis are used to highlight certain changes:
 
 ### Added
 
+- `dag/walker`: new package for memory-efficient DAG traversal with deduplication. `VisitedTracker` interface with `BloomTracker` (scalable bloom filter chain, ~4 bytes/CID vs ~75 bytes for a map) and `MapTracker` (exact, for tests). `WalkDAG` provides iterative DFS traversal with integrated dedup, supporting dag-pb, dag-cbor, raw, and other registered codecs. ~2x faster than the legacy go-ipld-prime selector-based traversal. `WalkEntityRoots` emits only entity roots (files, directories, HAMT shards) instead of every block, skipping internal file chunks. [#1124](https://github.com/ipfs/boxo/pull/1124)
+- `pinner`: `NewUniquePinnedProvider` and `NewPinnedEntityRootsProvider` log and skip corrupted pin entries instead of aborting the provide cycle, allowing remaining pins to still be provided. [#1124](https://github.com/ipfs/boxo/pull/1124)
 - `routing/http/client`: `WithProviderInfoFunc` option resolves provider addresses at provide-time instead of client construction time. This only impacts legacy HTTP-only custom routing setups that depend on [IPIP-526](https://github.com/ipfs/specs/pull/526) and were sending unresolved `0.0.0.0` addresses in provider records instead of actual interface addresses. [#1115](https://github.com/ipfs/boxo/pull/1115)
 - `chunker`: added `Register` function to allow custom chunkers to be registered for use with `FromString`.
 - `mfs`: added `Directory.Mode()` and `Directory.ModTime()` getters to match the existing `File.Mode()` and `File.ModTime()` API. [#1131](https://github.com/ipfs/boxo/pull/1131)
 
 ### Changed
 
+- `provider`: `NewPrioritizedProvider` now continues to the next stream when one fails instead of stopping all streams. `NewConcatProvider` added for pre-deduplicated streams. [#1124](https://github.com/ipfs/boxo/pull/1124)
 - `chunker`: `FromString` now rejects malformed `size-` strings with extra parameters (e.g. `size-123-extra` was previously silently accepted).
 - `gateway`: compliance with gateway-conformance [v0.13](https://github.com/ipfs/gateway-conformance/releases/tag/v0.13)
 - upgrade to `go-libp2p` [v0.48.0](https://github.com/libp2p/go-libp2p/releases/tag/v0.48.0)
