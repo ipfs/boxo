@@ -17,15 +17,34 @@ The following emojis are used to highlight certain changes:
 ### Added
 
 - `ipns`: `NewRecord` accepts `WithMetadata` option for storing custom key-value pairs in the signed DAG-CBOR data of IPNS records. Metadata can be read back from unmarshaled records via `Record.Metadata`. [#1085](https://github.com/ipfs/boxo/pull/1085)
+- `dag/walker`: new package for memory-efficient DAG traversal with deduplication. `VisitedTracker` interface with `BloomTracker` (scalable bloom filter chain, ~4 bytes/CID vs ~75 bytes for a map) and `MapTracker` (exact, for tests). `WalkDAG` provides iterative DFS traversal with integrated dedup, supporting dag-pb, dag-cbor, raw, and other registered codecs. ~2x faster than the legacy go-ipld-prime selector-based traversal. `WalkEntityRoots` emits only entity roots (files, directories, HAMT shards) instead of every block, skipping internal file chunks. [#1124](https://github.com/ipfs/boxo/pull/1124)
+- `pinner`: `NewUniquePinnedProvider` and `NewPinnedEntityRootsProvider` log and skip corrupted pin entries instead of aborting the provide cycle, allowing remaining pins to still be provided. [#1124](https://github.com/ipfs/boxo/pull/1124)
+- `routing/http/client`: `WithProviderInfoFunc` option resolves provider addresses at provide-time instead of client construction time. This only impacts legacy HTTP-only custom routing setups that depend on [IPIP-526](https://github.com/ipfs/specs/pull/526) and were sending unresolved `0.0.0.0` addresses in provider records instead of actual interface addresses. [#1115](https://github.com/ipfs/boxo/pull/1115)
+- `chunker`: added `Register` function to allow custom chunkers to be registered for use with `FromString`.
+- `mfs`: added `Directory.Mode()` and `Directory.ModTime()` getters to match the existing `File.Mode()` and `File.ModTime()` API. [#1131](https://github.com/ipfs/boxo/pull/1131)
 
 ### Changed
 
+- `provider`: `NewPrioritizedProvider` now continues to the next stream when one fails instead of stopping all streams. `NewConcatProvider` added for pre-deduplicated streams. [#1124](https://github.com/ipfs/boxo/pull/1124)
+- `chunker`: `FromString` now rejects malformed `size-` strings with extra parameters (e.g. `size-123-extra` was previously silently accepted).
+- `gateway`: compliance with gateway-conformance [v0.13](https://github.com/ipfs/gateway-conformance/releases/tag/v0.13)
+- upgrade to `go-libp2p` [v0.48.0](https://github.com/libp2p/go-libp2p/releases/tag/v0.48.0)
+- 🛠 `mfs`: replaced `RootOption` with a unified `Option` functional options pattern (e.g. `WithCidBuilder`, `WithChunker`, `WithMaxLinks`). `NewRoot`, `NewEmptyRoot`, `MkdirWithOpts`, and `NewEmptyDirectory` now accept `...Option`. `Mkdir` takes a `MkdirOpts` struct (narrowed to `Mkparents` and `Flush` flags) followed by `...Option` for directory configuration. [#1125](https://github.com/ipfs/boxo/pull/1125)
+
 ### Removed
 
+- `gateway`: removed dead DoH resolver for `.crypto` TLD (Unstoppable Domains) [#772](https://github.com/ipfs/boxo/issues/772)
 - `cmd/boxo-migrate`: removed code for go-ipfs migration -- no longer needed.
 - `cmd/deprecator`: removed code to deprecare relocated ipfs packages -- no longer needed.
 
 ### Fixed
+
+- `bitswap/server`: incoming identity CIDs in wantlist messages are now silently ignored instead of killing the connection to the remote peer. Some IPFS implementations naively send identity CIDs, and disconnecting them for it caused unnecessary churn. [#1117](https://github.com/ipfs/boxo/pull/1117)
+- `bitswap/network`: `ExtractHTTPAddress` now infers default ports for portless HTTP multiaddrs (e.g. `/dns/host/https` without `/tcp/443`). [#1123](https://github.com/ipfs/boxo/pull/1123)
+- `mfs`: `FileDescriptor` operations are serialized with a mutex, preventing data races on the underlying `DagModifier` when FUSE mounts or Kubo RPC commands dispatch concurrent Read, Write, Seek, Truncate, Flush, or Close calls. `Flush` after `Close` returns `ErrClosed`. [#1131](https://github.com/ipfs/boxo/pull/1131) [#1133](https://github.com/ipfs/boxo/pull/1133)
+- `mfs`: preserve `CidBuilder` and `SizeEstimationMode` across `setNodeData()`, `Mkdir()` and `NewRoot()`. [#1125](https://github.com/ipfs/boxo/pull/1125)
+- `mfs`: closing a file descriptor after its directory entry was removed (e.g. FUSE RELEASE racing with RENAME) no longer re-adds the stale entry to the parent directory. [#1134](https://github.com/ipfs/boxo/pull/1134)
+- `mfs`: `SetMode` and `SetModTime` no longer drop file content links when updating UnixFS metadata. [#1134](https://github.com/ipfs/boxo/pull/1134)
 
 ### Security
 
