@@ -16,6 +16,19 @@ The following emojis are used to highlight certain changes:
 
 ### Added
 
+### Changed
+
+### Removed
+
+### Fixed
+
+### Security
+
+
+## [v0.38.0]
+
+### Added
+
 - `ipns`: `NewRecord` accepts `WithMetadata(map[string]any)` option for storing custom scalar key-value pairs (string, `[]byte`, int64, int, bool) in the signed DAG-CBOR data of IPNS records. Metadata can be read back via `Record.Metadata` (returns typed `MetadataValue` with `Kind()` discriminator) and iterated with `Record.MetadataEntries`. Reserved IPNS field names, empty keys, and unsupported value types are rejected. [#1085](https://github.com/ipfs/boxo/pull/1085)
 - `dag/walker`: new package for memory-efficient DAG traversal with deduplication. `VisitedTracker` interface with `BloomTracker` (scalable bloom filter chain, ~4 bytes/CID vs ~75 bytes for a map) and `MapTracker` (exact, for tests). `WalkDAG` provides iterative DFS traversal with integrated dedup, supporting dag-pb, dag-cbor, raw, and other registered codecs. ~2x faster than the legacy go-ipld-prime selector-based traversal. `WalkEntityRoots` emits only entity roots (files, directories, HAMT shards) instead of every block, skipping internal file chunks. [#1124](https://github.com/ipfs/boxo/pull/1124)
 - `pinner`: `NewUniquePinnedProvider` and `NewPinnedEntityRootsProvider` log and skip corrupted pin entries instead of aborting the provide cycle, allowing remaining pins to still be provided. [#1124](https://github.com/ipfs/boxo/pull/1124)
@@ -45,8 +58,6 @@ The following emojis are used to highlight certain changes:
 - `mfs`: preserve `CidBuilder` and `SizeEstimationMode` across `setNodeData()`, `Mkdir()` and `NewRoot()`. [#1125](https://github.com/ipfs/boxo/pull/1125)
 - `mfs`: closing a file descriptor after its directory entry was removed (e.g. FUSE RELEASE racing with RENAME) no longer re-adds the stale entry to the parent directory. [#1134](https://github.com/ipfs/boxo/pull/1134)
 - `mfs`: `SetMode` and `SetModTime` no longer drop file content links when updating UnixFS metadata. [#1134](https://github.com/ipfs/boxo/pull/1134)
-
-### Security
 
 
 ## [v0.37.0]
