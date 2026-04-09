@@ -127,21 +127,33 @@ func (rec *Record) MetadataEntries() iter.Seq2[string, MetadataValue] {
 
 // AsString returns the value as a string.
 func (mv MetadataValue) AsString() (string, error) {
+	if mv.node == nil {
+		return "", ErrMetadataValueNotSet
+	}
 	return mv.node.AsString()
 }
 
 // AsBytes returns the value as bytes.
 func (mv MetadataValue) AsBytes() ([]byte, error) {
+	if mv.node == nil {
+		return nil, ErrMetadataValueNotSet
+	}
 	return mv.node.AsBytes()
 }
 
 // AsInt returns the value as an int64.
 func (mv MetadataValue) AsInt() (int64, error) {
+	if mv.node == nil {
+		return 0, ErrMetadataValueNotSet
+	}
 	return mv.node.AsInt()
 }
 
 // AsBool returns the value as a bool.
 func (mv MetadataValue) AsBool() (bool, error) {
+	if mv.node == nil {
+		return false, ErrMetadataValueNotSet
+	}
 	return mv.node.AsBool()
 }
 
@@ -454,6 +466,9 @@ func createNode(value []byte, seq uint64, eol time.Time, ttl time.Duration, meta
 	var keys []string
 
 	for key, value := range metadata {
+		if key == "" {
+			return nil, ErrMetadataEmptyKey
+		}
 		if _, ok := reservedKeys[key]; ok {
 			return nil, fmt.Errorf("%w: %s", ErrMetadataConflict, key)
 		}

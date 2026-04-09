@@ -514,4 +514,98 @@ func TestMetadataAPI(t *testing.T) {
 		}
 		assert.Equal(t, 0, count)
 	})
+
+	t.Run("reject empty key on write", func(t *testing.T) {
+		metadata := map[string]MetadataValue{
+			"": StringValue("test"),
+		}
+		rec, err := NewRecord(sk, path, seq, eol, ttl, WithMetadata(metadata))
+		require.ErrorIs(t, err, ErrMetadataEmptyKey)
+		require.Nil(t, rec)
+	})
+
+	t.Run("zero-value MetadataValue returns error", func(t *testing.T) {
+		var mv MetadataValue
+
+		_, err := mv.AsString()
+		require.ErrorIs(t, err, ErrMetadataValueNotSet)
+
+		_, err = mv.AsBytes()
+		require.ErrorIs(t, err, ErrMetadataValueNotSet)
+
+		_, err = mv.AsInt()
+		require.ErrorIs(t, err, ErrMetadataValueNotSet)
+
+		_, err = mv.AsBool()
+		require.ErrorIs(t, err, ErrMetadataValueNotSet)
+	})
+
+	t.Run("type mismatch returns error", func(t *testing.T) {
+		metadata := map[string]MetadataValue{
+			"_int_val": IntValue(42),
+		}
+		rec := mustNewRecord(t, sk, path, seq, eol, ttl, WithMetadata(metadata))
+
+		mv, err := rec.Metadata("_int_val")
+		require.NoError(t, err)
+
+		_, err = mv.AsString()
+		require.Error(t, err)
+
+		_, err = mv.AsBool()
+		require.Error(t, err)
+	})
+
+	t.Run("nil and empty metadata map", func(t *testing.T) {
+		rec := mustNewRecord(t, sk, path, seq, eol, ttl, WithMetadata(nil))
+		count := 0
+		for range rec.MetadataEntries() {
+			count++
+		}
+		assert.Equal(t, 0, count)
+
+		rec = mustNewRecord(t, sk, path, seq, eol, ttl, WithMetadata(map[string]MetadataValue{}))
+		count = 0
+		for range rec.MetadataEntries() {
+			count++
+		}
+		assert.Equal(t, 0, count)
+	})
+
+	t.Run("metadata keys sorted with standard keys in CBOR", func(t *testing.T) {
+		metadata := map[string]MetadataValue{
+			"_z":   StringValue("last"),
+			"_a":   StringValue("first"),
+			"_mid": StringValue("middle"),
+		}
+		rec := mustNewRecord(t, sk, path, seq, eol, ttl, WithMetadata(metadata))
+
+		data, err := MarshalRecord(rec)
+		require.NoError(t, err)
+
+		rec2, err := UnmarshalRecord(data)
+		require.NoError(t, err)
+
+		// Walk the CBOR map and collect all keys in order
+		var keys []string
+		mi := rec2.node.MapIterator()
+		for !mi.Done() {
+			k, _, err := mi.Next()
+			require.NoError(t, err)
+			s, err := k.AsString()
+			require.NoError(t, err)
+			keys = append(keys, s)
+		}
+
+		// DAG-CBOR: sorted by length, then lexicographic
+		expected := []string{
+			"_a", "_z", // len 2
+			"TTL", "_mid", // len 3 (T < _)
+			"Value",        // len 5
+			"Sequence",     // len 8
+			"Validity",     // len 8
+			"ValidityType", // len 12
+		}
+		require.Equal(t, expected, keys)
+	})
 }

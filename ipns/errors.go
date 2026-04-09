@@ -52,3 +52,10 @@ var ErrMetadataNotFound = errors.New("metadata key not found in record")
 
 // ErrMetadataConflict is returned when a metadata key uses a reserved IPNS field name.
 var ErrMetadataConflict = errors.New("metadata key uses reserved name")
+
+// ErrMetadataEmptyKey is returned when an empty string is used as a metadata key.
+var ErrMetadataEmptyKey = errors.New("metadata key must not be empty")
+
+// ErrMetadataValueNotSet is returned when accessing an uninitialized MetadataValue
+// (e.g. the zero value of the struct). Use a constructor such as StringValue.
+var ErrMetadataValueNotSet = errors.New("metadata value is not set")
