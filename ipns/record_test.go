@@ -376,54 +376,61 @@ func TestMetadataAPI(t *testing.T) {
 	ttl := time.Hour
 
 	t.Run("set and get all types", func(t *testing.T) {
-		metadata := map[string]MetadataValue{
-			"_metadata_str":   StringValue("test"),
-			"_metadata_int":   IntValue(1212),
-			"_metadata_bytes": BytesValue([]byte{1, 2, 3, 4}),
-			"_metadata_bool":  BoolValue(true),
-		}
-
-		rec := mustNewRecord(t, sk, path, seq, eol, ttl, WithMetadata(metadata))
+		rec := mustNewRecord(t, sk, path, seq, eol, ttl, WithMetadata(map[string]any{
+			"_str":   "test",
+			"_int64": int64(1212),
+			"_int":   42,
+			"_bytes": []byte{1, 2, 3, 4},
+			"_bool":  true,
+		}))
 
 		require.False(t, rec.MetadataExists("non_existent_key"))
-		require.True(t, rec.MetadataExists("_metadata_str"))
+		require.True(t, rec.MetadataExists("_str"))
 
 		_, err := rec.Metadata("_non_existent_key")
 		require.ErrorIs(t, err, ErrMetadataNotFound)
 
-		mv, err := rec.Metadata("_metadata_str")
+		mv, err := rec.Metadata("_str")
 		require.NoError(t, err)
-		valueStr, err := mv.AsString()
+		assert.Equal(t, MetadataKindString, mv.Kind())
+		s, err := mv.AsString()
 		require.NoError(t, err)
-		assert.Equal(t, "test", valueStr)
+		assert.Equal(t, "test", s)
 
-		mv, err = rec.Metadata("_metadata_int")
+		mv, err = rec.Metadata("_int64")
 		require.NoError(t, err)
-		valueInt, err := mv.AsInt()
+		assert.Equal(t, MetadataKindInt, mv.Kind())
+		i, err := mv.AsInt()
 		require.NoError(t, err)
-		assert.Equal(t, int64(1212), valueInt)
+		assert.Equal(t, int64(1212), i)
 
-		mv, err = rec.Metadata("_metadata_bytes")
+		mv, err = rec.Metadata("_int")
 		require.NoError(t, err)
-		valueBytes, err := mv.AsBytes()
+		assert.Equal(t, MetadataKindInt, mv.Kind())
+		i, err = mv.AsInt()
 		require.NoError(t, err)
-		assert.Equal(t, []byte{1, 2, 3, 4}, valueBytes)
+		assert.Equal(t, int64(42), i)
 
-		mv, err = rec.Metadata("_metadata_bool")
+		mv, err = rec.Metadata("_bytes")
 		require.NoError(t, err)
-		valueBool, err := mv.AsBool()
+		assert.Equal(t, MetadataKindBytes, mv.Kind())
+		b, err := mv.AsBytes()
 		require.NoError(t, err)
-		assert.Equal(t, true, valueBool)
+		assert.Equal(t, []byte{1, 2, 3, 4}, b)
+
+		mv, err = rec.Metadata("_bool")
+		require.NoError(t, err)
+		assert.Equal(t, MetadataKindBool, mv.Kind())
+		bl, err := mv.AsBool()
+		require.NoError(t, err)
+		assert.Equal(t, true, bl)
 	})
 
 	t.Run("reject reserved keys on write", func(t *testing.T) {
 		for key := range reservedKeys {
-			metadata := map[string]MetadataValue{
-				key: StringValue("test"),
-			}
-
-			rec, err := NewRecord(sk, path, seq, eol, ttl, WithMetadata(metadata))
-			require.Error(t, err)
+			rec, err := NewRecord(sk, path, seq, eol, ttl, WithMetadata(map[string]any{
+				key: "test",
+			}))
 			require.ErrorIs(t, err, ErrMetadataConflict)
 			require.Nil(t, rec)
 		}
@@ -439,15 +446,31 @@ func TestMetadataAPI(t *testing.T) {
 		}
 	})
 
-	t.Run("marshal/unmarshal roundtrip", func(t *testing.T) {
-		metadata := map[string]MetadataValue{
-			"_metadata_str":   StringValue("test"),
-			"_metadata_int":   IntValue(1212),
-			"_metadata_bytes": BytesValue([]byte{1, 2, 3, 4}),
-			"_metadata_bool":  BoolValue(true),
+	t.Run("reject unsupported value types", func(t *testing.T) {
+		for _, val := range []any{float64(3.14), uint64(1), struct{}{}} {
+			rec, err := NewRecord(sk, path, seq, eol, ttl, WithMetadata(map[string]any{
+				"_bad": val,
+			}))
+			require.ErrorIs(t, err, ErrMetadataUnsupportedType, "value type %T should be rejected", val)
+			require.Nil(t, rec)
 		}
+	})
 
-		rec := mustNewRecord(t, sk, path, seq, eol, ttl, WithMetadata(metadata))
+	t.Run("reject nil value", func(t *testing.T) {
+		rec, err := NewRecord(sk, path, seq, eol, ttl, WithMetadata(map[string]any{
+			"_nil": nil,
+		}))
+		require.ErrorIs(t, err, ErrInvalidRecord)
+		require.Nil(t, rec)
+	})
+
+	t.Run("marshal/unmarshal roundtrip", func(t *testing.T) {
+		rec := mustNewRecord(t, sk, path, seq, eol, ttl, WithMetadata(map[string]any{
+			"_str":   "test",
+			"_int":   int64(1212),
+			"_bytes": []byte{1, 2, 3, 4},
+			"_bool":  true,
+		}))
 
 		data, err := MarshalRecord(rec)
 		require.NoError(t, err)
@@ -455,25 +478,25 @@ func TestMetadataAPI(t *testing.T) {
 		rec2, err := UnmarshalRecord(data)
 		require.NoError(t, err)
 
-		mv, err := rec2.Metadata("_metadata_str")
+		mv, err := rec2.Metadata("_str")
 		require.NoError(t, err)
 		s, err := mv.AsString()
 		require.NoError(t, err)
 		assert.Equal(t, "test", s)
 
-		mv, err = rec2.Metadata("_metadata_int")
+		mv, err = rec2.Metadata("_int")
 		require.NoError(t, err)
 		i, err := mv.AsInt()
 		require.NoError(t, err)
 		assert.Equal(t, int64(1212), i)
 
-		mv, err = rec2.Metadata("_metadata_bytes")
+		mv, err = rec2.Metadata("_bytes")
 		require.NoError(t, err)
 		b, err := mv.AsBytes()
 		require.NoError(t, err)
 		assert.Equal(t, []byte{1, 2, 3, 4}, b)
 
-		mv, err = rec2.Metadata("_metadata_bool")
+		mv, err = rec2.Metadata("_bool")
 		require.NoError(t, err)
 		bl, err := mv.AsBool()
 		require.NoError(t, err)
@@ -483,12 +506,10 @@ func TestMetadataAPI(t *testing.T) {
 	})
 
 	t.Run("iterate metadata entries", func(t *testing.T) {
-		metadata := map[string]MetadataValue{
-			"_custom_a": StringValue("alpha"),
-			"_custom_b": IntValue(42),
-		}
-
-		rec := mustNewRecord(t, sk, path, seq, eol, ttl, WithMetadata(metadata))
+		rec := mustNewRecord(t, sk, path, seq, eol, ttl, WithMetadata(map[string]any{
+			"_custom_a": "alpha",
+			"_custom_b": int64(42),
+		}))
 
 		got := make(map[string]MetadataValue)
 		for k, v := range rec.MetadataEntries() {
@@ -516,16 +537,16 @@ func TestMetadataAPI(t *testing.T) {
 	})
 
 	t.Run("reject empty key on write", func(t *testing.T) {
-		metadata := map[string]MetadataValue{
-			"": StringValue("test"),
-		}
-		rec, err := NewRecord(sk, path, seq, eol, ttl, WithMetadata(metadata))
+		rec, err := NewRecord(sk, path, seq, eol, ttl, WithMetadata(map[string]any{
+			"": "test",
+		}))
 		require.ErrorIs(t, err, ErrMetadataEmptyKey)
 		require.Nil(t, rec)
 	})
 
 	t.Run("zero-value MetadataValue returns error", func(t *testing.T) {
 		var mv MetadataValue
+		assert.Equal(t, MetadataKindInvalid, mv.Kind())
 
 		_, err := mv.AsString()
 		require.ErrorIs(t, err, ErrMetadataValueNotSet)
@@ -541,13 +562,13 @@ func TestMetadataAPI(t *testing.T) {
 	})
 
 	t.Run("type mismatch returns error", func(t *testing.T) {
-		metadata := map[string]MetadataValue{
-			"_int_val": IntValue(42),
-		}
-		rec := mustNewRecord(t, sk, path, seq, eol, ttl, WithMetadata(metadata))
+		rec := mustNewRecord(t, sk, path, seq, eol, ttl, WithMetadata(map[string]any{
+			"_int_val": int64(42),
+		}))
 
 		mv, err := rec.Metadata("_int_val")
 		require.NoError(t, err)
+		assert.Equal(t, MetadataKindInt, mv.Kind())
 
 		_, err = mv.AsString()
 		require.Error(t, err)
@@ -564,7 +585,7 @@ func TestMetadataAPI(t *testing.T) {
 		}
 		assert.Equal(t, 0, count)
 
-		rec = mustNewRecord(t, sk, path, seq, eol, ttl, WithMetadata(map[string]MetadataValue{}))
+		rec = mustNewRecord(t, sk, path, seq, eol, ttl, WithMetadata(map[string]any{}))
 		count = 0
 		for range rec.MetadataEntries() {
 			count++
@@ -573,12 +594,11 @@ func TestMetadataAPI(t *testing.T) {
 	})
 
 	t.Run("metadata keys sorted with standard keys in CBOR", func(t *testing.T) {
-		metadata := map[string]MetadataValue{
-			"_z":   StringValue("last"),
-			"_a":   StringValue("first"),
-			"_mid": StringValue("middle"),
-		}
-		rec := mustNewRecord(t, sk, path, seq, eol, ttl, WithMetadata(metadata))
+		rec := mustNewRecord(t, sk, path, seq, eol, ttl, WithMetadata(map[string]any{
+			"_z":   "last",
+			"_a":   "first",
+			"_mid": "middle",
+		}))
 
 		data, err := MarshalRecord(rec)
 		require.NoError(t, err)

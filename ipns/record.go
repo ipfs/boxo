@@ -51,30 +51,56 @@ type Record struct {
 	node datamodel.Node
 }
 
+// MetadataKind identifies the scalar type stored in a [MetadataValue].
+type MetadataKind int
+
+const (
+	MetadataKindInvalid MetadataKind = iota
+	MetadataKindString
+	MetadataKindBytes
+	MetadataKindInt
+	MetadataKindBool
+)
+
+func (k MetadataKind) String() string {
+	switch k {
+	case MetadataKindString:
+		return "string"
+	case MetadataKindBytes:
+		return "bytes"
+	case MetadataKindInt:
+		return "int"
+	case MetadataKindBool:
+		return "bool"
+	default:
+		return "invalid"
+	}
+}
+
 // MetadataValue wraps a single DAG-CBOR scalar stored in an IPNS record.
-// Only scalar types are currently supported: string, bytes, int64, and bool.
+// Use [MetadataValue.Kind] to inspect the type before calling a typed accessor.
 type MetadataValue struct {
 	node ipld.Node
 }
 
-// StringValue creates a string metadata value.
-func StringValue(s string) MetadataValue {
-	return MetadataValue{node: basicnode.NewString(s)}
-}
-
-// BytesValue creates a bytes metadata value.
-func BytesValue(b []byte) MetadataValue {
-	return MetadataValue{node: basicnode.NewBytes(b)}
-}
-
-// IntValue creates an integer metadata value.
-func IntValue(i int64) MetadataValue {
-	return MetadataValue{node: basicnode.NewInt(i)}
-}
-
-// BoolValue creates a boolean metadata value.
-func BoolValue(b bool) MetadataValue {
-	return MetadataValue{node: basicnode.NewBool(b)}
+// Kind returns the scalar type of this value, or [MetadataKindInvalid] for
+// the zero value.
+func (mv MetadataValue) Kind() MetadataKind {
+	if mv.node == nil {
+		return MetadataKindInvalid
+	}
+	switch mv.node.Kind() {
+	case datamodel.Kind_String:
+		return MetadataKindString
+	case datamodel.Kind_Bytes:
+		return MetadataKindBytes
+	case datamodel.Kind_Int:
+		return MetadataKindInt
+	case datamodel.Kind_Bool:
+		return MetadataKindBool
+	default:
+		return MetadataKindInvalid
+	}
 }
 
 // Metadata returns a custom metadata value by key.
@@ -336,7 +362,7 @@ const (
 type options struct {
 	v1Compatibility bool
 	embedPublicKey  *bool
-	metadata        map[string]ipld.Node
+	metadata        map[string]any
 }
 
 type Option func(*options)
@@ -354,15 +380,14 @@ func WithPublicKey(embedded bool) Option {
 }
 
 // WithMetadata sets custom metadata entries for the IPNS record.
+// Supported value types: string, []byte, int64, int, and bool.
 // Keys should be prefixed with "_" per the IPNS spec to avoid
 // collisions with future standard fields.
-func WithMetadata(metadata map[string]MetadataValue) Option {
+// Reserved IPNS field names, empty keys, and unsupported value types
+// cause [NewRecord] to return an error.
+func WithMetadata(metadata map[string]any) Option {
 	return func(o *options) {
-		m := make(map[string]ipld.Node, len(metadata))
-		for k, v := range metadata {
-			m[k] = v.node
-		}
-		o.metadata = m
+		o.metadata = metadata
 	}
 }
 
@@ -461,21 +486,22 @@ func newRecord(sk ic.PrivKey, value []byte, seq uint64, eol time.Time, ttl time.
 	}, nil
 }
 
-func createNode(value []byte, seq uint64, eol time.Time, ttl time.Duration, metadata map[string]ipld.Node) (datamodel.Node, error) {
+func createNode(value []byte, seq uint64, eol time.Time, ttl time.Duration, metadata map[string]any) (datamodel.Node, error) {
 	m := make(map[string]ipld.Node, 5+len(metadata))
 	var keys []string
 
-	for key, value := range metadata {
+	for key, val := range metadata {
 		if key == "" {
 			return nil, ErrMetadataEmptyKey
 		}
 		if _, ok := reservedKeys[key]; ok {
 			return nil, fmt.Errorf("%w: %s", ErrMetadataConflict, key)
 		}
-		if value == nil {
-			return nil, fmt.Errorf("%w: nil value for metadata key %q", ErrInvalidRecord, key)
+		node, err := anyToNode(key, val)
+		if err != nil {
+			return nil, err
 		}
-		m[key] = value
+		m[key] = node
 		keys = append(keys, key)
 	}
 
@@ -522,6 +548,27 @@ func createNode(value []byte, seq uint64, eol time.Time, ttl time.Duration, meta
 	}
 
 	return newNd.Build(), nil
+}
+
+// anyToNode converts a Go value to an IPLD node for DAG-CBOR storage.
+// Supported types: string, []byte, int64, int, and bool.
+func anyToNode(key string, val any) (ipld.Node, error) {
+	switch v := val.(type) {
+	case string:
+		return basicnode.NewString(v), nil
+	case []byte:
+		return basicnode.NewBytes(v), nil
+	case int64:
+		return basicnode.NewInt(v), nil
+	case int:
+		return basicnode.NewInt(int64(v)), nil
+	case bool:
+		return basicnode.NewBool(v), nil
+	case nil:
+		return nil, fmt.Errorf("%w: nil value for key %q", ErrInvalidRecord, key)
+	default:
+		return nil, fmt.Errorf("%w: key %q has type %T, supported types: string, []byte, int64, int, bool", ErrMetadataUnsupportedType, key, val)
+	}
 }
 
 func nodeToCBOR(node datamodel.Node) ([]byte, error) {
