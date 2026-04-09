@@ -55,6 +55,8 @@ type Record struct {
 type MetadataKind int
 
 const (
+	// MetadataKindInvalid indicates the zero value of [MetadataValue] or an
+	// unsupported DAG-CBOR kind (e.g. map, list, link).
 	MetadataKindInvalid MetadataKind = iota
 	MetadataKindString
 	MetadataKindBytes
@@ -151,7 +153,9 @@ func (rec *Record) MetadataEntries() iter.Seq2[string, MetadataValue] {
 	}
 }
 
-// AsString returns the value as a string.
+// AsString returns the value as a string, or [ErrMetadataValueNotSet] if the
+// receiver is the zero value. Returns an error if the underlying CBOR kind is
+// not a string.
 func (mv MetadataValue) AsString() (string, error) {
 	if mv.node == nil {
 		return "", ErrMetadataValueNotSet
@@ -159,7 +163,9 @@ func (mv MetadataValue) AsString() (string, error) {
 	return mv.node.AsString()
 }
 
-// AsBytes returns the value as bytes.
+// AsBytes returns the value as bytes, or [ErrMetadataValueNotSet] if the
+// receiver is the zero value. Returns an error if the underlying CBOR kind is
+// not bytes.
 func (mv MetadataValue) AsBytes() ([]byte, error) {
 	if mv.node == nil {
 		return nil, ErrMetadataValueNotSet
@@ -167,7 +173,9 @@ func (mv MetadataValue) AsBytes() ([]byte, error) {
 	return mv.node.AsBytes()
 }
 
-// AsInt returns the value as an int64.
+// AsInt returns the value as an int64, or [ErrMetadataValueNotSet] if the
+// receiver is the zero value. Returns an error if the underlying CBOR kind is
+// not an integer.
 func (mv MetadataValue) AsInt() (int64, error) {
 	if mv.node == nil {
 		return 0, ErrMetadataValueNotSet
@@ -175,7 +183,9 @@ func (mv MetadataValue) AsInt() (int64, error) {
 	return mv.node.AsInt()
 }
 
-// AsBool returns the value as a bool.
+// AsBool returns the value as a bool, or [ErrMetadataValueNotSet] if the
+// receiver is the zero value. Returns an error if the underlying CBOR kind is
+// not a boolean.
 func (mv MetadataValue) AsBool() (bool, error) {
 	if mv.node == nil {
 		return false, ErrMetadataValueNotSet
@@ -262,6 +272,9 @@ func (rec *Record) Value() (path.Path, error) {
 	return p, nil
 }
 
+// ValidityType returns the [validity type] of this record.
+//
+// [validity type]: https://specs.ipfs.tech/ipns/ipns-record/#validity-type-uint64
 func (rec *Record) ValidityType() (ValidityType, error) {
 	value, err := rec.getIntValue(cborValidityTypeKey)
 	if err != nil {
@@ -297,6 +310,9 @@ func (rec *Record) Validity() (time.Time, error) {
 	}
 }
 
+// Sequence returns the [sequence number] of this record.
+//
+// [sequence number]: https://specs.ipfs.tech/ipns/ipns-record/#sequence-uint64
 func (rec *Record) Sequence() (uint64, error) {
 	value, err := rec.getIntValue(cborSequenceKey)
 	if err != nil {
@@ -306,6 +322,9 @@ func (rec *Record) Sequence() (uint64, error) {
 	return uint64(value), nil
 }
 
+// TTL returns the [time-to-live] of this record as a [time.Duration].
+//
+// [time-to-live]: https://specs.ipfs.tech/ipns/ipns-record/#ttl-uint64
 func (rec *Record) TTL() (time.Duration, error) {
 	value, err := rec.getIntValue(cborTTLKey)
 	if err != nil {
@@ -315,6 +334,11 @@ func (rec *Record) TTL() (time.Duration, error) {
 	return time.Duration(value), nil
 }
 
+// PubKey returns the public key embedded in this record, if present.
+// Returns [ErrPublicKeyNotFound] when the record does not carry an embedded key
+// (common for Ed25519, where the key is inlined in the [IPNS Name] itself).
+//
+// [IPNS Name]: https://specs.ipfs.tech/ipns/ipns-record/#ipns-name
 func (rec *Record) PubKey() (ic.PubKey, error) {
 	if pk := rec.pb.GetPubKey(); len(pk) != 0 {
 		return ic.UnmarshalPublicKey(pk)
@@ -367,24 +391,32 @@ type options struct {
 
 type Option func(*options)
 
+// WithV1Compatibility controls whether the record includes legacy V1 protobuf
+// fields and SignatureV1 for backward compatibility with older IPNS
+// implementations. Enabled by default.
 func WithV1Compatibility(compatible bool) Option {
 	return func(o *options) {
 		o.v1Compatibility = compatible
 	}
 }
 
+// WithPublicKey controls whether the public key is embedded in the record.
+// By default, the key is embedded only for key types that are too big to be
+// inlined in a CIDv1 (e.g. RSA, ECDSA).
 func WithPublicKey(embedded bool) Option {
 	return func(o *options) {
 		o.embedPublicKey = &embedded
 	}
 }
 
-// WithMetadata sets custom metadata entries for the IPNS record.
+// WithMetadata sets custom metadata entries in the signed DAG-CBOR data of the
+// IPNS record, as described in the [Extensible Data] section of the spec.
 // Supported value types: string, []byte, int64, int, and bool.
-// Keys should be prefixed with "_" per the IPNS spec to avoid
-// collisions with future standard fields.
-// Reserved IPNS field names, empty keys, and unsupported value types
+// Keys should be prefixed with "_" to avoid collisions with future standard
+// fields. Reserved IPNS field names, empty keys, and unsupported value types
 // cause [NewRecord] to return an error.
+//
+// [Extensible Data]: https://specs.ipfs.tech/ipns/ipns-record/#extensible-data-dag-cbor
 func WithMetadata(metadata map[string]any) Option {
 	return func(o *options) {
 		o.metadata = metadata
