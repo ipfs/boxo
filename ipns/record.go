@@ -5,6 +5,7 @@ import (
 	"cmp"
 	"errors"
 	"fmt"
+	"iter"
 	"slices"
 	"strings"
 	"time"
@@ -25,7 +26,13 @@ import (
 
 var log = logging.Logger("ipns")
 
-var reservedKeys = []string{cborValueKey, cborValidityKey, cborValidityTypeKey, cborSequenceKey, cborTTLKey}
+var reservedKeys = map[string]struct{}{
+	cborValueKey:        {},
+	cborValidityKey:     {},
+	cborValidityTypeKey: {},
+	cborSequenceKey:     {},
+	cborTTLKey:          {},
+}
 
 type ValidityType int64
 
@@ -44,6 +51,8 @@ type Record struct {
 	node datamodel.Node
 }
 
+// MetadataValue wraps a single DAG-CBOR scalar stored in an IPNS record.
+// Only scalar types are currently supported: string, bytes, int64, and bool.
 type MetadataValue struct {
 	node ipld.Node
 }
@@ -72,7 +81,7 @@ func BoolValue(b bool) MetadataValue {
 // Returns ErrMetadataConflict if the key is a reserved IPNS field.
 // Returns ErrMetadataNotFound if the key doesn't exist.
 func (rec *Record) Metadata(key string) (MetadataValue, error) {
-	if slices.Contains(reservedKeys, key) {
+	if _, ok := reservedKeys[key]; ok {
 		return MetadataValue{}, fmt.Errorf("%w: %s", ErrMetadataConflict, key)
 	}
 	node, err := rec.node.LookupByString(key)
@@ -83,9 +92,37 @@ func (rec *Record) Metadata(key string) (MetadataValue, error) {
 }
 
 // MetadataExists reports whether a custom metadata key exists in the record.
+// Returns false for reserved IPNS field names.
 func (rec *Record) MetadataExists(key string) bool {
+	if _, ok := reservedKeys[key]; ok {
+		return false
+	}
 	_, err := rec.node.LookupByString(key)
 	return err == nil
+}
+
+// MetadataEntries returns an iterator over all custom metadata key-value pairs
+// in the record, skipping reserved IPNS fields.
+func (rec *Record) MetadataEntries() iter.Seq2[string, MetadataValue] {
+	return func(yield func(string, MetadataValue) bool) {
+		mi := rec.node.MapIterator()
+		for !mi.Done() {
+			k, v, err := mi.Next()
+			if err != nil {
+				return
+			}
+			key, err := k.AsString()
+			if err != nil {
+				continue
+			}
+			if _, ok := reservedKeys[key]; ok {
+				continue
+			}
+			if !yield(key, MetadataValue{node: v}) {
+				return
+			}
+		}
+	}
 }
 
 // AsString returns the value as a string.
@@ -417,7 +454,7 @@ func createNode(value []byte, seq uint64, eol time.Time, ttl time.Duration, meta
 	var keys []string
 
 	for key, value := range metadata {
-		if slices.Contains(reservedKeys, key) {
+		if _, ok := reservedKeys[key]; ok {
 			return nil, fmt.Errorf("%w: %s", ErrMetadataConflict, key)
 		}
 		if value == nil {

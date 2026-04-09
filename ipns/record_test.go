@@ -375,8 +375,7 @@ func TestMetadataAPI(t *testing.T) {
 	seq := uint64(1)
 	ttl := time.Hour
 
-	t.Run("Validate setting and retrieving supported types", func(t *testing.T) {
-		// custom metadata - one bytes entry and one map entry
+	t.Run("set and get all types", func(t *testing.T) {
 		metadata := map[string]MetadataValue{
 			"_metadata_str":   StringValue("test"),
 			"_metadata_int":   IntValue(1212),
@@ -386,14 +385,12 @@ func TestMetadataAPI(t *testing.T) {
 
 		rec := mustNewRecord(t, sk, path, seq, eol, ttl, WithMetadata(metadata))
 
-		// validate if metadata can be retrieved
-
 		require.False(t, rec.MetadataExists("non_existent_key"))
 		require.True(t, rec.MetadataExists("_metadata_str"))
 
 		_, err := rec.Metadata("_non_existent_key")
-
 		require.ErrorIs(t, err, ErrMetadataNotFound)
+
 		mv, err := rec.Metadata("_metadata_str")
 		require.NoError(t, err)
 		valueStr, err := mv.AsString()
@@ -419,8 +416,8 @@ func TestMetadataAPI(t *testing.T) {
 		assert.Equal(t, true, valueBool)
 	})
 
-	t.Run("Validate conflicting type raises error", func(t *testing.T) {
-		for _, key := range reservedKeys {
+	t.Run("reject reserved keys on write", func(t *testing.T) {
+		for key := range reservedKeys {
 			metadata := map[string]MetadataValue{
 				key: StringValue("test"),
 			}
@@ -432,16 +429,17 @@ func TestMetadataAPI(t *testing.T) {
 		}
 	})
 
-	t.Run("Reading reserved keys via Metadata returns error", func(t *testing.T) {
+	t.Run("reject reserved keys on read", func(t *testing.T) {
 		rec := mustNewRecord(t, sk, path, seq, eol, ttl)
 
-		for _, key := range reservedKeys {
+		for key := range reservedKeys {
 			_, err := rec.Metadata(key)
 			require.ErrorIs(t, err, ErrMetadataConflict, "Metadata(%q) should return ErrMetadataConflict", key)
+			require.False(t, rec.MetadataExists(key), "MetadataExists(%q) should return false for reserved key", key)
 		}
 	})
 
-	t.Run("Metadata survives marshal/unmarshal roundtrip", func(t *testing.T) {
+	t.Run("marshal/unmarshal roundtrip", func(t *testing.T) {
 		metadata := map[string]MetadataValue{
 			"_metadata_str":   StringValue("test"),
 			"_metadata_int":   IntValue(1212),
@@ -482,5 +480,38 @@ func TestMetadataAPI(t *testing.T) {
 		assert.Equal(t, true, bl)
 
 		require.False(t, rec2.MetadataExists("non_existent_key"))
+	})
+
+	t.Run("iterate metadata entries", func(t *testing.T) {
+		metadata := map[string]MetadataValue{
+			"_custom_a": StringValue("alpha"),
+			"_custom_b": IntValue(42),
+		}
+
+		rec := mustNewRecord(t, sk, path, seq, eol, ttl, WithMetadata(metadata))
+
+		got := make(map[string]MetadataValue)
+		for k, v := range rec.MetadataEntries() {
+			got[k] = v
+		}
+		require.Len(t, got, 2)
+
+		s, err := got["_custom_a"].AsString()
+		require.NoError(t, err)
+		assert.Equal(t, "alpha", s)
+
+		i, err := got["_custom_b"].AsInt()
+		require.NoError(t, err)
+		assert.Equal(t, int64(42), i)
+	})
+
+	t.Run("iterate empty metadata", func(t *testing.T) {
+		rec := mustNewRecord(t, sk, path, seq, eol, ttl)
+
+		count := 0
+		for range rec.MetadataEntries() {
+			count++
+		}
+		assert.Equal(t, 0, count)
 	})
 }
