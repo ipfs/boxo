@@ -1640,6 +1640,290 @@ func TestMaxRangeRequestFileSize(t *testing.T) {
 	})
 }
 
+func TestMaxDeserializedResponseSize(t *testing.T) {
+	backend, root := newMockBackend(t, "fixtures.car")
+
+	// "fnord" file is 5 bytes, lives at subdir/fnord
+	p, err := path.Join(path.FromCid(root), "subdir", "fnord")
+	require.NoError(t, err)
+
+	ctx := t.Context()
+
+	k, err := backend.resolvePathNoRootsReturned(ctx, p)
+	require.NoError(t, err)
+
+	t.Run("GET exceeding limit returns 501", func(t *testing.T) {
+		ts := newTestServerWithConfig(t, backend, Config{
+			DeserializedResponses:       true,
+			MaxDeserializedResponseSize: 4, // smaller than "fnord" (5 bytes)
+		})
+
+		req, err := http.NewRequest(http.MethodGet, ts.URL+k.String(), nil)
+		require.NoError(t, err)
+
+		res := mustDoWithoutRedirect(t, req)
+		require.Equal(t, http.StatusNotImplemented, res.StatusCode)
+
+		body, err := io.ReadAll(res.Body)
+		require.NoError(t, err)
+		require.Contains(t, string(body), "not supported for content larger than 4 bytes")
+		require.Contains(t, string(body), "https://docs.ipfs.tech/install/")
+	})
+
+	t.Run("range request for file exceeding limit returns 501", func(t *testing.T) {
+		ts := newTestServerWithConfig(t, backend, Config{
+			DeserializedResponses:       true,
+			MaxDeserializedResponseSize: 4, // smaller than "fnord" (5 bytes)
+		})
+
+		// Even though range is only 2 bytes, the file itself is 5 bytes
+		req, err := http.NewRequest(http.MethodGet, ts.URL+k.String(), nil)
+		require.NoError(t, err)
+		req.Header.Set("Range", "bytes=0-1")
+
+		res := mustDoWithoutRedirect(t, req)
+		require.Equal(t, http.StatusNotImplemented, res.StatusCode)
+
+		body, err := io.ReadAll(res.Body)
+		require.NoError(t, err)
+		require.Contains(t, string(body), "not supported for content larger than 4 bytes")
+	})
+
+	t.Run("HEAD exceeding limit returns 501", func(t *testing.T) {
+		ts := newTestServerWithConfig(t, backend, Config{
+			DeserializedResponses:       true,
+			MaxDeserializedResponseSize: 4,
+		})
+
+		req, err := http.NewRequest(http.MethodHead, ts.URL+k.String(), nil)
+		require.NoError(t, err)
+
+		res := mustDoWithoutRedirect(t, req)
+		require.Equal(t, http.StatusNotImplemented, res.StatusCode)
+	})
+
+	t.Run("GET within limit works", func(t *testing.T) {
+		ts := newTestServerWithConfig(t, backend, Config{
+			DeserializedResponses:       true,
+			MaxDeserializedResponseSize: 1000,
+		})
+
+		req, err := http.NewRequest(http.MethodGet, ts.URL+k.String(), nil)
+		require.NoError(t, err)
+
+		res := mustDoWithoutRedirect(t, req)
+		require.Equal(t, http.StatusOK, res.StatusCode)
+
+		body, err := io.ReadAll(res.Body)
+		require.NoError(t, err)
+		require.Equal(t, "fnord", string(body))
+	})
+
+	t.Run("disabled when set to 0", func(t *testing.T) {
+		ts := newTestServerWithConfig(t, backend, Config{
+			DeserializedResponses:       true,
+			MaxDeserializedResponseSize: 0,
+		})
+
+		req, err := http.NewRequest(http.MethodGet, ts.URL+k.String(), nil)
+		require.NoError(t, err)
+
+		res := mustDoWithoutRedirect(t, req)
+		require.Equal(t, http.StatusOK, res.StatusCode)
+
+		body, err := io.ReadAll(res.Body)
+		require.NoError(t, err)
+		require.Equal(t, "fnord", string(body))
+	})
+
+	t.Run("raw format query param bypasses limit", func(t *testing.T) {
+		ts := newTestServerWithConfig(t, backend, Config{
+			DeserializedResponses:       true,
+			MaxDeserializedResponseSize: 1, // 1 byte, way below any content
+		})
+
+		req, err := http.NewRequest(http.MethodGet, ts.URL+k.String()+"?format=raw", nil)
+		require.NoError(t, err)
+
+		res := mustDoWithoutRedirect(t, req)
+		require.Equal(t, http.StatusOK, res.StatusCode)
+	})
+
+	t.Run("raw Accept header bypasses limit", func(t *testing.T) {
+		ts := newTestServerWithConfig(t, backend, Config{
+			DeserializedResponses:       true,
+			MaxDeserializedResponseSize: 1,
+		})
+
+		req, err := http.NewRequest(http.MethodGet, ts.URL+k.String(), nil)
+		require.NoError(t, err)
+		req.Header.Set("Accept", "application/vnd.ipld.raw")
+
+		res := mustDoWithoutRedirect(t, req)
+		require.Equal(t, http.StatusOK, res.StatusCode)
+	})
+
+	t.Run("car format query param bypasses limit", func(t *testing.T) {
+		ts := newTestServerWithConfig(t, backend, Config{
+			DeserializedResponses:       true,
+			MaxDeserializedResponseSize: 1,
+		})
+
+		req, err := http.NewRequest(http.MethodGet, ts.URL+k.String()+"?format=car", nil)
+		require.NoError(t, err)
+
+		res := mustDoWithoutRedirect(t, req)
+		require.Equal(t, http.StatusOK, res.StatusCode)
+	})
+
+	t.Run("car Accept header bypasses limit", func(t *testing.T) {
+		ts := newTestServerWithConfig(t, backend, Config{
+			DeserializedResponses:       true,
+			MaxDeserializedResponseSize: 1,
+		})
+
+		req, err := http.NewRequest(http.MethodGet, ts.URL+k.String(), nil)
+		require.NoError(t, err)
+		req.Header.Set("Accept", "application/vnd.ipld.car")
+
+		res := mustDoWithoutRedirect(t, req)
+		require.Equal(t, http.StatusOK, res.StatusCode)
+	})
+}
+
+func TestMaxUnixFSDAGResponseSize(t *testing.T) {
+	backend, root := newMockBackend(t, "fixtures.car")
+
+	// "fnord" file is 5 bytes, lives at subdir/fnord
+	p, err := path.Join(path.FromCid(root), "subdir", "fnord")
+	require.NoError(t, err)
+
+	ctx := t.Context()
+
+	k, err := backend.resolvePathNoRootsReturned(ctx, p)
+	require.NoError(t, err)
+
+	t.Run("deserialized GET exceeding limit returns 501", func(t *testing.T) {
+		ts := newTestServerWithConfig(t, backend, Config{
+			DeserializedResponses:    true,
+			MaxUnixFSDAGResponseSize: 4,
+		})
+
+		req, err := http.NewRequest(http.MethodGet, ts.URL+k.String(), nil)
+		require.NoError(t, err)
+
+		res := mustDoWithoutRedirect(t, req)
+		require.Equal(t, http.StatusNotImplemented, res.StatusCode)
+
+		body, err := io.ReadAll(res.Body)
+		require.NoError(t, err)
+		require.Contains(t, string(body), "not supported for content larger than 4 bytes")
+		require.Contains(t, string(body), "https://docs.ipfs.tech/install/")
+	})
+
+	t.Run("deserialized range request for file exceeding limit returns 501", func(t *testing.T) {
+		ts := newTestServerWithConfig(t, backend, Config{
+			DeserializedResponses:    true,
+			MaxUnixFSDAGResponseSize: 4,
+		})
+
+		req, err := http.NewRequest(http.MethodGet, ts.URL+k.String(), nil)
+		require.NoError(t, err)
+		req.Header.Set("Range", "bytes=0-1")
+
+		res := mustDoWithoutRedirect(t, req)
+		require.Equal(t, http.StatusNotImplemented, res.StatusCode)
+	})
+
+	t.Run("raw format exceeding limit returns 501", func(t *testing.T) {
+		ts := newTestServerWithConfig(t, backend, Config{
+			DeserializedResponses:    true,
+			MaxUnixFSDAGResponseSize: 4,
+		})
+
+		req, err := http.NewRequest(http.MethodGet, ts.URL+k.String()+"?format=raw", nil)
+		require.NoError(t, err)
+
+		res := mustDoWithoutRedirect(t, req)
+		require.Equal(t, http.StatusNotImplemented, res.StatusCode)
+	})
+
+	t.Run("raw Accept header exceeding limit returns 501", func(t *testing.T) {
+		ts := newTestServerWithConfig(t, backend, Config{
+			DeserializedResponses:    true,
+			MaxUnixFSDAGResponseSize: 4,
+		})
+
+		req, err := http.NewRequest(http.MethodGet, ts.URL+k.String(), nil)
+		require.NoError(t, err)
+		req.Header.Set("Accept", "application/vnd.ipld.raw")
+
+		res := mustDoWithoutRedirect(t, req)
+		require.Equal(t, http.StatusNotImplemented, res.StatusCode)
+	})
+
+	t.Run("car format exceeding limit returns 501", func(t *testing.T) {
+		ts := newTestServerWithConfig(t, backend, Config{
+			DeserializedResponses:    true,
+			MaxUnixFSDAGResponseSize: 4,
+		})
+
+		req, err := http.NewRequest(http.MethodGet, ts.URL+k.String()+"?format=car", nil)
+		require.NoError(t, err)
+
+		res := mustDoWithoutRedirect(t, req)
+		require.Equal(t, http.StatusNotImplemented, res.StatusCode)
+	})
+
+	t.Run("car Accept header exceeding limit returns 501", func(t *testing.T) {
+		ts := newTestServerWithConfig(t, backend, Config{
+			DeserializedResponses:    true,
+			MaxUnixFSDAGResponseSize: 4,
+		})
+
+		req, err := http.NewRequest(http.MethodGet, ts.URL+k.String(), nil)
+		require.NoError(t, err)
+		req.Header.Set("Accept", "application/vnd.ipld.car")
+
+		res := mustDoWithoutRedirect(t, req)
+		require.Equal(t, http.StatusNotImplemented, res.StatusCode)
+	})
+
+	t.Run("GET within limit works", func(t *testing.T) {
+		ts := newTestServerWithConfig(t, backend, Config{
+			DeserializedResponses:    true,
+			MaxUnixFSDAGResponseSize: 1000,
+		})
+
+		req, err := http.NewRequest(http.MethodGet, ts.URL+k.String(), nil)
+		require.NoError(t, err)
+
+		res := mustDoWithoutRedirect(t, req)
+		require.Equal(t, http.StatusOK, res.StatusCode)
+
+		body, err := io.ReadAll(res.Body)
+		require.NoError(t, err)
+		require.Equal(t, "fnord", string(body))
+	})
+
+	t.Run("disabled when set to 0", func(t *testing.T) {
+		ts := newTestServerWithConfig(t, backend, Config{
+			DeserializedResponses:    true,
+			MaxUnixFSDAGResponseSize: 0,
+		})
+
+		req, err := http.NewRequest(http.MethodGet, ts.URL+k.String(), nil)
+		require.NoError(t, err)
+
+		res := mustDoWithoutRedirect(t, req)
+		require.Equal(t, http.StatusOK, res.StatusCode)
+
+		body, err := io.ReadAll(res.Body)
+		require.NoError(t, err)
+		require.Equal(t, "fnord", string(body))
+	})
+}
+
 func TestValidateConfig_MaxRequestDuration(t *testing.T) {
 	t.Parallel()
 

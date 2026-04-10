@@ -28,6 +28,13 @@ func (i *handler) serveTAR(ctx context.Context, w http.ResponseWriter, r *http.R
 	defer file.Close()
 
 	setIpfsRootsHeader(w, rq, &pathMetadata)
+
+	if i.config.MaxUnixFSDAGResponseSize > 0 {
+		if sz, err := file.Size(); err == nil && i.exceedsMaxUnixFSDAGResponseSize(w, r, sz) {
+			return false
+		}
+	}
+
 	rootCid := pathMetadata.LastSegment.RootCid()
 
 	// Set Cache-Control and read optional Last-Modified time

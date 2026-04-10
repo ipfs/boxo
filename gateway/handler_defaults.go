@@ -93,6 +93,25 @@ func (i *handler) serveDefaults(ctx context.Context, w http.ResponseWriter, r *h
 
 	setIpfsRootsHeader(w, rq, &pathMetadata)
 
+	// Check content size limits before streaming any data.
+	// Size comes from the UnixFS root block (no child blocks fetched).
+	// Applies to both regular and range requests: if the underlying file
+	// exceeds the limit, even a small byte range is rejected.
+	{
+		var sz int64
+		if headResp != nil {
+			sz = headResp.bytesSize
+		} else {
+			sz = getResp.bytesSize
+		}
+		if i.exceedsMaxUnixFSDAGResponseSize(w, r, sz) {
+			return false
+		}
+		if i.exceedsMaxDeserializedResponseSize(w, r, sz) {
+			return false
+		}
+	}
+
 	// On deserialized responses, we prefer Last-Modified from pathMetadata
 	// (mtime in UnixFS 1.5 DAG). This also applies to /ipns/, because value
 	// from dag-pb, if present, is more meaningful than lastMod inferred from

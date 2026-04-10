@@ -1125,3 +1125,27 @@ func (i *handler) getTemplateGlobalData(r *http.Request, contentPath path.Path) 
 func (i *handler) webError(w http.ResponseWriter, r *http.Request, err error, defaultCode int) {
 	webError(w, r, i.config, err, defaultCode)
 }
+
+// exceedsMaxUnixFSDAGResponseSize checks whether sz exceeds the configured
+// MaxUnixFSDAGResponseSize. If it does, it writes a 501 error and returns true.
+// Returns false (no-op) when the limit is disabled or not exceeded.
+func (i *handler) exceedsMaxUnixFSDAGResponseSize(w http.ResponseWriter, r *http.Request, sz int64) bool {
+	if i.config.MaxUnixFSDAGResponseSize > 0 && sz > i.config.MaxUnixFSDAGResponseSize {
+		err := fmt.Errorf("responses are not supported for content larger than %d bytes: for large content, run your own IPFS node (https://docs.ipfs.tech/install/)", i.config.MaxUnixFSDAGResponseSize)
+		i.webError(w, r, err, http.StatusNotImplemented)
+		return true
+	}
+	return false
+}
+
+// exceedsMaxDeserializedResponseSize checks whether sz exceeds the configured
+// MaxDeserializedResponseSize. If it does, it writes a 501 error and returns true.
+// Returns false (no-op) when the limit is disabled or not exceeded.
+func (i *handler) exceedsMaxDeserializedResponseSize(w http.ResponseWriter, r *http.Request, sz int64) bool {
+	if i.config.MaxDeserializedResponseSize > 0 && sz > i.config.MaxDeserializedResponseSize {
+		err := fmt.Errorf("deserialized responses are not supported for content larger than %d bytes: for large content, run your own IPFS node (https://docs.ipfs.tech/install/)", i.config.MaxDeserializedResponseSize)
+		i.webError(w, r, err, http.StatusNotImplemented)
+		return true
+	}
+	return false
+}

@@ -44,6 +44,10 @@ func (i *handler) serveRawBlock(ctx context.Context, w http.ResponseWriter, r *h
 		return false
 	}
 
+	if i.exceedsMaxUnixFSDAGResponseSize(w, r, sz) {
+		return false
+	}
+
 	if !i.seekToStartOfFirstRange(w, r, data, sz) {
 		return false
 	}

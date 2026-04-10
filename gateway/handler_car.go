@@ -73,6 +73,21 @@ func (i *handler) serveCAR(ctx context.Context, w http.ResponseWriter, r *http.R
 		return false
 	}
 
+	// Check DAG size limit before streaming the CAR. This requires a
+	// lightweight Head call; the root block is cached in the blockstore
+	// so GetCAR will not re-fetch it from the network.
+	if i.config.MaxUnixFSDAGResponseSize > 0 {
+		_, headResp, headErr := i.backend.Head(ctx, rq.immutablePath)
+		if headErr == nil {
+			sz := headResp.bytesSize
+			headResp.Close()
+			if i.exceedsMaxUnixFSDAGResponseSize(w, r, sz) {
+				return false
+			}
+		}
+		// If Head fails, let GetCAR surface the error with proper handling.
+	}
+
 	md, carFile, err := i.backend.GetCAR(ctx, rq.immutablePath, params)
 	if !i.handleRequestErrors(w, r, rq.contentPath, err) {
 		return false

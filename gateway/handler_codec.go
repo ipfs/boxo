@@ -78,6 +78,10 @@ func (i *handler) serveCodec(ctx context.Context, w http.ResponseWriter, r *http
 		return false
 	}
 
+	if i.exceedsMaxUnixFSDAGResponseSize(w, r, blockSize) {
+		return false
+	}
+
 	return i.renderCodec(ctx, w, r, rq, blockSize, data)
 }
 
