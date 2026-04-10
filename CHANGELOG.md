@@ -16,8 +16,8 @@ The following emojis are used to highlight certain changes:
 
 ### Added
 
-- `gateway`: `Config.MaxDeserializedResponseSize` allows setting a maximum file/directory size for deserialized gateway responses. Content exceeding this limit returns `501 Not Implemented`, directing users to run their own IPFS node. Trustless response formats (`application/vnd.ipld.raw`, `application/vnd.ipld.car`) are not affected. The size is read from the UnixFS root block, so no extra block fetches are needed for the check. [#1138](https://github.com/ipfs/boxo/pull/1138)
-- `gateway`: `Config.MaxUnixFSDAGResponseSize` allows setting a maximum content size applied to all response formats (deserialized, raw blocks, CAR, TAR). Content exceeding this limit returns `501 Not Implemented`. For most handlers the check reuses size information already available in the request path; for CAR responses a lightweight `Head` call is made only when the limit is configured. [#1138](https://github.com/ipfs/boxo/pull/1138)
+- `gateway`: `Config.MaxDeserializedResponseSize` allows setting a maximum file/directory size for deserialized gateway responses. Content exceeding this limit returns `410 Gone`, directing users to run their own IPFS node. Trustless response formats (`application/vnd.ipld.raw`, `application/vnd.ipld.car`) are not affected. The size is read from the UnixFS root block, so no extra block fetches are needed for the check. [#1138](https://github.com/ipfs/boxo/pull/1138)
+- `gateway`: `Config.MaxUnixFSDAGResponseSize` allows setting a maximum content size applied to all response formats (deserialized, raw blocks, CAR, TAR). Content exceeding this limit returns `410 Gone`. For most handlers the check reuses size information already available in the request path; for CAR responses a lightweight `Head` call is made only when the limit is configured. [#1138](https://github.com/ipfs/boxo/pull/1138)
 
 ### Changed
 

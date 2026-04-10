@@ -1652,7 +1652,7 @@ func TestMaxDeserializedResponseSize(t *testing.T) {
 	k, err := backend.resolvePathNoRootsReturned(ctx, p)
 	require.NoError(t, err)
 
-	t.Run("GET exceeding limit returns 501", func(t *testing.T) {
+	t.Run("GET exceeding limit returns 410", func(t *testing.T) {
 		ts := newTestServerWithConfig(t, backend, Config{
 			DeserializedResponses:       true,
 			MaxDeserializedResponseSize: 4, // smaller than "fnord" (5 bytes)
@@ -1662,7 +1662,8 @@ func TestMaxDeserializedResponseSize(t *testing.T) {
 		require.NoError(t, err)
 
 		res := mustDoWithoutRedirect(t, req)
-		require.Equal(t, http.StatusNotImplemented, res.StatusCode)
+		require.Equal(t, http.StatusGone, res.StatusCode)
+		require.Equal(t, cacheControlSizeLimit, res.Header.Get("Cache-Control"))
 
 		body, err := io.ReadAll(res.Body)
 		require.NoError(t, err)
@@ -1670,7 +1671,7 @@ func TestMaxDeserializedResponseSize(t *testing.T) {
 		require.Contains(t, string(body), "https://docs.ipfs.tech/install/")
 	})
 
-	t.Run("range request for file exceeding limit returns 501", func(t *testing.T) {
+	t.Run("range request for file exceeding limit returns 410", func(t *testing.T) {
 		ts := newTestServerWithConfig(t, backend, Config{
 			DeserializedResponses:       true,
 			MaxDeserializedResponseSize: 4, // smaller than "fnord" (5 bytes)
@@ -1682,14 +1683,14 @@ func TestMaxDeserializedResponseSize(t *testing.T) {
 		req.Header.Set("Range", "bytes=0-1")
 
 		res := mustDoWithoutRedirect(t, req)
-		require.Equal(t, http.StatusNotImplemented, res.StatusCode)
+		require.Equal(t, http.StatusGone, res.StatusCode)
 
 		body, err := io.ReadAll(res.Body)
 		require.NoError(t, err)
 		require.Contains(t, string(body), "not supported for content larger than 4 bytes")
 	})
 
-	t.Run("HEAD exceeding limit returns 501", func(t *testing.T) {
+	t.Run("HEAD exceeding limit returns 410", func(t *testing.T) {
 		ts := newTestServerWithConfig(t, backend, Config{
 			DeserializedResponses:       true,
 			MaxDeserializedResponseSize: 4,
@@ -1699,7 +1700,7 @@ func TestMaxDeserializedResponseSize(t *testing.T) {
 		require.NoError(t, err)
 
 		res := mustDoWithoutRedirect(t, req)
-		require.Equal(t, http.StatusNotImplemented, res.StatusCode)
+		require.Equal(t, http.StatusGone, res.StatusCode)
 	})
 
 	t.Run("GET within limit works", func(t *testing.T) {
@@ -1803,7 +1804,7 @@ func TestMaxUnixFSDAGResponseSize(t *testing.T) {
 	k, err := backend.resolvePathNoRootsReturned(ctx, p)
 	require.NoError(t, err)
 
-	t.Run("deserialized GET exceeding limit returns 501", func(t *testing.T) {
+	t.Run("deserialized GET exceeding limit returns 410", func(t *testing.T) {
 		ts := newTestServerWithConfig(t, backend, Config{
 			DeserializedResponses:    true,
 			MaxUnixFSDAGResponseSize: 4,
@@ -1813,7 +1814,8 @@ func TestMaxUnixFSDAGResponseSize(t *testing.T) {
 		require.NoError(t, err)
 
 		res := mustDoWithoutRedirect(t, req)
-		require.Equal(t, http.StatusNotImplemented, res.StatusCode)
+		require.Equal(t, http.StatusGone, res.StatusCode)
+		require.Equal(t, cacheControlSizeLimit, res.Header.Get("Cache-Control"))
 
 		body, err := io.ReadAll(res.Body)
 		require.NoError(t, err)
@@ -1821,7 +1823,7 @@ func TestMaxUnixFSDAGResponseSize(t *testing.T) {
 		require.Contains(t, string(body), "https://docs.ipfs.tech/install/")
 	})
 
-	t.Run("deserialized range request for file exceeding limit returns 501", func(t *testing.T) {
+	t.Run("deserialized range request for file exceeding limit returns 410", func(t *testing.T) {
 		ts := newTestServerWithConfig(t, backend, Config{
 			DeserializedResponses:    true,
 			MaxUnixFSDAGResponseSize: 4,
@@ -1832,10 +1834,10 @@ func TestMaxUnixFSDAGResponseSize(t *testing.T) {
 		req.Header.Set("Range", "bytes=0-1")
 
 		res := mustDoWithoutRedirect(t, req)
-		require.Equal(t, http.StatusNotImplemented, res.StatusCode)
+		require.Equal(t, http.StatusGone, res.StatusCode)
 	})
 
-	t.Run("raw format exceeding limit returns 501", func(t *testing.T) {
+	t.Run("raw format exceeding limit returns 410", func(t *testing.T) {
 		ts := newTestServerWithConfig(t, backend, Config{
 			DeserializedResponses:    true,
 			MaxUnixFSDAGResponseSize: 4,
@@ -1845,10 +1847,10 @@ func TestMaxUnixFSDAGResponseSize(t *testing.T) {
 		require.NoError(t, err)
 
 		res := mustDoWithoutRedirect(t, req)
-		require.Equal(t, http.StatusNotImplemented, res.StatusCode)
+		require.Equal(t, http.StatusGone, res.StatusCode)
 	})
 
-	t.Run("raw Accept header exceeding limit returns 501", func(t *testing.T) {
+	t.Run("raw Accept header exceeding limit returns 410", func(t *testing.T) {
 		ts := newTestServerWithConfig(t, backend, Config{
 			DeserializedResponses:    true,
 			MaxUnixFSDAGResponseSize: 4,
@@ -1859,10 +1861,10 @@ func TestMaxUnixFSDAGResponseSize(t *testing.T) {
 		req.Header.Set("Accept", "application/vnd.ipld.raw")
 
 		res := mustDoWithoutRedirect(t, req)
-		require.Equal(t, http.StatusNotImplemented, res.StatusCode)
+		require.Equal(t, http.StatusGone, res.StatusCode)
 	})
 
-	t.Run("car format exceeding limit returns 501", func(t *testing.T) {
+	t.Run("car format exceeding limit returns 410", func(t *testing.T) {
 		ts := newTestServerWithConfig(t, backend, Config{
 			DeserializedResponses:    true,
 			MaxUnixFSDAGResponseSize: 4,
@@ -1872,10 +1874,10 @@ func TestMaxUnixFSDAGResponseSize(t *testing.T) {
 		require.NoError(t, err)
 
 		res := mustDoWithoutRedirect(t, req)
-		require.Equal(t, http.StatusNotImplemented, res.StatusCode)
+		require.Equal(t, http.StatusGone, res.StatusCode)
 	})
 
-	t.Run("car Accept header exceeding limit returns 501", func(t *testing.T) {
+	t.Run("car Accept header exceeding limit returns 410", func(t *testing.T) {
 		ts := newTestServerWithConfig(t, backend, Config{
 			DeserializedResponses:    true,
 			MaxUnixFSDAGResponseSize: 4,
@@ -1886,7 +1888,7 @@ func TestMaxUnixFSDAGResponseSize(t *testing.T) {
 		req.Header.Set("Accept", "application/vnd.ipld.car")
 
 		res := mustDoWithoutRedirect(t, req)
-		require.Equal(t, http.StatusNotImplemented, res.StatusCode)
+		require.Equal(t, http.StatusGone, res.StatusCode)
 	})
 
 	t.Run("GET within limit works", func(t *testing.T) {
