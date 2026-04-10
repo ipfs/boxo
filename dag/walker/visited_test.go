@@ -189,8 +189,10 @@ func TestBloomTracker(t *testing.T) {
 
 	t.Run("FP regression at default rate", func(t *testing.T) {
 		// DefaultBloomFPRate is ~1 in 4.75M. With 100K probes the
-		// expected FP count is 100K/4.75M = ~0.02, so we should see
-		// exactly 0. Any non-zero result indicates a regression.
+		// expected FP count is ~0.02. Bloom uses random SipHash keys,
+		// so rare FPs are possible. Asserting exactly 0 causes ~2%
+		// flake rate; allowing <=2 reduces that to roughly 1 in a
+		// million while still catching real regressions.
 		const n = 100_000
 		bt, err := NewBloomTracker(uint(n), DefaultBloomFPRate)
 		require.NoError(t, err)
@@ -205,10 +207,10 @@ func TestBloomTracker(t *testing.T) {
 				fpCount++
 			}
 		}
-		t.Logf("default rate FPs: %d / %d (expected: 0 at ~1 in %d)",
+		t.Logf("default rate FPs: %d / %d (expected: ~0 at 1 in %d)",
 			fpCount, n, DefaultBloomFPRate)
-		assert.Equal(t, 0, fpCount,
-			"at ~1 in 4.75M FP rate, 100K probes should produce 0 FPs")
+		assert.LessOrEqual(t, fpCount, 2,
+			"at ~1 in 4.75M FP rate, 100K probes should produce <=2 FPs")
 	})
 }
 
