@@ -22,6 +22,8 @@ The following emojis are used to highlight certain changes:
 
 ### Fixed
 
+- `pinner/dspinner`: `RecursiveKeys` and `DirectKeys` now snapshot the pin index under the read lock and release it before emitting pins, so a slow consumer (e.g. the reprovider draining the channel at DHT speed under `Provide.Strategy=pinned*`) can no longer starve `Pin`/`Unpin`/`Flush` writers. [#1140](https://github.com/ipfs/boxo/pull/1140)
+
 ### Security
 
 
