@@ -174,7 +174,7 @@ func New(ctx context.Context, dstore ds.Datastore, dserv ipld.DAGService, opts .
 
 	data, err := dstore.Get(ctx, dirtyKey)
 	if err != nil {
-		if err == ds.ErrNotFound {
+		if errors.Is(err, ds.ErrNotFound) {
 			return p, nil
 		}
 		return nil, fmt.Errorf("cannot load dirty flag: %v", err)
@@ -849,7 +849,7 @@ func (p *pinner) removePinsForCid(ctx context.Context, c cid.Cid, mode ipfspinne
 		var pp *pin
 		pp, err = p.loadPin(ctx, pid)
 		if err != nil {
-			if err == ds.ErrNotFound {
+			if errors.Is(err, ds.ErrNotFound) {
 				p.setDirty(ctx)
 				// Fix index; remove index for pin that does not exist
 				switch mode {
