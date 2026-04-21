@@ -1419,3 +1419,55 @@ func benchmarkDetails(b *testing.B, count int, details bool) {
 		}
 	}
 }
+
+// TestStreamIndexDoesNotBlockWriters verifies that a slow (or blocked)
+// RecursiveKeys/DirectKeys consumer does not keep the pinner's read lock
+// held, which would stall Pin/Unpin/Update writers. This regressed the
+// kubo collab cluster when Provide.Strategy was set to pinned*, causing
+// convoys of stuck pin ls and ipfs add requests.
+func TestStreamIndexDoesNotBlockWriters(t *testing.T) {
+	ctx := t.Context()
+
+	dstore, dserv := makeStore()
+	p, err := New(ctx, dstore, dserv)
+	require.NoError(t, err)
+
+	initial := makeNodes(8, dserv)
+	pinNodes(initial, p, true)
+
+	for _, detailed := range []bool{false, true} {
+		t.Run(fmt.Sprintf("detailed=%v", detailed), func(t *testing.T) {
+			// Open a RecursiveKeys stream without consuming anything.
+			// Under the old implementation this held p.lock.RLock()
+			// for the channel's entire lifetime.
+			streamCtx, cancelStream := context.WithCancel(ctx)
+			defer cancelStream()
+			kch := p.RecursiveKeys(streamCtx, detailed)
+
+			// Give the producer goroutine time to reach the point where
+			// it would have held the lock in the old code path.
+			time.Sleep(50 * time.Millisecond)
+
+			// A fresh node: Pin needs p.lock.Lock().
+			newNode, _ := randNode()
+			require.NoError(t, dserv.Add(ctx, newNode))
+
+			done := make(chan error, 1)
+			go func() {
+				done <- p.Pin(ctx, newNode, true, "")
+			}()
+
+			select {
+			case err := <-done:
+				require.NoError(t, err)
+			case <-time.After(3 * time.Second):
+				t.Fatal("Pin blocked behind a RecursiveKeys stream with no consumer: streamIndex is holding p.lock.RLock for the duration of the channel")
+			}
+
+			// Drain the stream so the goroutine exits cleanly.
+			cancelStream()
+			for range kch {
+			}
+		})
+	}
+}
