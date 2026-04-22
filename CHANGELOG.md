@@ -18,9 +18,13 @@ The following emojis are used to highlight certain changes:
 
 ### Changed
 
+- `bitswap/server`: the default peer comparator now schedules peers fairly. A peer that has never been served, or has waited longer than 10s, outranks non-starved peers. Pending counts cap at 16 for ordering purposes, so peers with small wantlists no longer wait behind peers with large ones. The final tiebreak uses a per-process salted hash of peer.ID, so no peer can craft an ID that permanently outranks everyone. Engines built with `WithTaskComparator` keep their existing behavior. [#1141](https://github.com/ipfs/boxo/issues/1141)
+
 ### Removed
 
 ### Fixed
+
+- `bitswap/server`: a peer with a single pending want no longer waits behind peers with large wantlists. [#1141](https://github.com/ipfs/boxo/issues/1141)
 
 ### Security
 
