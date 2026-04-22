@@ -27,13 +27,15 @@ func (i *handler) serveTAR(ctx context.Context, w http.ResponseWriter, r *http.R
 	}
 	defer file.Close()
 
-	setIpfsRootsHeader(w, rq, &pathMetadata)
-
+	// Check size limit before setting response headers so 410 responses
+	// stay clean.
 	if i.config.MaxUnixFSDAGResponseSize > 0 {
 		if sz, err := file.Size(); err == nil && i.exceedsMaxUnixFSDAGResponseSize(w, r, sz) {
 			return false
 		}
 	}
+
+	setIpfsRootsHeader(w, rq, &pathMetadata)
 
 	rootCid := pathMetadata.LastSegment.RootCid()
 
