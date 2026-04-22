@@ -3,6 +3,7 @@ package decision
 import (
 	"hash/maphash"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/ipfs/go-peertaskqueue/peertracker"
@@ -23,9 +24,15 @@ const peerStarvationTimeout = 10 * time.Second
 // peerScheduler records the last time each peer received an envelope. The
 // fair comparator reads this state to promote peers that have waited too
 // long, or never received an envelope at all.
+//
+// lastServedAt keys peer.ID to *atomic.Int64 holding the last-served
+// nanosecond timestamp. The access pattern is read-heavy (every comparator
+// call hits isStarved, once per peer), write-rare (markServed runs once
+// per emitted envelope), and the key set churns slowly. sync.Map carries
+// the concurrent key lookup; *atomic.Int64 carries the concurrent value
+// update without further allocation after the first write per peer.
 type peerScheduler struct {
-	mu           sync.RWMutex
-	lastServedAt map[peer.ID]time.Time
+	lastServedAt sync.Map
 	// tiebreakSeed randomizes the layer-5 peer.ID tiebreak once per process.
 	// Ordering stays transitive within a run (heap invariants hold), but the
 	// winner on otherwise-identical state flips across runs, so no peer can
@@ -35,7 +42,6 @@ type peerScheduler struct {
 
 func newPeerScheduler() *peerScheduler {
 	return &peerScheduler{
-		lastServedAt: make(map[peer.ID]time.Time),
 		tiebreakSeed: maphash.MakeSeed(),
 	}
 }
@@ -46,9 +52,23 @@ func (s *peerScheduler) markServed(p peer.ID) {
 	if s == nil {
 		return
 	}
-	s.mu.Lock()
-	s.lastServedAt[p] = time.Now()
-	s.mu.Unlock()
+	s.recordServedAt(p, time.Now())
+}
+
+// recordServedAt is the test-accessible form of markServed. Splitting lets
+// tests install deterministic timestamps without bypassing the storage
+// layout.
+func (s *peerScheduler) recordServedAt(p peer.ID, t time.Time) {
+	ns := t.UnixNano()
+	if v, ok := s.lastServedAt.Load(p); ok {
+		v.(*atomic.Int64).Store(ns)
+		return
+	}
+	fresh := new(atomic.Int64)
+	fresh.Store(ns)
+	if actual, loaded := s.lastServedAt.LoadOrStore(p, fresh); loaded {
+		actual.(*atomic.Int64).Store(ns)
+	}
 }
 
 // forget drops per-peer state when a peer disconnects.
@@ -56,9 +76,7 @@ func (s *peerScheduler) forget(p peer.ID) {
 	if s == nil {
 		return
 	}
-	s.mu.Lock()
-	delete(s.lastServedAt, p)
-	s.mu.Unlock()
+	s.lastServedAt.Delete(p)
 }
 
 // isStarved reports whether the peer's wait exceeds peerStarvationTimeout.
@@ -67,13 +85,11 @@ func (s *peerScheduler) isStarved(p peer.ID, now time.Time) bool {
 	if s == nil {
 		return false
 	}
-	s.mu.RLock()
-	last, seen := s.lastServedAt[p]
-	s.mu.RUnlock()
-	if !seen {
+	v, ok := s.lastServedAt.Load(p)
+	if !ok {
 		return true
 	}
-	return now.Sub(last) > peerStarvationTimeout
+	return now.UnixNano()-v.(*atomic.Int64).Load() > int64(peerStarvationTimeout)
 }
 
 // fairPeerComparator returns a peer comparator that keeps low-pending peers

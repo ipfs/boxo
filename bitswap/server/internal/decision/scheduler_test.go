@@ -106,10 +106,7 @@ func TestFairSchedulerForgetsDisconnectedPeer(t *testing.T) {
 		t.Fatal("peer should be starved past timeout")
 	}
 	s.forget(p)
-	s.mu.RLock()
-	_, present := s.lastServedAt[p]
-	s.mu.RUnlock()
-	if present {
+	if _, present := s.lastServedAt.Load(p); present {
 		t.Fatal("scheduler still holds state for forgotten peer")
 	}
 }
@@ -154,10 +151,8 @@ func TestFairComparatorNeverServedBeatsSteady(t *testing.T) {
 // outranks a just-served peer.
 func TestFairComparatorTimeoutOverridesSteady(t *testing.T) {
 	s := newPeerScheduler()
-	s.mu.Lock()
-	s.lastServedAt[peer.ID("late")] = time.Now().Add(-peerStarvationTimeout - time.Second)
-	s.lastServedAt[peer.ID("steady")] = time.Now()
-	s.mu.Unlock()
+	s.recordServedAt(peer.ID("late"), time.Now().Add(-peerStarvationTimeout-time.Second))
+	s.recordServedAt(peer.ID("steady"), time.Now())
 	cmp := fairPeerComparator(s)
 
 	late := newTestTracker("late", 1)
@@ -174,10 +169,8 @@ func TestFairComparatorTimeoutOverridesSteady(t *testing.T) {
 func TestFairComparatorCappedPendingAndTiebreak(t *testing.T) {
 	s := newPeerScheduler()
 	now := time.Now()
-	s.mu.Lock()
-	s.lastServedAt[peer.ID("a")] = now
-	s.lastServedAt[peer.ID("b")] = now
-	s.mu.Unlock()
+	s.recordServedAt(peer.ID("a"), now)
+	s.recordServedAt(peer.ID("b"), now)
 	cmp := fairPeerComparator(s)
 
 	// 17 caps to 16, 3 stays at 3: higher capped pending wins.
@@ -219,14 +212,10 @@ func TestFairComparatorTiebreakSaltVariesAcrossSchedulers(t *testing.T) {
 		idA := peer.ID(fmt.Sprintf("peer-a-%03d", i))
 		idB := peer.ID(fmt.Sprintf("peer-b-%03d", i))
 
-		s1.mu.Lock()
-		s1.lastServedAt[idA] = now
-		s1.lastServedAt[idB] = now
-		s1.mu.Unlock()
-		s2.mu.Lock()
-		s2.lastServedAt[idA] = now
-		s2.lastServedAt[idB] = now
-		s2.mu.Unlock()
+		s1.recordServedAt(idA, now)
+		s1.recordServedAt(idB, now)
+		s2.recordServedAt(idA, now)
+		s2.recordServedAt(idB, now)
 
 		a := newTestTracker(string(idA), 100)
 		b := newTestTracker(string(idB), 100)
