@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"path"
+	"sync/atomic"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -1418,6 +1419,123 @@ func benchmarkDetails(b *testing.B, count int, details bool) {
 		for val := range pinner.RecursiveKeys(ctx, details) {
 			require.NoError(b, val.Err)
 		}
+	}
+}
+
+// panicOnQueryDatastore simulates a datastore that panics on Query
+// after being closed. cockroachdb/pebble is the real-world case: its
+// DB.NewIter panics with "pebble: closed" once the DB has been closed.
+// Used to assert that streamIndex's goroutine does not take down the
+// process when the backing datastore is torn down underneath it,
+// regardless of which datastore implementation is in use.
+type panicOnQueryDatastore struct {
+	ds.Batching
+	closed atomic.Bool
+}
+
+func (p *panicOnQueryDatastore) Query(ctx context.Context, q query.Query) (query.Results, error) {
+	if p.closed.Load() {
+		panic("datastore closed")
+	}
+	return p.Batching.Query(ctx, q)
+}
+
+func (p *panicOnQueryDatastore) close() {
+	p.closed.Store(true)
+}
+
+// TestStreamIndexRecoversFromDatastorePanic reproduces the shutdown
+// crash first observed on kubo 0.42.0-dev-f6cba67: when the daemon
+// shuts down, the datastore may close while a detached streamIndex
+// goroutine is about to call Query, and the datastore panics on use
+// after Close. The pinner does not own the datastore's lifecycle, so
+// the goroutine must convert any such panic into an error on the
+// channel instead of crashing the process.
+func TestStreamIndexRecoversFromDatastorePanic(t *testing.T) {
+	ctx := t.Context()
+
+	md := ds.NewMapDatastore()
+	wmd := dssync.MutexWrap(md)
+	inner := &batchWrap{wmd}
+	panicDS := &panicOnQueryDatastore{Batching: inner}
+
+	bstore := blockstore.NewBlockstore(panicDS)
+	bserv := bs.New(bstore, offline.Exchange(bstore))
+	dserv := mdag.NewDAGService(bserv)
+
+	p, err := New(ctx, panicDS, dserv)
+	require.NoError(t, err)
+
+	pinNodes(makeNodes(4, dserv), p, true)
+
+	// Simulate the datastore being closed from under the pinner.
+	panicDS.close()
+
+	kch := p.RecursiveKeys(ctx, false)
+	var got []ipfspin.StreamedPin
+	for sp := range kch {
+		got = append(got, sp)
+	}
+
+	require.Len(t, got, 1, "expected a single error entry, got %d", len(got))
+	require.Error(t, got[0].Err, "expected recovered panic to surface as an error on the channel")
+	require.Contains(t, got[0].Err.Error(), "pin stream interrupted", "error should name the interruption")
+	require.Contains(t, got[0].Err.Error(), "likely shutdown", "error should hint at shutdown so callers can classify it")
+}
+
+// queryRecordingDatastore records whether Query was called. Used to
+// assert that streamIndex short-circuits on a pre-cancelled ctx without
+// reaching into the datastore.
+type queryRecordingDatastore struct {
+	ds.Batching
+	queried atomic.Bool
+}
+
+func (q *queryRecordingDatastore) Query(ctx context.Context, qu query.Query) (query.Results, error) {
+	q.queried.Store(true)
+	return q.Batching.Query(ctx, qu)
+}
+
+// TestStreamIndexSkipsQueryOnCancelledContext verifies that streamIndex
+// does not issue a datastore Query when the caller's context is already
+// cancelled. This matters at shutdown: if the caller ctx is cancelled
+// before the datastore closes, we exit cleanly without racing against
+// Close.
+func TestStreamIndexSkipsQueryOnCancelledContext(t *testing.T) {
+	ctx := t.Context()
+
+	md := ds.NewMapDatastore()
+	wmd := dssync.MutexWrap(md)
+	inner := &batchWrap{wmd}
+	recDS := &queryRecordingDatastore{Batching: inner}
+
+	bstore := blockstore.NewBlockstore(recDS)
+	bserv := bs.New(bstore, offline.Exchange(bstore))
+	dserv := mdag.NewDAGService(bserv)
+
+	p, err := New(ctx, recDS, dserv)
+	require.NoError(t, err)
+	pinNodes(makeNodes(3, dserv), p, true)
+
+	// Reset the recorder so we only observe Query calls from the
+	// stream we are about to open.
+	recDS.queried.Store(false)
+
+	cancelled, cancel := context.WithCancel(ctx)
+	cancel()
+
+	kch := p.RecursiveKeys(cancelled, false)
+	var got []ipfspin.StreamedPin
+	for sp := range kch {
+		got = append(got, sp)
+	}
+
+	require.False(t, recDS.queried.Load(), "Query must not be issued on a pre-cancelled context")
+	// The channel may close with zero items (ctx.Done wins the send
+	// select) or one item carrying ctx.Canceled; both are correct. The
+	// invariant we care about is that Query was not issued.
+	for _, sp := range got {
+		require.ErrorIs(t, sp.Err, context.Canceled)
 	}
 }
 
