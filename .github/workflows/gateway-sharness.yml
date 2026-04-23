@@ -15,19 +15,19 @@ jobs:
       run:
         shell: bash
     steps:
-      - name: Setup Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: 1.26.x
       - name: Checkout boxo
-        uses: actions/checkout@v3
+        uses: actions/checkout@v6
         with:
           path: boxo
       - name: Checkout Kubo
-        uses: actions/checkout@v3
+        uses: actions/checkout@v6
         with:
           repository: ipfs/kubo
           path: kubo
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: 'kubo/go.mod'
       - name: Install Missing Tools
         run: sudo apt install -y socat net-tools fish libxml2-utils
       - name: Replace boxo in Kubo go.mod
