@@ -21,11 +21,14 @@ The following emojis are used to highlight certain changes:
 
 ### Changed
 
+- `bitswap/server`: the default peer comparator now schedules peers fairly. A peer that has never been served, or has waited longer than 10s, outranks non-starved peers. Pending counts cap at 16 for ordering purposes, so peers with small wantlists no longer wait behind peers with large ones. The final tiebreak uses a per-process salted hash of peer.ID, so no peer can craft an ID that permanently outranks everyone. Engines built with `WithTaskComparator` keep their existing behavior. [#1141](https://github.com/ipfs/boxo/issues/1141)
+
 ### Removed
 
 ### Fixed
 
 - `bitswap/network/bsnet`: `SendMessage` and `handleNewStream` now close streams in a background goroutine. Previously, `stream.Close` could hold the caller for up to `DefaultNegotiationTimeout` (10s) while `lazyClientConn.Close` waited for the remote peer to complete the multistream handshake. This saturated the bitswap `TaskWorkerCount` pool when peers were unresponsive and stopped bitswap from serving blocks to other peers. As a side effect, `SendMessage` no longer returns errors from `stream.Close`; close failures are logged at Debug. [#1142](https://github.com/ipfs/boxo/issues/1142)
+- `bitswap/server`: a peer with a single pending want no longer waits behind peers with large wantlists. [#1141](https://github.com/ipfs/boxo/issues/1141)
 - `pinner/dspinner`: `RecursiveKeys` and `DirectKeys` now snapshot the pin index under the read lock and release it before emitting pins, so a slow consumer (e.g. the reprovider draining the channel at DHT speed under `Provide.Strategy=pinned*`) can no longer starve `Pin`/`Unpin`/`Flush` writers. [#1140](https://github.com/ipfs/boxo/pull/1140)
 
 ### Security
