@@ -174,7 +174,7 @@ func New(ctx context.Context, dstore ds.Datastore, dserv ipld.DAGService, opts .
 
 	data, err := dstore.Get(ctx, dirtyKey)
 	if err != nil {
-		if err == ds.ErrNotFound {
+		if errors.Is(err, ds.ErrNotFound) {
 			return p, nil
 		}
 		return nil, fmt.Errorf("cannot load dirty flag: %v", err)
@@ -849,7 +849,7 @@ func (p *pinner) removePinsForCid(ctx context.Context, c cid.Cid, mode ipfspinne
 		var pp *pin
 		pp, err = p.loadPin(ctx, pid)
 		if err != nil {
-			if err == ds.ErrNotFound {
+			if errors.Is(err, ds.ErrNotFound) {
 				p.setDirty(ctx)
 				// Fix index; remove index for pin that does not exist
 				switch mode {
@@ -914,16 +914,37 @@ func (p *pinner) RecursiveKeys(ctx context.Context, detailed bool) <-chan ipfspi
 	return p.streamIndex(ctx, p.cidRIndex, detailed)
 }
 
+type indexEntry struct {
+	key, value string
+}
+
+// snapshotIndex reads all (key, value) pairs from an index under the read
+// lock. Callers iterate the returned slice without holding any pinner lock,
+// so a slow consumer cannot starve writers.
+//
+// The whole keyset lives in memory, which is cheap because the pin index
+// holds one entry per pin, not per block: a recursive pin covering millions
+// of blocks costs one entry (~130 B, so ~130 MB per 1M pins). Deployments
+// with >100M pins can swap the slice for a `go-dsqueue` (already vendored;
+// see `boxo/provider/reprovider.go`) to spool entries through the datastore.
+func (p *pinner) snapshotIndex(ctx context.Context, index dsindex.Indexer) ([]indexEntry, error) {
+	p.lock.RLock()
+	defer p.lock.RUnlock()
+
+	var entries []indexEntry
+	err := index.ForEach(ctx, "", func(key, value string) bool {
+		entries = append(entries, indexEntry{key, value})
+		return true
+	})
+	return entries, err
+}
+
 func (p *pinner) streamIndex(ctx context.Context, index dsindex.Indexer, detailed bool) <-chan ipfspinner.StreamedPin {
 	out := make(chan ipfspinner.StreamedPin)
 
 	go func() {
 		defer close(out)
 
-		p.lock.RLock()
-		defer p.lock.RUnlock()
-
-		cidSet := cid.NewSet()
 		send := func(sp ipfspinner.StreamedPin) (ok bool) {
 			select {
 			case <-ctx.Done():
@@ -933,21 +954,35 @@ func (p *pinner) streamIndex(ctx context.Context, index dsindex.Indexer, detaile
 			}
 		}
 
-		err := index.ForEach(ctx, "", func(key, value string) bool {
-			c, err := cid.Cast([]byte(key))
+		entries, err := p.snapshotIndex(ctx, index)
+		if err != nil {
+			send(ipfspinner.StreamedPin{Err: err})
+			return
+		}
+
+		cidSet := cid.NewSet()
+		for _, e := range entries {
+			c, err := cid.Cast([]byte(e.key))
 			if err != nil {
 				send(ipfspinner.StreamedPin{Err: err})
-				return false
+				return
+			}
+
+			if cidSet.Has(c) {
+				continue
 			}
 
 			var pin ipfspinner.Pinned
 			if detailed {
-				pp, err := p.loadPin(ctx, value)
+				pp, err := p.loadPin(ctx, e.value)
 				if err != nil {
+					if errors.Is(err, ds.ErrNotFound) {
+						// Pin removed between snapshot and load.
+						continue
+					}
 					send(ipfspinner.StreamedPin{Err: err})
-					return false
+					return
 				}
-
 				pin.Key = pp.Cid
 				pin.Mode = pp.Mode
 				pin.Name = pp.Name
@@ -955,17 +990,10 @@ func (p *pinner) streamIndex(ctx context.Context, index dsindex.Indexer, detaile
 				pin.Key = c
 			}
 
-			if !cidSet.Has(c) {
-				if !send(ipfspinner.StreamedPin{Pin: pin}) {
-					return false
-				}
-				cidSet.Add(c)
+			if !send(ipfspinner.StreamedPin{Pin: pin}) {
+				return
 			}
-			return true
-		})
-		if err != nil {
-			send(ipfspinner.StreamedPin{Err: err})
-			return
+			cidSet.Add(c)
 		}
 	}()
 

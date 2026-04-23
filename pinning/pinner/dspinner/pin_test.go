@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"path"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	bs "github.com/ipfs/boxo/blockservice"
@@ -1417,5 +1418,57 @@ func benchmarkDetails(b *testing.B, count int, details bool) {
 		for val := range pinner.RecursiveKeys(ctx, details) {
 			require.NoError(b, val.Err)
 		}
+	}
+}
+
+// TestStreamIndexDoesNotBlockWriters verifies that a slow (or blocked)
+// RecursiveKeys/DirectKeys consumer does not keep the pinner's read lock
+// held, which would stall Pin/Unpin/Update writers. This regressed the
+// kubo collab cluster when Provide.Strategy was set to pinned*, causing
+// convoys of stuck pin ls and ipfs add requests.
+//
+// Runs inside a synctest bubble so we can assert "Pin completes while a
+// RecursiveKeys consumer is parked" deterministically. Under the broken
+// code path the streamIndex goroutine would be durably blocked on send
+// while holding p.lock.RLock(), Pin would be durably blocked on Lock(),
+// and synctest would report a deadlock.
+func TestStreamIndexDoesNotBlockWriters(t *testing.T) {
+	for _, detailed := range []bool{false, true} {
+		t.Run(fmt.Sprintf("detailed=%v", detailed), func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				ctx := t.Context()
+
+				dstore, dserv := makeStore()
+				p, err := New(ctx, dstore, dserv)
+				require.NoError(t, err)
+
+				initial := makeNodes(8, dserv)
+				pinNodes(initial, p, true)
+
+				// Open a RecursiveKeys stream without consuming
+				// anything. Under the old implementation this held
+				// p.lock.RLock() for the channel's entire lifetime.
+				streamCtx, cancelStream := context.WithCancel(ctx)
+				defer cancelStream()
+				kch := p.RecursiveKeys(streamCtx, detailed)
+
+				// Wait for the streamIndex goroutine to park on its
+				// first send. With the fix it has already released
+				// p.lock.RLock() before parking.
+				synctest.Wait()
+
+				// A fresh node: Pin needs p.lock.Lock(). With the
+				// fix this returns without waiting on the parked
+				// streamIndex goroutine.
+				newNode, _ := randNode()
+				require.NoError(t, dserv.Add(ctx, newNode))
+				require.NoError(t, p.Pin(ctx, newNode, true, ""))
+
+				// Drain the stream so the goroutine exits cleanly.
+				cancelStream()
+				for range kch {
+				}
+			})
+		})
 	}
 }
