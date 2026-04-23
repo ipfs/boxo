@@ -25,6 +25,7 @@ The following emojis are used to highlight certain changes:
 
 ### Fixed
 
+- `bitswap/network/bsnet`: `SendMessage` and `handleNewStream` now close streams in a background goroutine. Previously, `stream.Close` could hold the caller for up to `DefaultNegotiationTimeout` (10s) while `lazyClientConn.Close` waited for the remote peer to complete the multistream handshake. This saturated the bitswap `TaskWorkerCount` pool when peers were unresponsive and stopped bitswap from serving blocks to other peers. As a side effect, `SendMessage` no longer returns errors from `stream.Close`; close failures are logged at Debug. [#1142](https://github.com/ipfs/boxo/issues/1142)
 - `pinner/dspinner`: `RecursiveKeys` and `DirectKeys` now snapshot the pin index under the read lock and release it before emitting pins, so a slow consumer (e.g. the reprovider draining the channel at DHT speed under `Provide.Strategy=pinned*`) can no longer starve `Pin`/`Unpin`/`Flush` writers. [#1140](https://github.com/ipfs/boxo/pull/1140)
 
 ### Security
