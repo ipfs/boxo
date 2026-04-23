@@ -954,6 +954,21 @@ func (p *pinner) streamIndex(ctx context.Context, index dsindex.Indexer, detaile
 			}
 		}
 
+		// If the backing datastore panics during enumeration,
+		// recover and surface the panic as an error on the output
+		// channel instead of crashing the process. This is
+		// datastore-implementation agnostic: any datastore may
+		// panic on use after Close (pebble being the prominent
+		// case), and the pinner does not own the datastore's
+		// lifecycle. The wording below gives the caller enough
+		// context to treat it as an expected shutdown-time
+		// interruption rather than a real failure.
+		defer func() {
+			if r := recover(); r != nil {
+				send(ipfspinner.StreamedPin{Err: fmt.Errorf("pin stream interrupted by datastore panic (likely shutdown): %v", r)})
+			}
+		}()
+
 		entries, err := p.snapshotIndex(ctx, index)
 		if err != nil {
 			send(ipfspinner.StreamedPin{Err: err})
