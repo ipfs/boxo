@@ -928,6 +928,10 @@ type indexEntry struct {
 // with >100M pins can swap the slice for a `go-dsqueue` (already vendored;
 // see `boxo/provider/reprovider.go`) to spool entries through the datastore.
 func (p *pinner) snapshotIndex(ctx context.Context, index dsindex.Indexer) ([]indexEntry, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
 	p.lock.RLock()
 	defer p.lock.RUnlock()
 

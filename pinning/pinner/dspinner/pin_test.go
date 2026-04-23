@@ -1483,6 +1483,62 @@ func TestStreamIndexRecoversFromDatastorePanic(t *testing.T) {
 	require.Contains(t, got[0].Err.Error(), "likely shutdown", "error should hint at shutdown so callers can classify it")
 }
 
+// queryRecordingDatastore records whether Query was called. Used to
+// assert that streamIndex short-circuits on a pre-cancelled ctx without
+// reaching into the datastore.
+type queryRecordingDatastore struct {
+	ds.Batching
+	queried atomic.Bool
+}
+
+func (q *queryRecordingDatastore) Query(ctx context.Context, qu query.Query) (query.Results, error) {
+	q.queried.Store(true)
+	return q.Batching.Query(ctx, qu)
+}
+
+// TestStreamIndexSkipsQueryOnCancelledContext verifies that streamIndex
+// does not issue a datastore Query when the caller's context is already
+// cancelled. This matters at shutdown: if the caller ctx is cancelled
+// before the datastore closes, we exit cleanly without racing against
+// Close.
+func TestStreamIndexSkipsQueryOnCancelledContext(t *testing.T) {
+	ctx := t.Context()
+
+	md := ds.NewMapDatastore()
+	wmd := dssync.MutexWrap(md)
+	inner := &batchWrap{wmd}
+	recDS := &queryRecordingDatastore{Batching: inner}
+
+	bstore := blockstore.NewBlockstore(recDS)
+	bserv := bs.New(bstore, offline.Exchange(bstore))
+	dserv := mdag.NewDAGService(bserv)
+
+	p, err := New(ctx, recDS, dserv)
+	require.NoError(t, err)
+	pinNodes(makeNodes(3, dserv), p, true)
+
+	// Reset the recorder so we only observe Query calls from the
+	// stream we are about to open.
+	recDS.queried.Store(false)
+
+	cancelled, cancel := context.WithCancel(ctx)
+	cancel()
+
+	kch := p.RecursiveKeys(cancelled, false)
+	var got []ipfspin.StreamedPin
+	for sp := range kch {
+		got = append(got, sp)
+	}
+
+	require.False(t, recDS.queried.Load(), "Query must not be issued on a pre-cancelled context")
+	// The channel may close with zero items (ctx.Done wins the send
+	// select) or one item carrying ctx.Canceled; both are correct. The
+	// invariant we care about is that Query was not issued.
+	for _, sp := range got {
+		require.ErrorIs(t, sp.Err, context.Canceled)
+	}
+}
+
 // TestStreamIndexDoesNotBlockWriters verifies that a slow (or blocked)
 // RecursiveKeys/DirectKeys consumer does not keep the pinner's read lock
 // held, which would stall Pin/Unpin/Update writers. This regressed the
