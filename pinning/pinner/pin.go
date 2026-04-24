@@ -79,6 +79,12 @@ func StringToMode(s string) (Mode, bool) {
 // ErrNotPinned is returned when trying to unpin items that are not pinned.
 var ErrNotPinned = errors.New("not pinned or pinned indirectly")
 
+// ErrClosed is returned by [Pinner] methods after [Pinner.Close] has been
+// called. Streaming methods ([Pinner.DirectKeys], [Pinner.RecursiveKeys],
+// [Pinner.InternalPins]) surface it as the [StreamedPin.Err] of a single
+// entry on the returned channel, which is then closed.
+var ErrClosed = errors.New("pinner closed")
+
 // A Pinner provides the necessary methods to keep track of Nodes which are
 // to be kept locally, according to a pin mode. In practice, a Pinner is in
 // charge of keeping the list of items from the local storage that should
@@ -148,6 +154,18 @@ type Pinner interface {
 	// InternalPins returns all cids kept pinned for the internal state of the
 	// pinner
 	InternalPins(ctx context.Context, detailed bool) <-chan StreamedPin
+
+	// Close releases resources held by the pinner and blocks until every
+	// in-flight operation, including streaming goroutines from DirectKeys,
+	// RecursiveKeys, and InternalPins, has returned.
+	//
+	// Close does not close the backing datastore; the caller owns that
+	// lifecycle and must keep the datastore open until Close returns.
+	//
+	// After Close returns, every other Pinner method fails fast with
+	// [ErrClosed]. Close is idempotent and safe to call from any
+	// goroutine.
+	Close() error
 }
 
 // Pinned represents CID which has been pinned with a pinning strategy.
