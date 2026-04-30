@@ -234,6 +234,8 @@ type Network struct {
 	errorTracker    *errorTracker
 	requestTracker  *requestTracker
 	cooldownTracker *cooldownTracker
+	inflight        *inflightTracker
+	breaker         *breaker
 
 	ongoingConnsLock sync.RWMutex
 	ongoingConns     map[peer.ID]struct{}
@@ -302,6 +304,9 @@ func New(host host.Host, opts ...Option) network.BitSwapNetwork {
 	cooldownTracker := newCooldownTracker(DefaultMaxBackoff)
 	htnet.cooldownTracker = cooldownTracker
 
+	htnet.inflight = newInflightTracker()
+	htnet.breaker = newBreaker()
+
 	netdialer := &net.Dialer{
 		// Timeout for connects to complete.
 		Timeout:   htnet.dialTimeout,
@@ -360,11 +365,10 @@ func New(host host.Host, opts ...Option) network.BitSwapNetwork {
 	}
 	htnet.client = c
 
-	pinger := newPinger(htnet, pingCid)
+	pinger := newPinger(htnet)
 	htnet.pinger = pinger
 
-	et := newErrorTracker(htnet)
-	htnet.errorTracker = et
+	htnet.errorTracker = newErrorTracker()
 
 	for i := 0; i < htnet.httpWorkers; i++ {
 		go htnet.httpWorker(i)
@@ -423,7 +427,11 @@ func (ht *Network) senderURLs(p peer.ID) []*senderURL {
 	if len(urls) == 0 {
 		return nil
 	}
-	return ht.cooldownTracker.fillSenderURLs(urls)
+	surls := ht.cooldownTracker.fillSenderURLs(urls)
+	for _, su := range surls {
+		su.serverErrors = ht.breaker.counter(endpointKey(su.URL.Scheme, su.URL.Host, su.SNI))
+	}
+	return surls
 }
 
 // IsHTTPPeer returns true if the peer is currently being pinged, which means
@@ -531,22 +539,29 @@ func (ht *Network) Connect(ctx context.Context, pi peer.AddrInfo) error {
 		urls = urls[0:ht.maxHTTPAddressesPerPeer]
 	}
 
-	// Try to talk to the peer by making HTTP requests to its urls and
-	// recording which ones work. This allows re-using the connections
-	// that we are about to open next time with the client. We call
-	// peer.Connected() on success.
+	// Probe each URL to confirm the gateway speaks our protocol. URLs
+	// already proven working by another peer (delegated routing returns
+	// multiple peer IDs for one gateway) skip the probe entirely and
+	// inherit the cached HEAD-support decision.
 	var workingAddrs []multiaddr.Multiaddr
 	supportsHead := true
 	for _, u := range urls {
-		// If head works we assume GET works too.
-		status, err := ht.connectToURL(ctx, pi.ID, u, "HEAD")
+		if method, ok := ht.pinger.endpointKnown(u); ok {
+			workingAddrs = append(workingAddrs, u.Multiaddress)
+			if method != http.MethodHead {
+				supportsHead = false
+			}
+			log.Debugf("skipping probe for %s: endpoint already known via another peer", u.URL)
+			continue
+		}
+
+		// If HEAD works we assume GET works too.
+		status, err := ht.connectToURL(ctx, pi.ID, u, http.MethodHead)
 		if err != nil {
 			errs = append(errs, fmt.Errorf("%s: %s", u.Multiaddress.String(), err))
-			// abort if context cancelled
 			if ctxErr := ctx.Err(); ctxErr != nil {
 				return errors.Join(errs...)
 			}
-
 			if status == http.StatusTooManyRequests {
 				continue // do not try GET, just move on.
 			}
@@ -557,8 +572,7 @@ func (ht *Network) Connect(ctx context.Context, pi peer.AddrInfo) error {
 
 		// HEAD did not work. Try GET.
 		supportsHead = false
-
-		_, err = ht.connectToURL(ctx, pi.ID, u, "GET")
+		_, err = ht.connectToURL(ctx, pi.ID, u, http.MethodGet)
 		if err != nil {
 			errs = append(errs, fmt.Errorf("%s: %s", u.Multiaddress.String(), err))
 			if ctxErr := ctx.Err(); ctxErr != nil {
@@ -659,11 +673,11 @@ func (ht *Network) DisconnectFrom(ctx context.Context, p peer.ID) error {
 	log.Debugf("disconnecting from %s", p)
 	ht.connEvtMgr.Disconnected(p) // notify everywhere that we are going offline
 
+	// stopPinging decrements per-host refcounts and, if this peer was
+	// the last user of a host, drops the host's breaker and
+	// errorTracker entries so a future reconnect starts fresh. The
+	// cooldownTracker has its own TTL cleaner and survives independently.
 	ht.pinger.stopPinging(p)
-	ht.errorTracker.stopTracking(p)
-
-	// coolDownTracker: we leave untouched. We want to keep
-	// ongoing cooldowns there in case we reconnect to this peer.
 
 	return nil
 }
@@ -750,20 +764,16 @@ func (ht *Network) httpWorker(i int) {
 				if serr != nil {
 					switch serr.Type {
 					case typeRetryLater:
-						// This error signals that we
-						// should retry but if things
-						// keep failing we consider it
-						// a serverError. When
-						// multiple urls, retries may
-						// happen on a different url.
+						// Retry-After is the gateway's "I am
+						// busy, wait" signal, not a server
+						// failure. Drop the URL from this
+						// SendMsg's retry pool so the loop
+						// terminates, but do not charge the
+						// per-host breaker: throttling must
+						// not escalate to a disconnect.
 						retryLaterErrors++
 						if retryLaterErrors%2 == 0 {
-							// we retried same CID 2 times. No luck.
-							// Increase server errors.
-							// Start ignoring urls.
-							result.err.Type = typeServer
 							urlIgnore = append(urlIgnore, u)
-							u.serverErrors.Add(1)
 						}
 						continue // retry request again
 					case typeClient:

@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -341,27 +342,12 @@ func TestBestURL(t *testing.T) {
 	}
 	// add some bogus urls to test the sorting
 	now := time.Now()
-	surls := []*senderURL{
-		{
-			ParsedURL: network.ParsedURL{
-				URL: urls[0],
-			},
-		},
-		{
-			ParsedURL: network.ParsedURL{
-				URL: urls[1],
-			},
-		},
-		{
-			ParsedURL: network.ParsedURL{
-				URL: urls[2],
-			},
-		},
-		{
-			ParsedURL: network.ParsedURL{
-				URL: urls[3],
-			},
-		},
+	surls := make([]*senderURL, len(urls))
+	for i := range urls {
+		surls[i] = &senderURL{
+			ParsedURL:    network.ParsedURL{URL: urls[i]},
+			serverErrors: new(atomic.Int64),
+		}
 	}
 
 	surls[0].cooldown.Store(now.Add(time.Second))
@@ -629,6 +615,22 @@ func TestBackOff(t *testing.T) {
 	if len(recv.donthaves) != 2 || (len(recv.blocks)+len(recv.haves)) > 0 {
 		t.Error("no blocks should have been received while on backoff")
 	}
+
+	// Retry-After is "I am busy", not "I am broken". The shared per-host
+	// breaker must not have been incremented; otherwise peer2 would have
+	// inherited a non-zero count and bestURL would have tripped the
+	// fatal disconnect path instead of returning DONT_HAVE.
+	urls := network.ExtractURLsFromPeer(htnet.host.Peerstore().PeerInfo(peer.ID()))
+	if len(urls) == 0 {
+		t.Fatal("expected at least one URL on peer")
+	}
+	hostKey := endpointKey(urls[0].URL.Scheme, urls[0].URL.Host, urls[0].SNI)
+	htnet.breaker.mu.Lock()
+	c := htnet.breaker.counters[hostKey]
+	htnet.breaker.mu.Unlock()
+	if c != nil && c.Load() != 0 {
+		t.Errorf("breaker counter for %s = %d after Retry-After cycle, want 0", hostKey, c.Load())
+	}
 }
 
 // Write a TestErrorTracking function which tests that a peer is disconnected when the treshold is crossed.
@@ -674,5 +676,94 @@ func TestErrorTracking(t *testing.T) {
 	err = recv.waitDisconnected(1)
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+// TestSharedBreakerDisconnectsAcrossPeers verifies that when one peer
+// triggers a real server error against a host shared with other peers,
+// the per-host breaker is high enough that the next SendMsg from any
+// peer using the same host disconnects too. Without sharing, each peer
+// would burn its own MaxRetries quota before disconnecting.
+func TestSharedBreakerDisconnectsAcrossPeers(t *testing.T) {
+	ctx := context.Background()
+	recv := mockReceiver(t)
+	htnet, mn := mockNetwork(t, recv)
+
+	peerA, err := mn.GenPeer()
+	if err != nil {
+		t.Fatal(err)
+	}
+	peerB, err := mn.GenPeer()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	srv := makeServer(t, 0, 0)
+	mustConnectToPeer(t, ctx, htnet, peerA, srv)
+	if err := recv.waitConnected(1); err != nil {
+		t.Fatal(err)
+	}
+	mustConnectToPeer(t, ctx, htnet, peerB, srv)
+	if err := recv.waitConnected(1); err != nil {
+		t.Fatal(err)
+	}
+
+	// Drive a real server error from peerA against the shared host. The
+	// server returns 500 with empty body which lands in the default
+	// (typeServer) arm of handleResponse and increments the breaker.
+	msg := makeWantsMessage([]cid.Cid{errorCid})
+	if err := htnet.SendMessage(ctx, peerA.ID(), msg); err != nil {
+		t.Fatal(err)
+	}
+	if err := recv.waitDisconnected(2); err != nil {
+		t.Fatalf("peerA should disconnect after typeServer trips MaxRetries: %v", err)
+	}
+
+	// Counter is shared. peerB's senderURL inherits the same pointer at
+	// MessageSender construction time; bestURL trips fatal before any
+	// HTTP request even goes out.
+	wl := makeCids(t, 0, 1)
+	if err := htnet.SendMessage(ctx, peerB.ID(), makeWantsMessage(wl)); err != nil {
+		t.Fatal(err)
+	}
+	if err := recv.waitDisconnected(2); err != nil {
+		t.Fatalf("peerB should disconnect via the per-host shared breaker: %v", err)
+	}
+}
+
+// TestTryURL_CooldownAutoExpiry verifies that a senderURL with a stale
+// (already-elapsed) cooldown deadline does not block tryURL forever.
+// fillSenderURLs only checks the deadline at construction time, so a
+// long-lived senderURL needs tryURL itself to ignore expired deadlines.
+func TestTryURL_CooldownAutoExpiry(t *testing.T) {
+	ctx := context.Background()
+	recv := mockReceiver(t)
+	htnet, mn := mockNetwork(t, recv)
+
+	p, err := mn.GenPeer()
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := makeServer(t, 0, 1)
+	mustConnectToPeer(t, ctx, htnet, p, srv)
+
+	nms, err := htnet.NewMessageSender(ctx, p.ID(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ms := nms.(*httpMsgSender)
+
+	// Stamp an already-elapsed cooldown on the senderURL.
+	ms.urls[0].cooldown.Store(time.Now().Add(-1 * time.Hour))
+
+	wantBlocks := makeCids(t, 0, 1)
+	msg := makeWantsMessage(wantBlocks)
+	if err := nms.SendMsg(ctx, msg); err != nil {
+		t.Fatal(err)
+	}
+	recv.wait(1)
+	if len(recv.blocks) != 1 {
+		t.Errorf("expected the block through despite stale cooldown; got blocks=%d donthaves=%d",
+			len(recv.blocks), len(recv.donthaves))
 	}
 }
