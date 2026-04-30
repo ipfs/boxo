@@ -1,0 +1,130 @@
+package httpnet
+
+import (
+	"context"
+	"testing"
+)
+
+// TestPingerSharesHostsAcrossPeers verifies that two peer IDs which
+// resolve to the same HTTP endpoint share one host entry (refcount 2)
+// rather than producing two independent tickers.
+func TestPingerSharesHostsAcrossPeers(t *testing.T) {
+	ctx := context.Background()
+
+	htnet, mn := mockNetwork(t, mockReceiver(t))
+	peerA, err := mn.GenPeer()
+	if err != nil {
+		t.Fatal(err)
+	}
+	peerB, err := mn.GenPeer()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// One server, two peers pointing at it.
+	srv := makeServer(t, 0, 0)
+	mustConnectToPeer(t, ctx, htnet, peerA, srv)
+	mustConnectToPeer(t, ctx, htnet, peerB, srv)
+
+	htnet.pinger.mu.Lock()
+	hosts := len(htnet.pinger.hosts)
+	var refcount int
+	for _, hp := range htnet.pinger.hosts {
+		refcount = hp.refcount
+	}
+	htnet.pinger.mu.Unlock()
+
+	if hosts != 1 {
+		t.Fatalf("got %d host entries, want 1", hosts)
+	}
+	if refcount != 2 {
+		t.Fatalf("got refcount %d, want 2", refcount)
+	}
+	if !htnet.pinger.isPinging(peerA.ID()) {
+		t.Errorf("peerA should be pinging")
+	}
+	if !htnet.pinger.isPinging(peerB.ID()) {
+		t.Errorf("peerB should be pinging")
+	}
+}
+
+// TestPingerStopReleasesRefcount verifies that disconnecting one of two
+// peers sharing a host leaves the host entry alive (refcount 1) and
+// that disconnecting the second drops it.
+func TestPingerStopReleasesRefcount(t *testing.T) {
+	ctx := context.Background()
+
+	htnet, mn := mockNetwork(t, mockReceiver(t))
+	peerA, err := mn.GenPeer()
+	if err != nil {
+		t.Fatal(err)
+	}
+	peerB, err := mn.GenPeer()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	srv := makeServer(t, 0, 0)
+	mustConnectToPeer(t, ctx, htnet, peerA, srv)
+	mustConnectToPeer(t, ctx, htnet, peerB, srv)
+
+	if err := htnet.DisconnectFrom(ctx, peerA.ID()); err != nil {
+		t.Fatal(err)
+	}
+
+	htnet.pinger.mu.Lock()
+	hostsAfterA := len(htnet.pinger.hosts)
+	var refcountAfterA int
+	for _, hp := range htnet.pinger.hosts {
+		refcountAfterA = hp.refcount
+	}
+	htnet.pinger.mu.Unlock()
+
+	if hostsAfterA != 1 {
+		t.Fatalf("after disconnecting peerA: got %d host entries, want 1", hostsAfterA)
+	}
+	if refcountAfterA != 1 {
+		t.Fatalf("after disconnecting peerA: got refcount %d, want 1", refcountAfterA)
+	}
+
+	if err := htnet.DisconnectFrom(ctx, peerB.ID()); err != nil {
+		t.Fatal(err)
+	}
+
+	htnet.pinger.mu.Lock()
+	hostsAfterB := len(htnet.pinger.hosts)
+	htnet.pinger.mu.Unlock()
+
+	if hostsAfterB != 0 {
+		t.Fatalf("after disconnecting peerB: got %d host entries, want 0", hostsAfterB)
+	}
+}
+
+// TestPingerDistinctHostsRunIndependently verifies that two peers with
+// different HTTP endpoints each get their own host entry.
+func TestPingerDistinctHostsRunIndependently(t *testing.T) {
+	ctx := context.Background()
+
+	htnet, mn := mockNetwork(t, mockReceiver(t))
+	peerA, err := mn.GenPeer()
+	if err != nil {
+		t.Fatal(err)
+	}
+	peerB, err := mn.GenPeer()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	srvA := makeServer(t, 0, 0)
+	srvB := makeServer(t, 0, 0)
+	mustConnectToPeer(t, ctx, htnet, peerA, srvA)
+	mustConnectToPeer(t, ctx, htnet, peerB, srvB)
+
+	htnet.pinger.mu.Lock()
+	hosts := len(htnet.pinger.hosts)
+	htnet.pinger.mu.Unlock()
+
+	if hosts != 2 {
+		t.Fatalf("got %d host entries, want 2", hosts)
+	}
+}

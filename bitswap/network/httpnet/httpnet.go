@@ -363,7 +363,7 @@ func New(host host.Host, opts ...Option) network.BitSwapNetwork {
 	}
 	htnet.client = c
 
-	pinger := newPinger(htnet, pingCid)
+	pinger := newPinger(htnet)
 	htnet.pinger = pinger
 
 	et := newErrorTracker(htnet)

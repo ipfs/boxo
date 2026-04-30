@@ -78,9 +78,22 @@ func (t *inflightTracker) do(key string, fn func() *inflightResult) (result *inf
 	return c.result, false
 }
 
-// inflightKey builds the singleflight key. SNI is part of the key
+// endpointKey identifies a unique HTTP endpoint. SNI is part of the key
 // because providers can advertise the same host with different SNI
 // expectations and the upstream response may differ.
+func endpointKey(scheme, host, sni string) string {
+	var sb strings.Builder
+	sb.Grow(len(scheme) + len(host) + len(sni) + 4)
+	sb.WriteString(scheme)
+	sb.WriteString("://")
+	sb.WriteString(host)
+	sb.WriteByte('|')
+	sb.WriteString(sni)
+	return sb.String()
+}
+
+// inflightKey extends endpointKey with method and CID, identifying a
+// unique HTTP request that can be coalesced across callers.
 func inflightKey(scheme, host, sni, method, cid string) string {
 	var sb strings.Builder
 	sb.Grow(len(scheme) + len(host) + len(sni) + len(method) + len(cid) + 7)
