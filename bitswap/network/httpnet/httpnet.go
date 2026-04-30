@@ -234,6 +234,7 @@ type Network struct {
 	errorTracker    *errorTracker
 	requestTracker  *requestTracker
 	cooldownTracker *cooldownTracker
+	inflight        *inflightTracker
 
 	ongoingConnsLock sync.RWMutex
 	ongoingConns     map[peer.ID]struct{}
@@ -301,6 +302,8 @@ func New(host host.Host, opts ...Option) network.BitSwapNetwork {
 
 	cooldownTracker := newCooldownTracker(DefaultMaxBackoff)
 	htnet.cooldownTracker = cooldownTracker
+
+	htnet.inflight = newInflightTracker()
 
 	netdialer := &net.Dialer{
 		// Timeout for connects to complete.
