@@ -2,7 +2,11 @@ package httpnet
 
 import (
 	"context"
+	"errors"
 	"testing"
+	"time"
+
+	"github.com/ipfs/boxo/bitswap/network"
 )
 
 // TestPingerSharesHostsAcrossPeers verifies that two peer IDs which
@@ -143,6 +147,44 @@ func TestPingerCleansSharedStateOnLastDisconnect(t *testing.T) {
 	htnet.errorTracker.mu.Unlock()
 	if errorEntries != 0 {
 		t.Errorf("errorTracker still has %d entries after last disconnect", errorEntries)
+	}
+}
+
+// TestPingerSkipsProbeOnCooldown verifies that ping() honours
+// Retry-After: when the cooldownTracker shows the host is in its
+// wait window, no HTTP probe is issued and the per-URL goroutine
+// returns errCooldownActive.
+func TestPingerSkipsProbeOnCooldown(t *testing.T) {
+	ctx := context.Background()
+
+	htnet, mn := mockNetwork(t, mockReceiver(t))
+	peerA, err := mn.GenPeer()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	srv, probes := countingProbeServer(t)
+	mustConnectToPeer(t, ctx, htnet, peerA, srv)
+
+	// Connect probed once; baseline.
+	if got := probes.Load(); got != 1 {
+		t.Fatalf("after Connect: got %d probes, want 1", got)
+	}
+
+	// Put the host on cooldown directly. ping() should skip the probe.
+	host := htnet.host.Peerstore().Addrs(peerA.ID())[0]
+	purl, err := network.ExtractHTTPAddress(host)
+	if err != nil {
+		t.Fatal(err)
+	}
+	htnet.cooldownTracker.setByDuration(purl.URL.Host, 30*time.Second)
+
+	res := htnet.pinger.ping(ctx, peerA.ID())
+	if res.Error == nil || !errors.Is(res.Error, errCooldownActive) {
+		t.Fatalf("ping during cooldown: got err %v, want errCooldownActive", res.Error)
+	}
+	if got := probes.Load(); got != 1 {
+		t.Errorf("after Ping during cooldown: got %d probes, want 1 (no new probe)", got)
 	}
 }
 

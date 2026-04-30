@@ -20,6 +20,10 @@ const pingInterval = 5 * time.Second
 // Matches the value used by the libp2p peerstore's LatencyEWMA.
 const ewmaSmoothing = 0.1
 
+// errCooldownActive is reported by ping() when a URL is skipped because
+// the host is in its Retry-After window.
+var errCooldownActive = errors.New("host is on cooldown, skipping probe")
+
 // pinger probes HTTP endpoints periodically and tracks their latency.
 //
 // State is keyed by HTTP endpoint, not by peer ID. Multiple peer IDs that
@@ -87,6 +91,15 @@ func (pngr *pinger) ping(ctx context.Context, p peer.ID) ping.Result {
 	results := make(chan ping.Result, len(urls))
 	for _, u := range urls {
 		go func(u network.ParsedURL) {
+			// Respect Retry-After: skip probes against hosts that
+			// are currently on cooldown. Caller (dontHaveTimeoutMgr)
+			// handles the resulting error by falling back to its
+			// default timeout, which message latency refines once
+			// real traffic flows.
+			if pngr.ht.cooldownTracker.onCooldown(u.URL.Host) {
+				results <- ping.Result{Error: errCooldownActive}
+				return
+			}
 			start := time.Now()
 			_, err := pngr.ht.connectToURL(ctx, p, u, method)
 			if err != nil {
