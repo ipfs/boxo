@@ -3,6 +3,7 @@ package httpnet
 import (
 	"context"
 	"errors"
+	"net/http"
 	"sync"
 	"time"
 
@@ -78,9 +79,9 @@ func (pngr *pinger) ping(ctx context.Context, p peer.ID) ping.Result {
 		return ping.Result{Error: ErrNoHTTPAddresses}
 	}
 
-	method := "GET"
+	method := http.MethodGet
 	if supportsHave(pngr.ht.host.Peerstore(), p) {
-		method = "HEAD"
+		method = http.MethodHead
 	}
 
 	results := make(chan ping.Result, len(urls))
@@ -131,6 +132,21 @@ func (pngr *pinger) recordHostLatency(u network.ParsedURL, next time.Duration) {
 	hp.recordLatency(next)
 }
 
+// endpointKnown reports whether the given URL points at an endpoint that
+// is already registered (proven working by a previous Connect). When ok
+// is true, method is the probe method captured at first registration
+// (http.MethodHead or http.MethodGet). Callers can skip a fresh probe
+// and inherit the supportsHead decision from method.
+func (pngr *pinger) endpointKnown(u network.ParsedURL) (method string, ok bool) {
+	pngr.mu.Lock()
+	defer pngr.mu.Unlock()
+	hp, ok := pngr.hosts[endpointKey(u.URL.Scheme, u.URL.Host, u.SNI)]
+	if !ok {
+		return "", false
+	}
+	return hp.method, true
+}
+
 // latency returns the average EWMA latency across all hosts that p is
 // registered against. Returns zero when p has no registered hosts or no
 // host has produced a sample yet.
@@ -170,9 +186,9 @@ func (pngr *pinger) startPinging(p peer.ID) {
 		return
 	}
 
-	method := "GET"
+	method := http.MethodGet
 	if supportsHave(pngr.ht.host.Peerstore(), p) {
-		method = "HEAD"
+		method = http.MethodHead
 	}
 
 	pngr.mu.Lock()

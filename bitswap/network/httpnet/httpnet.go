@@ -534,22 +534,30 @@ func (ht *Network) Connect(ctx context.Context, pi peer.AddrInfo) error {
 		urls = urls[0:ht.maxHTTPAddressesPerPeer]
 	}
 
-	// Try to talk to the peer by making HTTP requests to its urls and
-	// recording which ones work. This allows re-using the connections
-	// that we are about to open next time with the client. We call
-	// peer.Connected() on success.
+	// Probe each URL to confirm the gateway speaks our protocol. URLs
+	// already proven working by another peer (delegated routing routinely
+	// returns multiple peer IDs for one gateway, e.g.
+	// /dns/a-fil-http.aur.lu/tcp/443/https) skip the probe entirely and
+	// inherit the cached HEAD-support decision.
 	var workingAddrs []multiaddr.Multiaddr
 	supportsHead := true
 	for _, u := range urls {
-		// If head works we assume GET works too.
-		status, err := ht.connectToURL(ctx, pi.ID, u, "HEAD")
+		if method, ok := ht.pinger.endpointKnown(u); ok {
+			workingAddrs = append(workingAddrs, u.Multiaddress)
+			if method != http.MethodHead {
+				supportsHead = false
+			}
+			log.Debugf("skipping probe for %s: endpoint already known via another peer", u.URL)
+			continue
+		}
+
+		// If HEAD works we assume GET works too.
+		status, err := ht.connectToURL(ctx, pi.ID, u, http.MethodHead)
 		if err != nil {
 			errs = append(errs, fmt.Errorf("%s: %s", u.Multiaddress.String(), err))
-			// abort if context cancelled
 			if ctxErr := ctx.Err(); ctxErr != nil {
 				return errors.Join(errs...)
 			}
-
 			if status == http.StatusTooManyRequests {
 				continue // do not try GET, just move on.
 			}
@@ -560,8 +568,7 @@ func (ht *Network) Connect(ctx context.Context, pi peer.AddrInfo) error {
 
 		// HEAD did not work. Try GET.
 		supportsHead = false
-
-		_, err = ht.connectToURL(ctx, pi.ID, u, "GET")
+		_, err = ht.connectToURL(ctx, pi.ID, u, http.MethodGet)
 		if err != nil {
 			errs = append(errs, fmt.Errorf("%s: %s", u.Multiaddress.String(), err))
 			if ctxErr := ctx.Err(); ctxErr != nil {

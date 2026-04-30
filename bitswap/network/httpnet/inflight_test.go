@@ -2,6 +2,7 @@ package httpnet
 
 import (
 	"errors"
+	"net/http"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -142,13 +143,13 @@ func TestInflightPropagatesErrors(t *testing.T) {
 // requests that differ in any field that influences the upstream
 // response.
 func TestInflightKeyDistinguishesFields(t *testing.T) {
-	base := inflightKey("https", "example.com", "sni", "GET", "cid")
+	base := inflightKey("https", "example.com", "sni", http.MethodGet, "cid")
 	cases := map[string]string{
-		"scheme": inflightKey("http", "example.com", "sni", "GET", "cid"),
-		"host":   inflightKey("https", "other.com", "sni", "GET", "cid"),
-		"sni":    inflightKey("https", "example.com", "other-sni", "GET", "cid"),
-		"method": inflightKey("https", "example.com", "sni", "HEAD", "cid"),
-		"cid":    inflightKey("https", "example.com", "sni", "GET", "other-cid"),
+		"scheme": inflightKey("http", "example.com", "sni", http.MethodGet, "cid"),
+		"host":   inflightKey("https", "other.com", "sni", http.MethodGet, "cid"),
+		"sni":    inflightKey("https", "example.com", "other-sni", http.MethodGet, "cid"),
+		"method": inflightKey("https", "example.com", "sni", http.MethodHead, "cid"),
+		"cid":    inflightKey("https", "example.com", "sni", http.MethodGet, "other-cid"),
 	}
 	for name, k := range cases {
 		if k == base {
