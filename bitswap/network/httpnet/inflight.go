@@ -9,13 +9,12 @@ import (
 // multiple peer IDs sharing one HTTP endpoint produce one round trip,
 // not one per peer ID.
 //
-// Delegated routing returns multiple peer IDs for one HTTP gateway. For
-// example, /dns/a-fil-http.aur.lu/tcp/443/https is currently advertised
-// under three peer IDs. Bitswap creates one MessageQueue per peer ID, so
-// a single want-have broadcast for one CID becomes three identical HEAD
-// requests against the same upstream. Want-have probes that bitswap
-// sends to non-best peers fan out the same way. The pattern compounds
-// as HTTP retrieval grows.
+// Delegated routing routinely returns multiple peer IDs for one HTTP
+// gateway. Bitswap creates one MessageQueue per peer ID, so a single
+// want-have broadcast for one CID becomes N identical HEAD requests
+// against the same upstream. Want-have probes that bitswap sends to
+// non-best peers fan out the same way. The pattern compounds as HTTP
+// retrieval grows.
 //
 // Coalescing applies only while a request is in flight. Once the leader
 // returns, subsequent callers issue their own requests; we do not cache

@@ -1,96 +1,121 @@
 package httpnet
 
-// Write tests for the errorTracker implementation found in watcher.go
 import (
+	"net/url"
 	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
-	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/ipfs/boxo/bitswap/network"
 )
 
-func TestErrorTracker_StopTracking(t *testing.T) {
-	et := newErrorTracker(&Network{})
-	p := peer.ID("testpeer")
-
-	// Stop tracking the peer
-	et.stopTracking(p)
-
-	// Check if the error count is removed
-	if _, ok := et.errors[p]; ok {
-		t.Errorf("Expected peer %s to be untracked but it was still tracked", p)
+// makeTestURLs returns n senderURLs each pointing at a distinct synthetic
+// host. Counters and cooldowns are initialized so the senderURLs are
+// safe to use against the per-host trackers.
+func makeTestURLs(t *testing.T, hosts ...string) []*senderURL {
+	t.Helper()
+	out := make([]*senderURL, len(hosts))
+	for i, h := range hosts {
+		u, err := url.Parse("https://" + h)
+		if err != nil {
+			t.Fatalf("parse %q: %v", h, err)
+		}
+		su := &senderURL{
+			ParsedURL:    network.ParsedURL{URL: u},
+			serverErrors: new(atomic.Int64),
+		}
+		su.cooldown.Store(time.Time{})
+		out[i] = su
 	}
+	return out
 }
 
 func TestErrorTracker_LogErrors_Reset(t *testing.T) {
-	et := newErrorTracker(&Network{})
-	p := peer.ID("testpeer")
+	et := newErrorTracker()
+	urls := makeTestURLs(t, "host-a")
 
-	// Log some errors
-	err := et.logErrors(p, 5, 10)
-	if err != nil {
-		t.Errorf("Expected no error when logging errors but got %v", err)
+	if err := et.logErrors(urls, 5, 10); err != nil {
+		t.Errorf("logging 5 below threshold: got err %v, want nil", err)
 	}
 
-	// Reset error count
-	err = et.logErrors(p, 0, 10)
-	if err != nil {
-		t.Errorf("Expected no error when resetting error count but got %v", err)
+	if err := et.logErrors(urls, 0, 10); err != nil {
+		t.Errorf("reset: got err %v, want nil", err)
 	}
 
-	// Check if the error count is reset to 0
-	count := et.errors[p]
-	if count != 0 {
-		t.Errorf("Expected error count for peer %s to be 0 after reset but got %d", p, count)
+	key := endpointKey(urls[0].URL.Scheme, urls[0].URL.Host, urls[0].SNI)
+	if got := et.counts[key]; got != 0 {
+		t.Errorf("after reset: count=%d, want 0", got)
 	}
 }
 
 func TestErrorTracker_LogErrors_ThresholdCrossed(t *testing.T) {
-	et := newErrorTracker(&Network{})
-	p := peer.ID("testpeer")
+	et := newErrorTracker()
+	urls := makeTestURLs(t, "host-a")
 
-	// Log errors until threshold is crossed
-	err := et.logErrors(p, 11, 10)
-	if err != errThresholdCrossed {
-		t.Errorf("Expected errorThresholdCrossed when logging errors above threshold but got %v", err)
+	if err := et.logErrors(urls, 11, 10); err != errThresholdCrossed {
+		t.Errorf("logging above threshold: got err %v, want errThresholdCrossed", err)
 	}
 
-	// Check if the error count reflects the logged errors
-	count, ok := et.errors[p]
-	if !ok {
-		t.Errorf("Expected peer %s to be tracked but it was not", p)
-	}
-	if count != 11 {
-		t.Errorf("Expected error count for peer %s to be 10 after logging errors above threshold but got %d", p, count)
+	key := endpointKey(urls[0].URL.Scheme, urls[0].URL.Host, urls[0].SNI)
+	if got := et.counts[key]; got != 11 {
+		t.Errorf("after trip: count=%d, want 11", got)
 	}
 }
 
-// Write a test that tests concurrent access to the methods
+// TestErrorTracker_SharesCounterAcrossPeers verifies that two peers
+// resolving to the same HTTP endpoint share one error counter, so the
+// breaker trips after one combined threshold rather than after each
+// peer drains its own quota.
+func TestErrorTracker_SharesCounterAcrossPeers(t *testing.T) {
+	et := newErrorTracker()
+	peerA := makeTestURLs(t, "shared-host")
+	peerB := makeTestURLs(t, "shared-host")
+
+	// Peer A logs 60 errors; threshold 100 not yet crossed.
+	if err := et.logErrors(peerA, 60, 100); err != nil {
+		t.Errorf("peerA: got err %v, want nil", err)
+	}
+	// Peer B logs 50 errors; combined 110 trips the breaker.
+	if err := et.logErrors(peerB, 50, 100); err != errThresholdCrossed {
+		t.Errorf("peerB: got err %v, want errThresholdCrossed", err)
+	}
+}
+
+func TestErrorTracker_DistinctHostsTrackIndependently(t *testing.T) {
+	et := newErrorTracker()
+	a := makeTestURLs(t, "host-a")
+	b := makeTestURLs(t, "host-b")
+
+	if err := et.logErrors(a, 11, 10); err != errThresholdCrossed {
+		t.Errorf("host-a: got err %v, want errThresholdCrossed", err)
+	}
+	if err := et.logErrors(b, 5, 10); err != nil {
+		t.Errorf("host-b: got err %v, want nil (independent of host-a)", err)
+	}
+}
+
+// TestErrorTracker_ConcurrentAccess verifies safety under concurrent
+// goroutines incrementing the same host counter.
 func TestErrorTracker_ConcurrentAccess(t *testing.T) {
-	et := newErrorTracker(&Network{})
-	p := peer.ID("testpeer")
+	et := newErrorTracker()
+	urls := makeTestURLs(t, "host-a")
 
 	var wg sync.WaitGroup
-	numRoutines := 10
-	threshold := 100
+	const numRoutines = 10
+	const threshold = 100
 
 	for range numRoutines {
 		wg.Go(func() {
-			for j := 0; j < threshold/numRoutines; j++ {
-				et.logErrors(p, 1, threshold)
+			for range threshold / numRoutines {
+				et.logErrors(urls, 1, threshold)
 			}
 		})
 	}
-
 	wg.Wait()
 
-	// Check if the error count is correct
-	count, ok := et.errors[p]
-	if !ok {
-		t.Errorf("Expected peer %s to be tracked but it was not", p)
-	}
-	expectedCount := threshold
-	actualCount := count
-	if actualCount != expectedCount {
-		t.Errorf("Expected error count for peer %s to be %d after concurrent logging but got %d", p, expectedCount, actualCount)
+	key := endpointKey(urls[0].URL.Scheme, urls[0].URL.Host, urls[0].SNI)
+	if got := et.counts[key]; got != threshold {
+		t.Errorf("after concurrent logging: count=%d, want %d", got, threshold)
 	}
 }

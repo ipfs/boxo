@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -341,27 +342,12 @@ func TestBestURL(t *testing.T) {
 	}
 	// add some bogus urls to test the sorting
 	now := time.Now()
-	surls := []*senderURL{
-		{
-			ParsedURL: network.ParsedURL{
-				URL: urls[0],
-			},
-		},
-		{
-			ParsedURL: network.ParsedURL{
-				URL: urls[1],
-			},
-		},
-		{
-			ParsedURL: network.ParsedURL{
-				URL: urls[2],
-			},
-		},
-		{
-			ParsedURL: network.ParsedURL{
-				URL: urls[3],
-			},
-		},
+	surls := make([]*senderURL, len(urls))
+	for i := range urls {
+		surls[i] = &senderURL{
+			ParsedURL:    network.ParsedURL{URL: urls[i]},
+			serverErrors: new(atomic.Int64),
+		}
 	}
 
 	surls[0].cooldown.Store(now.Add(time.Second))

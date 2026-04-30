@@ -33,8 +33,7 @@ func countingProbeServer(t *testing.T) (srv *httptest.Server, probes *atomic.Int
 // avoids issuing a fresh probe.
 //
 // This is the expected pattern when delegated routing returns multiple
-// peer IDs for one gateway, e.g. /dns/a-fil-http.aur.lu/tcp/443/https
-// is currently advertised under three peer IDs.
+// peer IDs for one gateway.
 func TestConnectSkipsProbeForKnownEndpoint(t *testing.T) {
 	ctx := context.Background()
 

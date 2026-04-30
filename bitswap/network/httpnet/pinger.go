@@ -24,10 +24,10 @@ const ewmaSmoothing = 0.1
 //
 // State is keyed by HTTP endpoint, not by peer ID. Multiple peer IDs that
 // resolve to the same endpoint share one ticker and one latency reading.
-// /dns/a-fil-http.aur.lu/tcp/443/https is currently advertised by three
-// peer IDs in delegated-ipfs.dev responses; with per-peer pinging, three
-// peer IDs idle on that gateway produce 36 HEAD requests per minute. The
-// gateway is a single physical resource, so we ping it once.
+// With per-peer pinging, N peer IDs idle on one gateway would produce
+// N times the probe traffic (HEAD /ipfs/<pingCid> every 5 s) for no new
+// information. The gateway is a single physical resource, so we ping
+// it once.
 type pinger struct {
 	ht *Network
 
@@ -226,7 +226,8 @@ func (pngr *pinger) startPinging(p peer.ID) {
 }
 
 // stopPinging unregisters p. Hosts whose refcount drops to zero have
-// their ticker cancelled and their state removed.
+// their ticker cancelled and their host-shared state (pinger, breaker,
+// errorTracker) removed so a future reconnect starts fresh.
 func (pngr *pinger) stopPinging(p peer.ID) {
 	pngr.mu.Lock()
 	defer pngr.mu.Unlock()
@@ -249,6 +250,8 @@ func (pngr *pinger) stopPinging(p peer.ID) {
 		}
 		hp.cancel()
 		delete(pngr.hosts, key)
+		pngr.ht.breaker.reset(key)
+		pngr.ht.errorTracker.reset(key)
 	}
 }
 
@@ -275,6 +278,11 @@ func (pngr *pinger) tickerLoop(ctx context.Context, hp *hostPing) {
 }
 
 func (pngr *pinger) tickOnce(ctx context.Context, hp *hostPing) {
+	// Respect Retry-After: while the host is in cooldown, the gateway
+	// has explicitly told us to wait. Skip the probe entirely.
+	if pngr.ht.cooldownTracker.onCooldown(hp.url.URL.Host) {
+		return
+	}
 	start := time.Now()
 	if _, err := pngr.ht.connectToURL(ctx, hp.peerID, hp.url, hp.method); err != nil {
 		log.Debug(err)

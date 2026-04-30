@@ -100,6 +100,52 @@ func TestPingerStopReleasesRefcount(t *testing.T) {
 	}
 }
 
+// TestPingerCleansSharedStateOnLastDisconnect verifies that when the
+// last peer using a host disconnects, the host-shared breaker and
+// errorTracker entries are dropped so a future reconnect starts fresh.
+func TestPingerCleansSharedStateOnLastDisconnect(t *testing.T) {
+	ctx := context.Background()
+
+	htnet, mn := mockNetwork(t, mockReceiver(t))
+	peerA, err := mn.GenPeer()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	srv := makeServer(t, 0, 0)
+	mustConnectToPeer(t, ctx, htnet, peerA, srv)
+
+	// Seed breaker and errorTracker state for the host.
+	urls := htnet.senderURLs(peerA.ID())
+	if len(urls) != 1 {
+		t.Fatalf("expected 1 senderURL, got %d", len(urls))
+	}
+	urls[0].serverErrors.Store(7)
+	if err := htnet.errorTracker.logErrors(urls, 5, 100); err != nil {
+		t.Fatalf("errorTracker.logErrors: %v", err)
+	}
+
+	if err := htnet.DisconnectFrom(ctx, peerA.ID()); err != nil {
+		t.Fatal(err)
+	}
+
+	// Last peer is gone; both shared structures should have dropped
+	// their entries.
+	htnet.breaker.mu.Lock()
+	breakerEntries := len(htnet.breaker.counters)
+	htnet.breaker.mu.Unlock()
+	if breakerEntries != 0 {
+		t.Errorf("breaker still has %d entries after last disconnect", breakerEntries)
+	}
+
+	htnet.errorTracker.mu.Lock()
+	errorEntries := len(htnet.errorTracker.counts)
+	htnet.errorTracker.mu.Unlock()
+	if errorEntries != 0 {
+		t.Errorf("errorTracker still has %d entries after last disconnect", errorEntries)
+	}
+}
+
 // TestPingerDistinctHostsRunIndependently verifies that two peers with
 // different HTTP endpoints each get their own host entry.
 func TestPingerDistinctHostsRunIndependently(t *testing.T) {

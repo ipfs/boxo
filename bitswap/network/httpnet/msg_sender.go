@@ -60,10 +60,16 @@ func setSenderOpts(opts *network.MessageSenderOpts) network.MessageSenderOpts {
 }
 
 // senderURL wraps url with information about cooldowns and errors.
+//
+// serverErrors points at a per-host counter shared across every
+// senderURL that resolves to the same (scheme, host, sni). When one
+// peer trips the breaker on an endpoint, every other peer sharing it
+// sees the elevated count immediately. The pointer is supplied by
+// breaker.counter and must be non-nil before the senderURL is used.
 type senderURL struct {
 	network.ParsedURL
 	cooldown     atomic.Value
-	serverErrors atomic.Int64
+	serverErrors *atomic.Int64
 }
 
 // httpMsgSender implements a network.MessageSender.
@@ -194,7 +200,11 @@ func (sender *httpMsgSender) tryURL(ctx context.Context, u *senderURL, entry bsm
 		panic("unknown bitswap entry type")
 	}
 
-	if dl := u.cooldown.Load().(time.Time); !dl.IsZero() {
+	// Skip the request while the host's cooldown is still active. We
+	// auto-expire the deadline here so a long-lived senderURL doesn't
+	// stay stuck on a stale cooldown (fillSenderURLs only checks the
+	// deadline at construction time).
+	if dl := u.cooldown.Load().(time.Time); !dl.IsZero() && time.Now().Before(dl) {
 		err := fmt.Errorf("cooldown (%s): %s %q ", dl, method, u.URL)
 		log.Debug(err)
 		return nil, &senderError{Type: typeRetryLater, Err: err}
@@ -386,12 +396,16 @@ func (sender *httpMsgSender) handleResponse(u *senderURL, entry bsmsg.Entry, met
 }
 
 // clearCooldown removes any active cooldown on u after a definitive
-// response. Both the per-URL cooldown and the host-level cooldownTracker
-// are cleared so that future senders for the same host start fresh.
+// response and resets the host's serverErrors counter. A 200 or 404
+// proves the host is healthy, so we forgive prior breaker accruals
+// and let every peer sharing the host start fresh.
 func (sender *httpMsgSender) clearCooldown(u *senderURL) {
 	if !u.cooldown.Load().(time.Time).IsZero() {
 		sender.ht.cooldownTracker.remove(u.URL.Host)
 		u.cooldown.Store(time.Time{})
+	}
+	if u.serverErrors.Load() > 0 {
+		u.serverErrors.Store(0)
 	}
 }
 
@@ -576,7 +590,7 @@ WANTLIST_LOOP:
 		}
 
 		// if totalClientErrors == 0, count is reset.
-		if err := sender.ht.errorTracker.logErrors(sender.peer, totalClientErrors, sender.ht.maxDontHaveErrors); err != nil {
+		if err := sender.ht.errorTracker.logErrors(sender.urls, totalClientErrors, sender.ht.maxDontHaveErrors); err != nil {
 			log.Debugf("too many client errors. Disconnecting from %s", sender.peer)
 			sender.ht.DisconnectFrom(ctx, sender.peer)
 		}
