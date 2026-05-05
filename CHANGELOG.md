@@ -22,7 +22,7 @@ The following emojis are used to highlight certain changes:
 
 ### Fixed
 
-- Improvements to support WASM builds
+- `files`: now builds under `GOOS=js GOARCH=wasm` and `GOOS=wasip1 GOARCH=wasm`. [#935](https://github.com/ipfs/boxo/pull/935)
 
 ### Security
 
