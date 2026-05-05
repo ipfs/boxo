@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"mime"
 	"net/http"
 	"net/textproto"
@@ -68,7 +69,37 @@ type handler struct {
 //
 // [IPFS HTTP Gateway]: https://specs.ipfs.tech/http-gateways/
 func NewHandler(c Config, backend IPFSBackend) http.Handler {
-	return newHandlerWithMetrics(&c, backend)
+	// Validate and normalize configuration
+	c = validateConfig(c)
+
+	// Get registry from config or use default
+	reg := c.MetricsRegistry
+	if reg == nil {
+		reg = prometheus.DefaultRegisterer
+	}
+
+	// Initialize middleware metrics with the registry
+	metrics := newMiddlewareMetrics(reg)
+
+	h := newHandlerWithMetrics(&c, backend, reg)
+
+	// Apply middleware in order (innermost to outermost)
+	var handler http.Handler = h
+
+	// Retrieval timeout middleware (innermost after main handler)
+	if c.RetrievalTimeout > 0 {
+		handler = withRetrievalTimeout(handler, c.RetrievalTimeout, &c, metrics)
+	}
+
+	// Concurrent request limiter middleware
+	if c.MaxConcurrentRequests > 0 {
+		handler = withConcurrentRequestLimiter(handler, c.MaxConcurrentRequests, &c, metrics)
+	}
+
+	// Response metrics wrapper (outermost - records ALL responses including middleware responses)
+	handler = withResponseMetrics(handler, metrics)
+
+	return handler
 }
 
 // serveContent replies to the request using the content in the provided Reader
@@ -128,8 +159,9 @@ func (w *errRecordingResponseWriter) ReadFrom(r io.Reader) (n int64, err error) 
 func (i *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	defer panicHandler(w)
 
-	// the hour is a hard fallback, we don't expect it to happen, but just in case
-	ctx, cancel := context.WithTimeout(r.Context(), time.Hour)
+	// MaxRequestDuration is an absolute deadline for the entire request.
+	// This context deadline propagates to all backend operations.
+	ctx, cancel := context.WithTimeout(r.Context(), i.config.MaxRequestDuration)
 	defer cancel()
 
 	if withCtxWrap, ok := i.backend.(WithContextHint); ok {
@@ -319,8 +351,7 @@ func (i *handler) getOrHeadHandler(w http.ResponseWriter, r *http.Request) {
 		logger.Debugw("serving codec", "path", contentPath)
 		success = i.serveCodec(r.Context(), w, r, rq)
 	default: // catch-all for unsuported application/vnd.*
-		err := fmt.Errorf("unsupported format %q", responseFormat)
-		i.webError(w, r, err, http.StatusBadRequest)
+		i.webError(w, r, errUnsupportedFormat, http.StatusBadRequest)
 	}
 }
 
@@ -636,17 +667,38 @@ func init() {
 	}
 }
 
-// return explicit response format if specified in request as query parameter or via Accept HTTP header
+// customResponseFormat determines the response format and extracts any parameters
+// from the ?format= query parameter and Accept HTTP header.
+//
+// This function is format-agnostic: it handles generic HTTP content negotiation
+// and returns parameters embedded in the Accept header (e.g., "application/vnd.ipld.car;order=dfs").
+//
+// Format-specific URL query parameters (e.g., ?car-order=, ?car-dups= for CAR)
+// are intentionally NOT handled here. They are processed by format-specific
+// handlers which merge Accept header params with URL params, giving URL params
+// precedence per IPIP-523. See buildCarParams() for the CAR example. This
+// pattern can be extended for other formats that need URL-based parameters.
 func customResponseFormat(r *http.Request) (mediaType string, params map[string]string, err error) {
-	// First, inspect Accept header, as it may not only include content type, but also optional parameters.
+	// Check ?format= URL query parameter first (IPIP-523).
+	formatParam := r.URL.Query().Get("format")
+	var formatMediaType string
+	if formatParam != "" {
+		if responseFormat, ok := formatParamToResponseFormat[formatParam]; ok {
+			formatMediaType = responseFormat
+		}
+	}
+
+	// Inspect Accept header for vendor-specific content types and optional parameters
 	// such as CAR version or additional ones from IPIP-412.
 	//
 	// Browsers and other user agents will send Accept header with generic types like:
 	// Accept:text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8
 	// We only care about explicit, vendor-specific content-types and respond to the first match (in order).
 	// TODO: make this RFC compliant and respect weights (eg. return CAR for Accept:application/vnd.ipld.dag-json;q=0.1,application/vnd.ipld.car;q=0.2)
+	var acceptMediaType string
+	var acceptParams map[string]string
 	for _, header := range r.Header.Values("Accept") {
-		for _, value := range strings.Split(header, ",") {
+		for value := range strings.SplitSeq(header, ",") {
 			accept := strings.TrimSpace(value)
 			// respond to the very first matching content type
 			if strings.HasPrefix(accept, "application/vnd.ipld") ||
@@ -658,16 +710,29 @@ func customResponseFormat(r *http.Request) (mediaType string, params map[string]
 				if err != nil {
 					return "", nil, err
 				}
-				return mediatype, params, nil
+				acceptMediaType = mediatype
+				acceptParams = params
+				break
 			}
+		}
+		if acceptMediaType != "" {
+			break
 		}
 	}
 
-	// If no Accept header, translate query param to a content type, if present.
-	if formatParam := r.URL.Query().Get("format"); formatParam != "" {
-		if responseFormat, ok := formatParamToResponseFormat[formatParam]; ok {
-			return responseFormat, nil, nil
+	// ?format takes precedence (IPIP-523), even when Accept header specifies a different format.
+	// This ensures deterministic HTTP caching and allows browsers to use ?format reliably.
+	if formatMediaType != "" {
+		// Use Accept params only if Accept matches ?format (e.g., for CAR version/order params)
+		if acceptMediaType == formatMediaType {
+			return formatMediaType, acceptParams, nil
 		}
+		return formatMediaType, nil, nil
+	}
+
+	// Fall back to Accept header if no ?format query param.
+	if acceptMediaType != "" {
+		return acceptMediaType, acceptParams, nil
 	}
 
 	// If none of special-cased content types is found, return empty string
@@ -687,10 +752,9 @@ func addContentLocation(r *http.Request, w http.ResponseWriter, rq *requestData)
 
 	format := responseFormatToFormatParam[rq.responseFormat]
 
-	// Skip Content-Location if there is no conflict between
-	// 'format' in URL and value in 'Accept' header.
-	// If both are present and don't match, we continue and generate
-	// Content-Location to ensure value from Accept overrides 'format' from URL.
+	// Skip Content-Location if ?format is already present in URL and matches
+	// the response format. Content-Location is only needed when format was
+	// requested via Accept header without ?format in URL.
 	if urlFormat := r.URL.Query().Get("format"); urlFormat != "" && urlFormat == format {
 		return
 	}
@@ -702,14 +766,16 @@ func addContentLocation(r *http.Request, w http.ResponseWriter, rq *requestData)
 
 	// Copy all existing query parameters.
 	query := url.Values{}
-	for k, v := range r.URL.Query() {
-		query[k] = v
-	}
+	maps.Copy(query, r.URL.Query())
 	query.Set("format", format)
 
-	// Set response params as query elements.
+	// Set response params as query elements, but only if URL doesn't already
+	// have them (URL query params take precedence per IPIP-523).
 	for k, v := range rq.responseParams {
-		query.Set(format+"-"+k, v)
+		paramKey := format + "-" + k
+		if !query.Has(paramKey) {
+			query.Set(paramKey, v)
+		}
 	}
 
 	w.Header().Set("Content-Location", path+"?"+query.Encode())
@@ -873,21 +939,48 @@ func (i *handler) handleWebRequestErrors(w http.ResponseWriter, r *http.Request,
 // Detect 'Cache-Control: only-if-cached' in request and return data if it is already in the local datastore.
 // https://github.com/ipfs/specs/blob/main/http-gateways/PATH_GATEWAY.md#cache-control-request-header
 func (i *handler) handleOnlyIfCached(w http.ResponseWriter, r *http.Request, contentPath path.Path) bool {
-	if r.Header.Get("Cache-Control") == "only-if-cached" {
-		if !i.backend.IsCached(r.Context(), contentPath) {
-			if r.Method == http.MethodHead {
-				w.WriteHeader(http.StatusPreconditionFailed)
-				return true
-			}
+	if r.Header.Get("Cache-Control") != "only-if-cached" {
+		return false
+	}
+
+	// If RetrievalTimeout is configured, use a timeout for the IsCached check to avoid
+	// returning 504 Gateway Timeout when the remote backend is slow.
+	// If the content is not immediately available, we should return 412 Precondition Failed.
+	// Use 80% of RetrievalTimeout for cache checks. This ensures that if the backend
+	// is slow or unresponsive, we timeout and return 412 before the overall request
+	// would hit RetrievalTimeout and return 504. This distinction is important for
+	// correct HTTP semantics: 412 means "content not in cache" while 504 means
+	// "gateway timeout", and clients may handle these differently.
+	ctx := r.Context()
+	if i.config.RetrievalTimeout != 0 {
+		cacheCheckTimeout := i.config.RetrievalTimeout * 80 / 100
+		checkCtx, cancel := context.WithTimeout(ctx, cacheCheckTimeout)
+		defer cancel()
+		ctx = checkCtx
+	}
+
+	isCached := i.backend.IsCached(ctx, contentPath)
+
+	// If the context timed out, treat as not cached
+	if ctx.Err() != nil {
+		isCached = false
+	}
+
+	if isCached && r.Method == http.MethodHead {
+		w.WriteHeader(http.StatusOK)
+		return true
+	}
+
+	if !isCached {
+		if r.Method == http.MethodHead {
+			w.WriteHeader(http.StatusPreconditionFailed)
+		} else {
 			errMsg := fmt.Sprintf("%q not in local datastore", contentPath.String())
 			http.Error(w, errMsg, http.StatusPreconditionFailed)
-			return true
 		}
-		if r.Method == http.MethodHead {
-			w.WriteHeader(http.StatusOK)
-			return true
-		}
+		return true
 	}
+
 	return false
 }
 
@@ -899,11 +992,11 @@ func handleProtocolHandlerRedirect(w http.ResponseWriter, r *http.Request, c *Co
 	if uriParam := r.URL.Query().Get("uri"); uriParam != "" {
 		u, err := url.Parse(uriParam)
 		if err != nil {
-			webError(w, r, c, fmt.Errorf("failed to parse uri query parameter: %w", err), http.StatusBadRequest)
+			webError(w, r, c, errInvalidURIQueryParameter, http.StatusBadRequest)
 			return true
 		}
 		if u.Scheme != "ipfs" && u.Scheme != "ipns" {
-			webError(w, r, c, fmt.Errorf("uri query parameter scheme must be ipfs or ipns: %w", err), http.StatusBadRequest)
+			webError(w, r, c, errInvalidURIScheme, http.StatusBadRequest)
 			return true
 		}
 
@@ -1031,4 +1124,39 @@ func (i *handler) getTemplateGlobalData(r *http.Request, contentPath path.Path) 
 
 func (i *handler) webError(w http.ResponseWriter, r *http.Request, err error, defaultCode int) {
 	webError(w, r, i.config, err, defaultCode)
+}
+
+// cacheControlSizeLimit is the Cache-Control header for responses rejected by
+// content size limits (MaxDeserializedResponseSize, MaxUnixFSDAGResponseSize).
+// Fresh for 1 week, serve stale for up to 31 days while revalidating in the
+// background. Uses 410 Gone which is heuristically cacheable per RFC 9110 and
+// cached by CDNs (Cloudflare, Fastly) by default.
+const cacheControlSizeLimit = "public, max-age=604800, stale-while-revalidate=2678400"
+
+// exceedsMaxUnixFSDAGResponseSize checks whether sz exceeds the configured
+// MaxUnixFSDAGResponseSize. If it does, it writes a cacheable 410 Gone
+// response and returns true. Returns false (no-op) when the limit is disabled
+// or not exceeded.
+func (i *handler) exceedsMaxUnixFSDAGResponseSize(w http.ResponseWriter, r *http.Request, sz int64) bool {
+	if i.config.MaxUnixFSDAGResponseSize > 0 && sz > i.config.MaxUnixFSDAGResponseSize {
+		err := fmt.Errorf("responses are not supported for content larger than %d bytes: for large content, run your own IPFS node (https://docs.ipfs.tech/install/)", i.config.MaxUnixFSDAGResponseSize)
+		w.Header().Set("Cache-Control", cacheControlSizeLimit)
+		i.webError(w, r, err, http.StatusGone)
+		return true
+	}
+	return false
+}
+
+// exceedsMaxDeserializedResponseSize checks whether sz exceeds the configured
+// MaxDeserializedResponseSize. If it does, it writes a cacheable 410 Gone
+// response and returns true. Returns false (no-op) when the limit is disabled
+// or not exceeded.
+func (i *handler) exceedsMaxDeserializedResponseSize(w http.ResponseWriter, r *http.Request, sz int64) bool {
+	if i.config.MaxDeserializedResponseSize > 0 && sz > i.config.MaxDeserializedResponseSize {
+		err := fmt.Errorf("deserialized responses are not supported for content larger than %d bytes: for large content, run your own IPFS node (https://docs.ipfs.tech/install/)", i.config.MaxDeserializedResponseSize)
+		w.Header().Set("Cache-Control", cacheControlSizeLimit)
+		i.webError(w, r, err, http.StatusGone)
+		return true
+	}
+	return false
 }

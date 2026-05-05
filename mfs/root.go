@@ -1,6 +1,3 @@
-// package mfs implements an in memory model of a mutable IPFS filesystem.
-// TODO: Develop on this line (and move it to `doc.go`).
-
 package mfs
 
 import (
@@ -10,8 +7,10 @@ import (
 	"os"
 	"time"
 
+	chunker "github.com/ipfs/boxo/chunker"
 	dag "github.com/ipfs/boxo/ipld/merkledag"
 	ft "github.com/ipfs/boxo/ipld/unixfs"
+	"github.com/ipfs/boxo/provider"
 	ipld "github.com/ipfs/go-ipld-format"
 	logging "github.com/ipfs/go-log/v2"
 )
@@ -54,6 +53,9 @@ type parent interface {
 	// `updateChildEntry` to update the entry pointing to the new directory,
 	// this mechanism is in turn repeated until reaching the `Root`.
 	updateChildEntry(c child) error
+
+	// getChunker returns the chunker factory for files, or nil for default.
+	getChunker() chunker.SplitterGen
 }
 
 type NodeType int
@@ -97,18 +99,26 @@ type Root struct {
 	// Root directory of the MFS layout.
 	dir *Directory
 
-	repub *Republisher
+	repub   *Republisher
+	prov    provider.MultihashProvider
+	chunker chunker.SplitterGen // chunker factory for files, nil means default
 }
 
-// NewRoot creates a new Root and starts up a republisher routine for it.
-func NewRoot(parent context.Context, ds ipld.DAGService, node *dag.ProtoNode, pf PubFunc) (*Root, error) {
+// NewRoot creates a new Root from an existing DAG node and starts a
+// republisher routine for it. The provided [Option]s configure the
+// root directory's DAG-shape settings (CidBuilder, MaxLinks, etc.).
+func NewRoot(ctx context.Context, ds ipld.DAGService, node *dag.ProtoNode, pf PubFunc, prov provider.MultihashProvider, opts ...Option) (*Root, error) {
+	o := resolveOpts(opts)
+
 	var repub *Republisher
 	if pf != nil {
 		repub = NewRepublisher(pf, repubQuick, repubLong, node.Cid())
 	}
 
 	root := &Root{
-		repub: repub,
+		repub:   repub,
+		prov:    prov,
+		chunker: o.chunker,
 	}
 
 	fsn, err := ft.FSNodeFromBytes(node.Data())
@@ -120,9 +130,28 @@ func NewRoot(parent context.Context, ds ipld.DAGService, node *dag.ProtoNode, pf
 
 	switch fsn.Type() {
 	case ft.TDirectory, ft.THAMTShard:
-		newDir, err := NewDirectory(parent, node.String(), node, root, ds)
+		newDir, err := NewDirectory(ctx, node.String(), node, root, ds, prov)
 		if err != nil {
 			return nil, err
+		}
+
+		// Apply root-level directory settings to the loaded directory.
+		// These are not persisted in the DAG node, so they must be
+		// re-applied every time the root is opened.
+		if o.cidBuilder != nil {
+			newDir.unixfsDir.SetCidBuilder(o.cidBuilder)
+		}
+		if o.maxLinks > 0 {
+			newDir.unixfsDir.SetMaxLinks(o.maxLinks)
+		}
+		if o.maxHAMTFanout > 0 {
+			newDir.unixfsDir.SetMaxHAMTFanout(o.maxHAMTFanout)
+		}
+		if o.hamtShardingSize > 0 {
+			newDir.unixfsDir.SetHAMTShardingSize(o.hamtShardingSize)
+		}
+		if o.sizeEstimationMode != nil {
+			newDir.unixfsDir.SetSizeEstimationMode(*o.sizeEstimationMode)
 		}
 
 		root.dir = newDir
@@ -136,12 +165,17 @@ func NewRoot(parent context.Context, ds ipld.DAGService, node *dag.ProtoNode, pf
 	return root, nil
 }
 
-// NewEmptyRoot creates an empty Root directory with the given directory
-// options. A republisher is created if PubFunc is not nil.
-func NewEmptyRoot(parent context.Context, ds ipld.DAGService, pf PubFunc, opts MkdirOpts) (*Root, error) {
-	root := new(Root)
+// NewEmptyRoot creates an empty Root directory with the given [Option]s.
+// A republisher is created if PubFunc is not nil.
+func NewEmptyRoot(ctx context.Context, ds ipld.DAGService, pf PubFunc, prov provider.MultihashProvider, opts ...Option) (*Root, error) {
+	o := resolveOpts(opts)
 
-	dir, err := NewEmptyDirectory(parent, "", root, ds, opts)
+	root := &Root{
+		prov:    prov,
+		chunker: o.chunker,
+	}
+
+	dir, err := newEmptyDirectory(ctx, "", root, ds, prov, o)
 	if err != nil {
 		return nil, err
 	}
@@ -166,6 +200,16 @@ func NewEmptyRoot(parent context.Context, ds ipld.DAGService, pf PubFunc, opts M
 // GetDirectory returns the root directory.
 func (kr *Root) GetDirectory() *Directory {
 	return kr.dir
+}
+
+// GetChunker returns the chunker factory, or nil if using default.
+func (kr *Root) GetChunker() chunker.SplitterGen {
+	return kr.chunker
+}
+
+// getChunker implements the parent interface.
+func (kr *Root) getChunker() chunker.SplitterGen {
+	return kr.chunker
 }
 
 // Flush signals that an update has occurred since the last publish,
@@ -211,8 +255,16 @@ func (kr *Root) updateChildEntry(c child) error {
 	if err != nil {
 		return err
 	}
+
 	// TODO: Why are we not using the inner directory lock nor
 	// applying the same procedure as `Directory.updateChildEntry`?
+
+	if kr.prov != nil {
+		log.Debugf("mfs: provide: %s", c.Node.Cid())
+		if err := kr.prov.StartProviding(false, c.Node.Cid().Hash()); err != nil {
+			log.Warnf("mfs: error while providing %s: %s", c.Node.Cid(), err)
+		}
+	}
 
 	if kr.repub != nil {
 		kr.repub.Update(c.Node.Cid())

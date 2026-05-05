@@ -161,7 +161,7 @@ func BenchmarkFetchFromOldBitswap(b *testing.B) {
 				instances = append(instances, inst)
 			}
 			// Create old nodes (just seeds)
-			for i := 0; i < oldSeedCount; i++ {
+			for range oldSeedCount {
 				inst := oldNodeGenerator.Next()
 				instances = append(instances, inst)
 			}
@@ -598,10 +598,7 @@ func unixfsFileFetchLarge(b *testing.B, bs *bitswap.Bitswap, ks []cid.Cid) {
 	for len(rest) > 0 {
 		var batch [][]cid.Cid
 		for i := 0; i < 5 && len(rest) > 0; i++ {
-			cnt := 10
-			if len(rest) < 10 {
-				cnt = len(rest)
-			}
+			cnt := min(len(rest), 10)
 			group := rest[:cnt]
 			rest = rest[cnt:]
 			batch = append(batch, group)
@@ -634,7 +631,7 @@ func unixfsFileFetchLarge(b *testing.B, bs *bitswap.Bitswap, ks []cid.Cid) {
 func printResults(rs []runStats) {
 	nameOrder := make([]string, 0)
 	names := make(map[string]struct{})
-	for i := 0; i < len(rs); i++ {
+	for i := range rs {
 		if _, ok := names[rs[i].Name]; !ok {
 			nameOrder = append(nameOrder, rs[i].Name)
 			names[rs[i].Name] = struct{}{}
@@ -649,7 +646,7 @@ func printResults(rs []runStats) {
 		dups := 0.0
 		blks := 0.0
 		elpd := 0.0
-		for i := 0; i < len(rs); i++ {
+		for i := range rs {
 			if rs[i].Name == name {
 				count++
 				sent += float64(rs[i].MsgSent)

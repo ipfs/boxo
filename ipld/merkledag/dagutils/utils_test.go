@@ -12,8 +12,7 @@ import (
 )
 
 func TestAddLink(t *testing.T) {
-	ctx, context := context.WithCancel(context.Background())
-	defer context()
+	ctx := t.Context()
 
 	ds := mdtest.Mock()
 	fishnode := dag.NodeWithData([]byte("fishcakes!"))

@@ -1,12 +1,12 @@
-// Package mod provides DAG modification utilities to, for example,
-// insert additional nodes in a unixfs DAG or truncate them.
 package mod
 
 import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
+	"math"
 	"time"
 
 	chunker "github.com/ipfs/boxo/chunker"
@@ -15,8 +15,11 @@ import (
 	help "github.com/ipfs/boxo/ipld/unixfs/importer/helpers"
 	trickle "github.com/ipfs/boxo/ipld/unixfs/importer/trickle"
 	uio "github.com/ipfs/boxo/ipld/unixfs/io"
+	"github.com/ipfs/boxo/util"
+	"github.com/ipfs/boxo/verifcid"
 	cid "github.com/ipfs/go-cid"
 	ipld "github.com/ipfs/go-ipld-format"
+	mh "github.com/multiformats/go-multihash"
 )
 
 // Common errors
@@ -52,8 +55,8 @@ type DagModifier struct {
 }
 
 // NewDagModifier returns a new DagModifier, the Cid prefix for newly
-// created nodes will be inhered from the passed in node.  If the Cid
-// version if not 0 raw leaves will also be enabled.  The Prefix and
+// created nodes will be inherited from the passed in node.  If the Cid
+// version is not 0 raw leaves will also be enabled.  The Prefix and
 // RawLeaves options can be overridden by changing them after the call.
 func NewDagModifier(ctx context.Context, from ipld.Node, serv ipld.DAGService, spl chunker.SplitterGen) (*DagModifier, error) {
 	switch from.(type) {
@@ -64,7 +67,11 @@ func NewDagModifier(ctx context.Context, from ipld.Node, serv ipld.DAGService, s
 	}
 
 	prefix := from.Cid().Prefix()
-	prefix.Codec = cid.DagProtobuf
+	// Preserve the original codec - don't force everything to DagProtobuf
+	// Only ProtoNodes with UnixFS data should use DagProtobuf
+	if _, ok := from.(*mdag.ProtoNode); ok {
+		prefix.Codec = cid.DagProtobuf
+	}
 	rawLeaves := false
 	if prefix.Version > 0 {
 		rawLeaves = true
@@ -133,7 +140,13 @@ func (dm *DagModifier) expandSparse(size int64) error {
 		return err
 	}
 	err = dm.dagserv.Add(dm.ctx, nnode)
-	return err
+	if err != nil {
+		return err
+	}
+	// Update curNode so subsequent writes use the expanded node.
+	// Without this, writes after sparse expansion would go to the old node.
+	dm.curNode = nnode
+	return nil
 }
 
 // Write continues writing to the dag at the current offset
@@ -165,10 +178,10 @@ func (dm *DagModifier) Size() (int64, error) {
 	if err != nil {
 		return 0, err
 	}
-	if dm.wrBuf != nil && int64(dm.wrBuf.Len())+int64(dm.writeStart) > int64(fileSize) {
-		return int64(dm.wrBuf.Len()) + int64(dm.writeStart), nil
+	if dm.wrBuf == nil {
+		return int64(fileSize), nil
 	}
-	return int64(fileSize), nil
+	return max(int64(fileSize), int64(dm.wrBuf.Len())+int64(dm.writeStart)), nil
 }
 
 func fileSize(n ipld.Node) (uint64, error) {
@@ -230,6 +243,11 @@ func (dm *DagModifier) Sync() error {
 			return err
 		}
 
+		// Ensure the final node doesn't exceed identity hash limits
+		if pn, ok := dm.curNode.(*mdag.ProtoNode); ok {
+			dm.ensureSafeProtoNodeHash(pn)
+		}
+
 		err = dm.dagserv.Add(dm.ctx, dm.curNode)
 		if err != nil {
 			return err
@@ -240,6 +258,95 @@ func (dm *DagModifier) Sync() error {
 	dm.wrBuf = nil
 
 	return nil
+}
+
+// safePrefixForSize checks if using identity hash would exceed the size limit
+// and returns an appropriate CID prefix. If the data fits within identity hash
+// limits, returns the original prefix and false. Otherwise returns a prefix with
+// a proper cryptographic hash function and true to indicate the prefix changed.
+func (dm *DagModifier) safePrefixForSize(originalPrefix cid.Prefix, dataSize int) (cid.Prefix, bool) {
+	// If not identity hash, no size check needed - return as is
+	if originalPrefix.MhType != mh.IDENTITY {
+		return originalPrefix, false
+	}
+
+	// For identity hash, check if data fits within the limit
+	if dataSize <= verifcid.DefaultMaxIdentityDigestSize {
+		return originalPrefix, false
+	}
+
+	// Identity would overflow, need to switch to a different hash
+	// Use configured prefix if it's not identity
+	if dm.Prefix.MhType != mh.IDENTITY {
+		return dm.Prefix, true
+	}
+
+	// Configured prefix is also identity, build a safe fallback
+	newPrefix := dm.Prefix // Copy all fields (Version, Codec, MhType, MhLength)
+	newPrefix.MhType = util.DefaultIpfsHash
+	newPrefix.MhLength = -1 // Only reset length when using fallback hash
+	return newPrefix, true
+}
+
+// ensureSafeProtoNodeHash checks if a ProtoNode's identity hash would exceed
+// the size limit and updates its CID builder if necessary.
+func (dm *DagModifier) ensureSafeProtoNodeHash(node *mdag.ProtoNode) {
+	// CidBuilder() returns the cid.Builder which for V1CidPrefix is the Prefix itself
+	if prefix, ok := node.CidBuilder().(cid.Prefix); ok && prefix.MhType == mh.IDENTITY {
+		encodedData, _ := node.EncodeProtobuf(false)
+		if newPrefix, changed := dm.safePrefixForSize(prefix, len(encodedData)); changed {
+			// Only update the CID builder if the prefix changed
+			// to avoid unnecessary cache invalidation in ProtoNode
+			node.SetCidBuilder(newPrefix)
+		}
+	}
+}
+
+// maybeCollapseToRawLeaf checks if the current node is a ProtoNode wrapper around
+// a single RawNode child with no metadata, and if RawLeaves is enabled, collapses
+// the structure to just the RawNode. This ensures CID compatibility with ipfs add
+// for single-block files. Returns (node, true) if collapsed, (nil, false) otherwise.
+func (dm *DagModifier) maybeCollapseToRawLeaf() (ipld.Node, bool) {
+	if !dm.RawLeaves {
+		return nil, false
+	}
+
+	protoNode, ok := dm.curNode.(*mdag.ProtoNode)
+	if !ok {
+		return nil, false
+	}
+
+	// Must have exactly one child link
+	links := protoNode.Links()
+	if len(links) != 1 {
+		return nil, false
+	}
+
+	// Parse UnixFS metadata to check for ModTime or other metadata
+	fsn, err := ft.FSNodeFromBytes(protoNode.Data())
+	if err != nil {
+		return nil, false // Not valid UnixFS, keep as is
+	}
+
+	// If there's metadata (like ModTime or Mode), keep as ProtoNode
+	if !fsn.ModTime().IsZero() || fsn.Mode() != 0 {
+		return nil, false
+	}
+
+	// Get the child node from DAGService (should be cached from appendData)
+	childNode, err := links[0].GetNode(dm.ctx, dm.dagserv)
+	if err != nil {
+		return nil, false // Can't fetch child, keep as is
+	}
+
+	// Child must be a RawNode
+	rawChild, ok := childNode.(*mdag.RawNode)
+	if !ok {
+		return nil, false
+	}
+
+	// Collapse to the RawNode child
+	return rawChild, true
 }
 
 // modifyDag writes the data in 'dm.wrBuf' over the data in 'node' starting at 'offset'
@@ -254,12 +361,15 @@ func (dm *DagModifier) modifyDag(n ipld.Node, offset uint64) (cid.Cid, error) {
 				return cid.Cid{}, err
 			}
 
+			// For leaf ProtoNodes, we can only modify data within the existing size
+			// Expanding the data requires rebuilding the tree structure
 			_, err = dm.wrBuf.Read(fsn.Data()[offset:])
 			if err != nil && err != io.EOF {
 				return cid.Cid{}, err
 			}
 
-			// Update newly written node..
+			// MFS semantics: update mtime on content modification (see doc.go).
+			// To preserve a specific mtime, set it explicitly after the operation.
 			if !fsn.ModTime().IsZero() {
 				fsn.SetModTime(time.Now())
 			}
@@ -271,6 +381,10 @@ func (dm *DagModifier) modifyDag(n ipld.Node, offset uint64) (cid.Cid, error) {
 			nd := new(mdag.ProtoNode)
 			nd.SetData(b)
 			nd.SetCidBuilder(nd0.CidBuilder())
+
+			// Check if using identity hash would exceed the size limit
+			dm.ensureSafeProtoNodeHash(nd)
+
 			err = dm.dagserv.Add(dm.ctx, nd)
 			if err != nil {
 				return cid.Cid{}, err
@@ -291,12 +405,29 @@ func (dm *DagModifier) modifyDag(n ipld.Node, offset uint64) (cid.Cid, error) {
 			}
 
 			// copy remaining data
-			offsetPlusN := int(offset) + n
-			if offsetPlusN < len(origData) {
+
+			// calculate offsetPlusN in uint64 to avoid overflow in int
+			offsetPlusN := offset + uint64(n)
+
+			// check if offsetPlusN exceeds the maximum value of int to prevent overflow
+			// when converting to int for slice indexing. On 32-bit systems, math.MaxInt
+			// is 2^31-1 (~2.14 billion); on 64-bit systems, it’s 2^63-1. This ensures
+			// safe conversion for Go's slice indexing, which requires int.
+			// See: https://github.com/ipfs/boxo/security/code-scanning/7
+			if offsetPlusN > uint64(math.MaxInt) {
+				return cid.Cid{}, fmt.Errorf("offset %d exceeds max int", offsetPlusN)
+			}
+
+			// Convert to int for slice indexing and check against origData length
+			// to ensure we don’t access out-of-bounds data.
+			if int(offsetPlusN) < len(origData) {
 				copy(bytes[offsetPlusN:], origData[offsetPlusN:])
 			}
 
-			nd, err := mdag.NewRawNodeWPrefix(bytes, nd0.Cid().Prefix())
+			// Check if using identity hash would exceed the size limit
+			prefix, _ := dm.safePrefixForSize(nd0.Cid().Prefix(), len(bytes))
+
+			nd, err := mdag.NewRawNodeWPrefix(bytes, prefix)
 			if err != nil {
 				return cid.Cid{}, err
 			}
@@ -350,16 +481,73 @@ func (dm *DagModifier) modifyDag(n ipld.Node, offset uint64) (cid.Cid, error) {
 		cur += bs
 	}
 
+	// Check if using identity hash would exceed the size limit for branch nodes
+	dm.ensureSafeProtoNodeHash(node)
+
 	err = dm.dagserv.Add(dm.ctx, node)
 	return node.Cid(), err
 }
 
-// appendData appends the blocks from the given chan to the end of this dag
+// appendData appends blocks from the splitter to the end of this dag.
+//
+// For ProtoNodes: Uses trickle.Append directly to add new blocks to the
+// existing UnixFS DAG structure.
+//
+// For RawNodes: Automatically converts to a UnixFS file structure when growth
+// is needed. This conversion is necessary because RawNodes are pure data and
+// cannot have child nodes. The conversion process:
+//   - Creates a ProtoNode with UnixFS file metadata
+//   - Adds the original RawNode as the first leaf block
+//   - Continues appending new data as raw leaves (if RawLeaves is set)
+//
+// This conversion is transparent to users but changes the node type from
+// RawNode to ProtoNode. The original data remains accessible through the
+// direct CID of the original raw block, and the new dag-pb CID makes
+// post-append data accessible through the standard UnixFS APIs.
+
+// identitySafeDAGService wraps a DAGService to handle identity CID overflow.
+// When adding a node with identity hash that would exceed the size limit,
+// it automatically switches to a cryptographic hash.
+type identitySafeDAGService struct {
+	ipld.DAGService
+	fallbackPrefix cid.Prefix
+}
+
+func (s *identitySafeDAGService) Add(ctx context.Context, nd ipld.Node) error {
+	// Check if this is a ProtoNode with identity hash that's too large
+	if pn, ok := nd.(*mdag.ProtoNode); ok {
+		if prefix, ok := pn.CidBuilder().(cid.Prefix); ok && prefix.MhType == mh.IDENTITY {
+			encoded, _ := pn.EncodeProtobuf(false)
+			if len(encoded) > verifcid.DefaultMaxIdentityDigestSize {
+				// Switch to fallback hash
+				pn.SetCidBuilder(s.fallbackPrefix)
+			}
+		}
+	}
+	return s.DAGService.Add(ctx, nd)
+}
+
 func (dm *DagModifier) appendData(nd ipld.Node, spl chunker.Splitter) (ipld.Node, error) {
+	// Create a wrapper DAGService that handles identity overflow automatically.
+	// This allows small appends to preserve identity while preventing overflow errors.
+	dagserv := dm.dagserv
+	if dm.Prefix.MhType == mh.IDENTITY {
+		dagserv = &identitySafeDAGService{
+			DAGService: dm.dagserv,
+			fallbackPrefix: cid.Prefix{
+				Version:  dm.Prefix.Version,
+				Codec:    dm.Prefix.Codec,
+				MhType:   util.DefaultIpfsHash,
+				MhLength: -1,
+			},
+		}
+	}
+
 	switch nd := nd.(type) {
-	case *mdag.ProtoNode, *mdag.RawNode:
+	case *mdag.ProtoNode:
+		// ProtoNode can be directly passed to trickle.Append
 		dbp := &help.DagBuilderParams{
-			Dagserv:    dm.dagserv,
+			Dagserv:    dagserv,
 			Maxlinks:   dm.MaxLinks,
 			CidBuilder: dm.Prefix,
 			RawLeaves:  dm.RawLeaves,
@@ -369,6 +557,45 @@ func (dm *DagModifier) appendData(nd ipld.Node, spl chunker.Splitter) (ipld.Node
 			return nil, err
 		}
 		return trickle.Append(dm.ctx, nd, db)
+
+	case *mdag.RawNode:
+		// RawNode needs to be converted to UnixFS structure for growth
+		// because RawNodes are just raw data and cannot have child nodes.
+		// We create a UnixFS file structure with the original RawNode as the first leaf.
+		fileNode := ft.NewFSNode(ft.TFile)
+
+		// Add the original raw data size as the first block size
+		fileNode.AddBlockSize(uint64(len(nd.RawData())))
+
+		// Serialize the UnixFS node
+		fileNodeBytes, err := fileNode.GetBytes()
+		if err != nil {
+			return nil, fmt.Errorf("failed to serialize UnixFS metadata for RawNode conversion: %w", err)
+		}
+
+		// Create a ProtoNode with the UnixFS metadata
+		protoNode := mdag.NodeWithData(fileNodeBytes)
+		protoNode.SetCidBuilder(dm.Prefix)
+
+		// Add the RawNode as the first leaf
+		err = protoNode.AddNodeLink("", nd)
+		if err != nil {
+			return nil, fmt.Errorf("failed to add RawNode as leaf during conversion: %w", err)
+		}
+
+		// Now we can append new data using trickle
+		dbp := &help.DagBuilderParams{
+			Dagserv:    dagserv,
+			Maxlinks:   dm.MaxLinks,
+			CidBuilder: dm.Prefix,
+			RawLeaves:  true, // Ensure future leaves are raw for consistency
+		}
+		db, err := dbp.New(spl)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create DAG builder for RawNode growth: %w", err)
+		}
+		return trickle.Append(dm.ctx, protoNode, db)
+
 	default:
 		return nil, ErrNotUnixfs
 	}
@@ -435,6 +662,14 @@ func (dm *DagModifier) GetNode() (ipld.Node, error) {
 	err := dm.Sync()
 	if err != nil {
 		return nil, err
+	}
+
+	// If RawLeaves is enabled and the result is a ProtoNode with a single RawNode child
+	// and no metadata, collapse it to just the RawNode for CID compatibility with ipfs add.
+	// The collapsed RawNode is returned directly (no Copy needed - it's a different node
+	// fetched from DAGService, not dm.curNode, and RawNodes are immutable).
+	if collapsed, ok := dm.maybeCollapseToRawLeaf(); ok {
+		return collapsed, nil
 	}
 	return dm.curNode.Copy(), nil
 }
@@ -534,6 +769,7 @@ func (dm *DagModifier) dagTruncate(ctx context.Context, n ipld.Node, size uint64
 			}
 
 			fsn.SetData(fsn.Data()[:size])
+			// MFS semantics: update mtime on truncation (see doc.go)
 			if !fsn.ModTime().IsZero() {
 				fsn.SetModTime(time.Now())
 			}
@@ -544,7 +780,9 @@ func (dm *DagModifier) dagTruncate(ctx context.Context, n ipld.Node, size uint64
 
 			return mdag.NodeWithData(data), nil
 		case *mdag.RawNode:
-			return mdag.NewRawNodeWPrefix(nd.RawData()[:size], nd.Cid().Prefix())
+			data := nd.RawData()[:size]
+			prefix, _ := dm.safePrefixForSize(nd.Cid().Prefix(), len(data))
+			return mdag.NewRawNodeWPrefix(data, prefix)
 		}
 	}
 

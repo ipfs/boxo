@@ -9,9 +9,11 @@ import (
 	"sync"
 	"time"
 
+	chunker "github.com/ipfs/boxo/chunker"
 	dag "github.com/ipfs/boxo/ipld/merkledag"
 	ft "github.com/ipfs/boxo/ipld/unixfs"
 	uio "github.com/ipfs/boxo/ipld/unixfs/io"
+	"github.com/ipfs/boxo/provider"
 	cid "github.com/ipfs/go-cid"
 	ipld "github.com/ipfs/go-ipld-format"
 )
@@ -40,41 +42,17 @@ type Directory struct {
 	// UnixFS directory implementation used for creating,
 	// reading and editing directories.
 	unixfsDir uio.Directory
+
+	prov    provider.MultihashProvider
+	chunker chunker.SplitterGen // inherited from parent, nil means default
 }
 
 // NewDirectory constructs a new MFS directory.
 //
 // You probably don't want to call this directly. Instead, construct a new root
 // using NewRoot.
-func NewDirectory(ctx context.Context, name string, node ipld.Node, parent parent, dserv ipld.DAGService) (*Directory, error) {
+func NewDirectory(ctx context.Context, name string, node ipld.Node, parent parent, dserv ipld.DAGService, prov provider.MultihashProvider) (*Directory, error) {
 	db, err := uio.NewDirectoryFromNode(dserv, node)
-	if err != nil {
-		return nil, err
-	}
-
-	return &Directory{
-		inode: inode{
-			name:       name,
-			parent:     parent,
-			dagService: dserv,
-		},
-		ctx:          ctx,
-		unixfsDir:    db,
-		entriesCache: make(map[string]FSNode),
-	}, nil
-}
-
-// NewEmptyDirectory creates an empty MFS directory with the given options.
-// The directory is added to the DAGService. To create a new MFS
-// root use NewEmptyRootFolder instead.
-func NewEmptyDirectory(ctx context.Context, name string, parent parent, dserv ipld.DAGService, opts MkdirOpts) (*Directory, error) {
-	db, err := uio.NewDirectory(dserv,
-		uio.WithMaxLinks(opts.MaxLinks),
-		uio.WithMaxHAMTFanout(opts.MaxHAMTFanout),
-		uio.WithStat(opts.Mode, opts.ModTime),
-		uio.WithCidBuilder(opts.CidBuilder),
-	)
-
 	if err != nil {
 		return nil, err
 	}
@@ -89,6 +67,13 @@ func NewEmptyDirectory(ctx context.Context, name string, parent parent, dserv ip
 		return nil, err
 	}
 
+	if prov != nil {
+		log.Debugf("mfs: provide: %s", nd.Cid())
+		if err := prov.StartProviding(false, nd.Cid().Hash()); err != nil {
+			log.Warnf("mfs: error while providing %s: %s", nd.Cid(), err)
+		}
+	}
+
 	return &Directory{
 		inode: inode{
 			name:       name,
@@ -97,13 +82,78 @@ func NewEmptyDirectory(ctx context.Context, name string, parent parent, dserv ip
 		},
 		ctx:          ctx,
 		unixfsDir:    db,
+		prov:         prov,
 		entriesCache: make(map[string]FSNode),
+		chunker:      parent.getChunker(), // inherit from parent
+	}, nil
+}
+
+// NewEmptyDirectory creates an empty MFS directory with the given [Option]s.
+// The directory is added to the DAGService. To create a new MFS
+// root use [NewEmptyRoot] instead.
+func NewEmptyDirectory(ctx context.Context, name string, p parent, dserv ipld.DAGService, prov provider.MultihashProvider, opts ...Option) (*Directory, error) {
+	return newEmptyDirectory(ctx, name, p, dserv, prov, resolveOpts(opts))
+}
+
+func newEmptyDirectory(ctx context.Context, name string, p parent, dserv ipld.DAGService, prov provider.MultihashProvider, o options) (*Directory, error) {
+	dirOpts := []uio.DirectoryOption{
+		uio.WithMaxLinks(o.maxLinks),
+		uio.WithMaxHAMTFanout(o.maxHAMTFanout),
+		uio.WithStat(o.mode, o.modTime),
+		uio.WithCidBuilder(o.cidBuilder),
+	}
+	if o.sizeEstimationMode != nil {
+		dirOpts = append(dirOpts, uio.WithSizeEstimationMode(*o.sizeEstimationMode))
+	}
+	db, err := uio.NewDirectory(dserv, dirOpts...)
+	if err != nil {
+		return nil, err
+	}
+	// Set HAMTShardingSize after creation (not a DirectoryOption)
+	if o.hamtShardingSize > 0 {
+		db.SetHAMTShardingSize(o.hamtShardingSize)
+	}
+
+	nd, err := db.GetNode()
+	if err != nil {
+		return nil, err
+	}
+
+	err = dserv.Add(ctx, nd)
+	if err != nil {
+		return nil, err
+	}
+
+	// note: we don't provide the empty unixfs dir as it is always local.
+
+	// Use chunker from opts if set, otherwise inherit from parent
+	c := o.chunker
+	if c == nil {
+		c = p.getChunker()
+	}
+
+	return &Directory{
+		inode: inode{
+			name:       name,
+			parent:     p,
+			dagService: dserv,
+		},
+		ctx:          ctx,
+		unixfsDir:    db,
+		prov:         prov,
+		entriesCache: make(map[string]FSNode),
+		chunker:      c,
 	}, nil
 }
 
 // GetCidBuilder gets the CID builder of the root node
 func (d *Directory) GetCidBuilder() cid.Builder {
 	return d.unixfsDir.GetCidBuilder()
+}
+
+// getChunker implements the parent interface.
+func (d *Directory) getChunker() chunker.SplitterGen {
+	return d.chunker
 }
 
 // SetCidBuilder sets the CID builder
@@ -158,6 +208,13 @@ func (d *Directory) localUpdate(c child) (*dag.ProtoNode, error) {
 		return nil, err
 	}
 
+	if d.prov != nil {
+		log.Debugf("mfs: provide: %s", nd.Cid())
+		if err := d.prov.StartProviding(false, nd.Cid().Hash()); err != nil {
+			log.Warnf("mfs: error while providing %s: %s", nd.Cid(), err)
+		}
+	}
+
 	return pbnd.Copy().(*dag.ProtoNode), nil
 	// TODO: Why do we need a copy?
 }
@@ -177,20 +234,23 @@ func (d *Directory) cacheNode(name string, nd ipld.Node) (FSNode, error) {
 
 		switch fsn.Type() {
 		case ft.TDirectory, ft.THAMTShard:
-			ndir, err := NewDirectory(d.ctx, name, nd, d, d.dagService)
+			ndir, err := NewDirectory(d.ctx, name, nd, d, d.dagService, d.prov)
 			if err != nil {
 				return nil, err
 			}
 
 			// these options are not persisted so they need to be
 			// inherited from the parent.
-			ndir.unixfsDir.SetMaxLinks(d.unixfsDir.GetMaxLinks())
+			parentMaxLinks := d.unixfsDir.GetMaxLinks()
+			parentMode := d.unixfsDir.GetSizeEstimationMode()
+			ndir.unixfsDir.SetMaxLinks(parentMaxLinks)
 			ndir.unixfsDir.SetMaxHAMTFanout(d.unixfsDir.GetMaxHAMTFanout())
-
+			ndir.unixfsDir.SetHAMTShardingSize(d.unixfsDir.GetHAMTShardingSize())
+			ndir.unixfsDir.SetSizeEstimationMode(parentMode)
 			d.entriesCache[name] = ndir
 			return ndir, nil
 		case ft.TFile, ft.TRaw, ft.TSymlink:
-			nfi, err := NewFile(name, nd, d, d.dagService)
+			nfi, err := NewFile(name, nd, d, d.dagService, d.prov)
 			if err != nil {
 				return nil, err
 			}
@@ -202,7 +262,7 @@ func (d *Directory) cacheNode(name string, nd ipld.Node) (FSNode, error) {
 			return nil, ErrInvalidChild
 		}
 	case *dag.RawNode:
-		nfi, err := NewFile(name, nd, d, d.dagService)
+		nfi, err := NewFile(name, nd, d, d.dagService, d.prov)
 		if err != nil {
 			return nil, err
 		}
@@ -312,14 +372,19 @@ func (d *Directory) ForEachEntry(ctx context.Context, f func(NodeListing) error)
 	})
 }
 
+// Mkdir creates a child directory that inherits settings from this directory.
 func (d *Directory) Mkdir(name string) (*Directory, error) {
-	return d.MkdirWithOpts(name, MkdirOpts{
-		MaxLinks:      d.unixfsDir.GetMaxLinks(),
-		MaxHAMTFanout: d.unixfsDir.GetMaxHAMTFanout(),
-	})
+	var o options
+	o.fillFrom(d)
+	return d.mkdirWithOpts(name, o)
 }
 
-func (d *Directory) MkdirWithOpts(name string, opts MkdirOpts) (*Directory, error) {
+// MkdirWithOpts creates a child directory with explicit [Option]s.
+func (d *Directory) MkdirWithOpts(name string, opts ...Option) (*Directory, error) {
+	return d.mkdirWithOpts(name, resolveOpts(opts))
+}
+
+func (d *Directory) mkdirWithOpts(name string, o options) (*Directory, error) {
 	d.lock.Lock()
 	defer d.lock.Unlock()
 
@@ -335,11 +400,7 @@ func (d *Directory) MkdirWithOpts(name string, opts MkdirOpts) (*Directory, erro
 		}
 	}
 
-	// hector: no idea why this option is overriden, but it must be to
-	// keep backwards compatibility. CidBuilder from the options is
-	// manually set in `Mkdir` (ops.go) though.
-	opts.CidBuilder = d.GetCidBuilder()
-	dirobj, err := NewEmptyDirectory(d.ctx, name, d, d.dagService, opts)
+	dirobj, err := newEmptyDirectory(d.ctx, name, d, d.dagService, d.prov, o)
 	if err != nil {
 		return nil, err
 	}
@@ -362,6 +423,14 @@ func (d *Directory) Unlink(name string) error {
 	d.lock.Lock()
 	defer d.lock.Unlock()
 
+	if child, ok := d.entriesCache[name]; ok {
+		switch c := child.(type) {
+		case *File:
+			c.unlinked.Store(true)
+		case *Directory:
+			c.unlinked.Store(true)
+		}
+	}
 	delete(d.entriesCache, name)
 
 	return d.unixfsDir.RemoveChild(d.ctx, name)
@@ -389,6 +458,13 @@ func (d *Directory) AddChild(name string, nd ipld.Node) error {
 	err = d.dagService.Add(d.ctx, nd)
 	if err != nil {
 		return err
+	}
+
+	if d.prov != nil {
+		log.Debugf("mfs: provide: %s", nd.Cid())
+		if err := d.prov.StartProviding(false, nd.Cid().Hash()); err != nil {
+			log.Warnf("mfs: error while providing %s: %s", nd.Cid(), err)
+		}
 	}
 
 	return d.unixfsDir.AddChild(d.ctx, name, nd)
@@ -452,7 +528,28 @@ func (d *Directory) getNode(cacheClean bool) (ipld.Node, error) {
 		return nil, err
 	}
 
+	if d.prov != nil {
+		log.Debugf("mfs: provide: %s", nd.Cid())
+		if err := d.prov.StartProviding(false, nd.Cid().Hash()); err != nil {
+			log.Warnf("mfs: error while providing %s: %s", nd.Cid(), err)
+		}
+	}
+
 	return nd.Copy(), err
+}
+
+// Mode returns the directory's POSIX permission bits from UnixFS metadata.
+// Returns 0 when no mode is stored.
+func (d *Directory) Mode() (os.FileMode, error) {
+	nd, err := d.GetNode()
+	if err != nil {
+		return 0, err
+	}
+	fsn, err := ft.ExtractFSNode(nd)
+	if err != nil {
+		return 0, err
+	}
+	return fsn.Mode() & 0xFFF, nil
 }
 
 func (d *Directory) SetMode(mode os.FileMode) error {
@@ -479,6 +576,20 @@ func (d *Directory) SetMode(mode os.FileMode) error {
 
 	d.unixfsDir.SetStat(mode, time.Time{})
 	return nil
+}
+
+// ModTime returns the directory's last modification time from UnixFS metadata.
+// Returns zero time when no mtime is stored.
+func (d *Directory) ModTime() (time.Time, error) {
+	nd, err := d.GetNode()
+	if err != nil {
+		return time.Time{}, err
+	}
+	fsn, err := ft.ExtractFSNode(nd)
+	if err != nil {
+		return time.Time{}, err
+	}
+	return fsn.ModTime(), nil
 }
 
 func (d *Directory) SetModTime(ts time.Time) error {
@@ -510,9 +621,21 @@ func (d *Directory) setNodeData(data []byte, links []*ipld.Link) error {
 	nd := dag.NodeWithData(data)
 	nd.SetLinks(links)
 
+	// Preserve previous node's CidBuilder
+	if builder := d.unixfsDir.GetCidBuilder(); builder != nil {
+		nd.SetCidBuilder(builder)
+	}
+
 	err := d.dagService.Add(d.ctx, nd)
 	if err != nil {
 		return err
+	}
+
+	if d.prov != nil {
+		log.Debugf("mfs: provide: %s", nd.Cid())
+		if err := d.prov.StartProviding(false, nd.Cid().Hash()); err != nil {
+			log.Warnf("mfs: error while providing %s: %s", nd.Cid(), err)
+		}
 	}
 
 	err = d.parent.updateChildEntry(child{d.name, nd})
@@ -527,9 +650,11 @@ func (d *Directory) setNodeData(data []byte, links []*ipld.Link) error {
 		return err
 	}
 
-	// We need to carry our desired settings.
+	// Carry over settings that are not persisted in the DAG node.
 	db.SetMaxLinks(d.unixfsDir.GetMaxLinks())
 	db.SetMaxHAMTFanout(d.unixfsDir.GetMaxHAMTFanout())
+	db.SetHAMTShardingSize(d.unixfsDir.GetHAMTShardingSize())
+	db.SetSizeEstimationMode(d.unixfsDir.GetSizeEstimationMode())
 	d.unixfsDir = db
 
 	return nil

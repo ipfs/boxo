@@ -3,17 +3,21 @@
 // IPNS path becomes an /ipfs/<cid> path.
 //
 // Traditionally, these paths would be in the form of /ipns/peer_id, which
-// references an IPNS record in a distributed ValueStore (usually the IPFS
+// references an [IPNS record] in a distributed ValueStore (usually the IPFS
 // DHT).
 //
 // Additionally, the /ipns/ namespace can also be used with domain names that
-// use DNSLink (/ipns/<dnslink_name>, https://docs.ipfs.io/concepts/dnslink/)
+// use [DNSLink].
 //
 // The package provides implementations for all three resolvers.
+//
+// [IPNS record]: https://specs.ipfs.tech/ipns/ipns-record/
+// [DNSLink]: https://docs.ipfs.tech/concepts/dnslink/
 package namesys
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -32,7 +36,6 @@ import (
 	madns "github.com/multiformats/go-multiaddr-dns"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
-	"go.uber.org/multierr"
 )
 
 // namesys is a multi-protocol [NameSystem] that implements generic IPFS naming.
@@ -116,7 +119,7 @@ func NewNameSystem(r routing.ValueStore, opts ...Option) (NameSystem, error) {
 	// IPFS_NS_MAP="dnslink-test.example.com:/ipfs/bafkreicysg23kiwv34eg2d7qweipxwosdo2py4ldv42nbauguluen5v6am"
 	if list := os.Getenv("IPFS_NS_MAP"); list != "" {
 		staticMap = make(map[string]*cacheEntry)
-		for _, pair := range strings.Split(list, ",") {
+		for pair := range strings.SplitSeq(list, ",") {
 			mapping := strings.SplitN(pair, ":", 2)
 			key := mapping[0]
 			value, err := path.NewPath(mapping[1])
@@ -244,8 +247,7 @@ func (ns *namesys) resolveOnceAsync(ctx context.Context, p path.Path, options Re
 
 				p, err := joinPaths(res.Path, p)
 				if err != nil {
-					// res.Err may already be defined, so just combine them
-					res.Err = multierr.Combine(err, res.Err)
+					res.Err = errors.Join(err, res.Err)
 				}
 
 				emitOnceResult(ctx, out, AsyncResult{Path: p, TTL: res.TTL, LastMod: res.LastMod, Err: res.Err})

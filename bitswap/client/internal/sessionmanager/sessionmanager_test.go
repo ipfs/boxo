@@ -14,7 +14,6 @@ import (
 	bssim "github.com/ipfs/boxo/bitswap/client/internal/sessioninterestmanager"
 	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
-	delay "github.com/ipfs/go-ipfs-delay"
 	peer "github.com/libp2p/go-libp2p/core/peer"
 	"github.com/stretchr/testify/require"
 )
@@ -48,7 +47,7 @@ func (fs *fakeSession) ReceiveFrom(p peer.ID, ks []cid.Cid, wantBlocks []cid.Cid
 	fs.sm.CancelSessionWants(fs.id, ks)
 }
 
-func (fs *fakeSession) Shutdown() {
+func (fs *fakeSession) Close() {
 	fs.sm.RemoveSession(fs.id)
 }
 
@@ -67,11 +66,11 @@ type fakePeerManager struct {
 	cancels []cid.Cid
 }
 
-func (*fakePeerManager) RegisterSession(peer.ID, bspm.Session)                         {}
-func (*fakePeerManager) UnregisterSession(uint64)                                      {}
-func (*fakePeerManager) SendWants(context.Context, peer.ID, []cid.Cid, []cid.Cid) bool { return true }
-func (*fakePeerManager) BroadcastWantHaves(context.Context, []cid.Cid)                 {}
-func (fpm *fakePeerManager) SendCancels(ctx context.Context, cancels []cid.Cid) {
+func (*fakePeerManager) RegisterSession(peer.ID, bspm.Session)        {}
+func (*fakePeerManager) UnregisterSession(uint64)                     {}
+func (*fakePeerManager) SendWants(peer.ID, []cid.Cid, []cid.Cid) bool { return true }
+func (*fakePeerManager) BroadcastWantHaves([]cid.Cid)                 {}
+func (fpm *fakePeerManager) SendCancels(cancels []cid.Cid) {
 	fpm.lk.Lock()
 	defer fpm.lk.Unlock()
 	fpm.cancels = append(fpm.cancels, cancels...)
@@ -83,7 +82,8 @@ func (fpm *fakePeerManager) cancelled() []cid.Cid {
 	return fpm.cancels
 }
 
-func sessionFactory(ctx context.Context,
+func sessionFactory(
+	ctx context.Context,
 	sm bssession.SessionManager,
 	id uint64,
 	sprm bssession.SessionPeerManager,
@@ -92,7 +92,7 @@ func sessionFactory(ctx context.Context,
 	bpm *bsbpm.BlockPresenceManager,
 	notif notifications.PubSub,
 	provSearchDelay time.Duration,
-	rebroadcastDelay delay.D,
+	rebroadcastDelay time.Duration,
 	self peer.ID,
 ) Session {
 	fs := &fakeSession{
@@ -108,27 +108,28 @@ func sessionFactory(ctx context.Context,
 	return fs
 }
 
-func peerManagerFactory(ctx context.Context, id uint64) bssession.SessionPeerManager {
+func peerManagerFactory(id uint64) bssession.SessionPeerManager {
 	return &fakeSesPeerManager{}
 }
 
 func TestReceiveFrom(t *testing.T) {
-	ctx := context.Background()
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-	notif := notifications.New()
+	ctx := t.Context()
+	notif := notifications.New(false)
 	defer notif.Shutdown()
 	sim := bssim.New()
 	bpm := bsbpm.New()
 	pm := &fakePeerManager{}
-	sm := New(ctx, sessionFactory, sim, peerManagerFactory, bpm, pm, notif, "")
+	sm := New(sessionFactory, sim, peerManagerFactory, bpm, pm, notif, "")
 
 	p := peer.ID(strconv.Itoa(123))
 	block := blocks.NewBlock([]byte("block"))
 
-	firstSession := sm.NewSession(ctx, time.Second, delay.Fixed(time.Minute)).(*fakeSession)
-	secondSession := sm.NewSession(ctx, time.Second, delay.Fixed(time.Minute)).(*fakeSession)
-	thirdSession := sm.NewSession(ctx, time.Second, delay.Fixed(time.Minute)).(*fakeSession)
+	firstSession := sm.NewSession(ctx, time.Second, time.Minute).(*fakeSession)
+	defer firstSession.Close()
+	secondSession := sm.NewSession(ctx, time.Second, time.Minute).(*fakeSession)
+	defer secondSession.Close()
+	thirdSession := sm.NewSession(ctx, time.Second, time.Minute).(*fakeSession)
+	defer thirdSession.Close()
 
 	sim.RecordSessionInterest(firstSession.ID(), []cid.Cid{block.Cid()})
 	sim.RecordSessionInterest(thirdSession.ID(), []cid.Cid{block.Cid()})
@@ -158,22 +159,23 @@ func TestReceiveFrom(t *testing.T) {
 }
 
 func TestReceiveBlocksWhenManagerShutdown(t *testing.T) {
-	ctx := context.Background()
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-	notif := notifications.New()
+	ctx := t.Context()
+	notif := notifications.New(false)
 	defer notif.Shutdown()
 	sim := bssim.New()
 	bpm := bsbpm.New()
 	pm := &fakePeerManager{}
-	sm := New(ctx, sessionFactory, sim, peerManagerFactory, bpm, pm, notif, "")
+	sm := New(sessionFactory, sim, peerManagerFactory, bpm, pm, notif, "")
 
 	p := peer.ID(strconv.Itoa(123))
 	block := blocks.NewBlock([]byte("block"))
 
-	firstSession := sm.NewSession(ctx, time.Second, delay.Fixed(time.Minute)).(*fakeSession)
-	secondSession := sm.NewSession(ctx, time.Second, delay.Fixed(time.Minute)).(*fakeSession)
-	thirdSession := sm.NewSession(ctx, time.Second, delay.Fixed(time.Minute)).(*fakeSession)
+	firstSession := sm.NewSession(ctx, time.Second, time.Minute).(*fakeSession)
+	defer firstSession.Close()
+	secondSession := sm.NewSession(ctx, time.Second, time.Minute).(*fakeSession)
+	defer secondSession.Close()
+	thirdSession := sm.NewSession(ctx, time.Second, time.Minute).(*fakeSession)
+	defer thirdSession.Close()
 
 	sim.RecordSessionInterest(firstSession.ID(), []cid.Cid{block.Cid()})
 	sim.RecordSessionInterest(secondSession.ID(), []cid.Cid{block.Cid()})
@@ -193,28 +195,29 @@ func TestReceiveBlocksWhenManagerShutdown(t *testing.T) {
 }
 
 func TestReceiveBlocksWhenSessionContextCancelled(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	notif := notifications.New()
+	ctx := t.Context()
+	notif := notifications.New(false)
 	defer notif.Shutdown()
 	sim := bssim.New()
 	bpm := bsbpm.New()
 	pm := &fakePeerManager{}
-	sm := New(ctx, sessionFactory, sim, peerManagerFactory, bpm, pm, notif, "")
+	sm := New(sessionFactory, sim, peerManagerFactory, bpm, pm, notif, "")
 
 	p := peer.ID(strconv.Itoa(123))
 	block := blocks.NewBlock([]byte("block"))
 
-	firstSession := sm.NewSession(ctx, time.Second, delay.Fixed(time.Minute)).(*fakeSession)
-	sessionCtx, sessionCancel := context.WithCancel(ctx)
-	secondSession := sm.NewSession(sessionCtx, time.Second, delay.Fixed(time.Minute)).(*fakeSession)
-	thirdSession := sm.NewSession(ctx, time.Second, delay.Fixed(time.Minute)).(*fakeSession)
+	firstSession := sm.NewSession(ctx, time.Second, time.Minute).(*fakeSession)
+	defer firstSession.Close()
+	secondSession := sm.NewSession(ctx, time.Second, time.Minute).(*fakeSession)
+	defer secondSession.Close()
+	thirdSession := sm.NewSession(ctx, time.Second, time.Minute).(*fakeSession)
+	defer thirdSession.Close()
 
 	sim.RecordSessionInterest(firstSession.ID(), []cid.Cid{block.Cid()})
 	sim.RecordSessionInterest(secondSession.ID(), []cid.Cid{block.Cid()})
 	sim.RecordSessionInterest(thirdSession.ID(), []cid.Cid{block.Cid()})
 
-	sessionCancel()
+	secondSession.Close()
 
 	// wait for sessions to get removed
 	time.Sleep(10 * time.Millisecond)
@@ -228,20 +231,19 @@ func TestReceiveBlocksWhenSessionContextCancelled(t *testing.T) {
 }
 
 func TestShutdown(t *testing.T) {
-	ctx := context.Background()
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-	notif := notifications.New()
+	ctx := t.Context()
+	notif := notifications.New(false)
 	defer notif.Shutdown()
 	sim := bssim.New()
 	bpm := bsbpm.New()
 	pm := &fakePeerManager{}
-	sm := New(ctx, sessionFactory, sim, peerManagerFactory, bpm, pm, notif, "")
+	sm := New(sessionFactory, sim, peerManagerFactory, bpm, pm, notif, "")
 
 	p := peer.ID(strconv.Itoa(123))
 	block := blocks.NewBlock([]byte("block"))
 	cids := []cid.Cid{block.Cid()}
-	firstSession := sm.NewSession(ctx, time.Second, delay.Fixed(time.Minute)).(*fakeSession)
+	firstSession := sm.NewSession(ctx, time.Second, time.Minute).(*fakeSession)
+	defer firstSession.Close()
 	sim.RecordSessionInterest(firstSession.ID(), cids)
 	sm.ReceiveFrom(ctx, p, []cid.Cid{}, []cid.Cid{}, cids)
 

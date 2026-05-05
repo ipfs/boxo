@@ -59,12 +59,11 @@ func getMockNode(t *testing.T, ctx context.Context) *mockNode {
 func TestRepublish(t *testing.T) {
 	// set cache life to zero for testing low-period repubs
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	var nsystems []namesys.NameSystem
 	var nodes []*mockNode
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		n := getMockNode(t, ctx)
 		ns, err := namesys.NewNameSystem(n.dht, namesys.WithDatastore(n.store))
 		require.NoError(t, err)
@@ -92,9 +91,9 @@ func TestRepublish(t *testing.T) {
 	// Retry in case the record expires before we can fetch it. This can
 	// happen when running the test on a slow machine.
 	var expiration time.Time
-	timeout := time.Second
+	timeout := 2 * time.Second
 	for {
-		expiration = time.Now().Add(time.Second)
+		expiration = time.Now().Add(2 * time.Second)
 		err := rp.Publish(ctx, publisher.privKey, p, namesys.PublishWithEOL(expiration))
 		require.NoError(t, err)
 
@@ -136,12 +135,11 @@ func TestRepublish(t *testing.T) {
 func TestLongEOLRepublish(t *testing.T) {
 	// set cache life to zero for testing low-period repubs
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	var nsystems []namesys.NameSystem
 	var nodes []*mockNode
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		n := getMockNode(t, ctx)
 		ns, err := namesys.NewNameSystem(n.dht, namesys.WithDatastore(n.store))
 		require.NoError(t, err)

@@ -16,7 +16,6 @@ import (
 	"github.com/ipfs/go-cid"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
-	"go.uber.org/multierr"
 )
 
 const (
@@ -74,6 +73,24 @@ func (i *handler) serveCAR(ctx context.Context, w http.ResponseWriter, r *http.R
 		return false
 	}
 
+	// Check DAG size limit before streaming the CAR. This requires a
+	// lightweight Head call; the root block is cached in the blockstore
+	// so GetCAR will not re-fetch it from the network.
+	// If Head fails we fail closed rather than bypassing the cap: an
+	// operator-configured size limit must never be silently skipped due
+	// to a transient backend error.
+	if i.config.MaxUnixFSDAGResponseSize > 0 {
+		_, headResp, headErr := i.backend.Head(ctx, rq.immutablePath)
+		if !i.handleRequestErrors(w, r, rq.contentPath, headErr) {
+			return false
+		}
+		sz := headResp.bytesSize
+		headResp.Close()
+		if i.exceedsMaxUnixFSDAGResponseSize(w, r, sz) {
+			return false
+		}
+	}
+
 	md, carFile, err := i.backend.GetCAR(ctx, rq.immutablePath, params)
 	if !i.handleRequestErrors(w, r, rq.contentPath, err) {
 		return false
@@ -91,7 +108,7 @@ func (i *handler) serveCAR(ctx context.Context, w http.ResponseWriter, r *http.R
 
 	_, copyErr := io.Copy(w, carFile)
 	carErr := carFile.Close()
-	streamErr := multierr.Combine(carErr, copyErr)
+	streamErr := errors.Join(carErr, copyErr)
 	if streamErr != nil {
 		// Update fail metric
 		i.carStreamFailMetric.WithLabelValues(rq.contentPath.Namespace()).Observe(time.Since(rq.begin).Seconds())
@@ -137,27 +154,26 @@ func buildCarParams(r *http.Request, contentTypeParams map[string]string) (CarPa
 		case DagScopeEntity, DagScopeAll, DagScopeBlock:
 			params.Scope = s
 		default:
-			err := fmt.Errorf("unsupported application/vnd.ipld.car dag-scope URL parameter: %q", scopeStr)
-			return CarParams{}, err
+			return CarParams{}, errUnsupportedCarScope
 		}
 	} else {
 		params.Scope = DagScopeAll
 	}
 
-	// application/vnd.ipld.car content type parameters from Accept header
+	// application/vnd.ipld.car content type parameters from Accept header and URL query
 
-	// Get CAR version, duplicates and order from the query parameters and override
-	// with parameters from Accept header if they exist, since they have priority.
-	versionStr := queryParams.Get(carVersionKey)
-	duplicatesStr := queryParams.Get(carDuplicatesKey)
-	orderStr := queryParams.Get(carOrderKey)
-	if v, ok := contentTypeParams["version"]; ok {
+	// Get CAR version, duplicates and order from Accept header first,
+	// then override with URL query parameters if they exist (IPIP-523).
+	versionStr := contentTypeParams["version"]
+	duplicatesStr := contentTypeParams["dups"]
+	orderStr := contentTypeParams["order"]
+	if v := queryParams.Get(carVersionKey); v != "" {
 		versionStr = v
 	}
-	if v, ok := contentTypeParams["order"]; ok {
+	if v := queryParams.Get(carOrderKey); v != "" {
 		orderStr = v
 	}
-	if v, ok := contentTypeParams["dups"]; ok {
+	if v := queryParams.Get(carDuplicatesKey); v != "" {
 		duplicatesStr = v
 	}
 
@@ -175,7 +191,7 @@ func buildCarParams(r *http.Request, contentTypeParams map[string]string) (CarPa
 		case DagOrderUnknown, DagOrderDFS:
 			params.Order = order
 		default:
-			return CarParams{}, fmt.Errorf("unsupported application/vnd.ipld.car content type order parameter: %q", order)
+			return CarParams{}, errUnsupportedCarOrder
 		}
 	} else {
 		// when order is not specified, we use DFS as the implicit default

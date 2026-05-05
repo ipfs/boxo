@@ -10,6 +10,28 @@ const (
 	testTwoThirdsOfChunkLimit = 2 * (float32(ChunkSizeLimit) / float32(3))
 )
 
+func TestBlockSizeConstants(t *testing.T) {
+	t.Parallel()
+
+	if ChunkOverheadBudget <= 0 {
+		t.Fatal("ChunkOverheadBudget must be positive")
+	}
+	if ChunkSizeLimit <= 0 {
+		t.Fatal("ChunkSizeLimit must be positive")
+	}
+	if BlockSizeLimit <= 0 {
+		t.Fatal("BlockSizeLimit must be positive")
+	}
+	if ChunkSizeLimit+ChunkOverheadBudget != BlockSizeLimit {
+		t.Fatalf("ChunkSizeLimit (%d) + ChunkOverheadBudget (%d) != BlockSizeLimit (%d)",
+			ChunkSizeLimit, ChunkOverheadBudget, BlockSizeLimit)
+	}
+	if ChunkSizeLimit >= BlockSizeLimit {
+		t.Fatalf("ChunkSizeLimit (%d) must be less than BlockSizeLimit (%d)",
+			ChunkSizeLimit, BlockSizeLimit)
+	}
+}
+
 func TestParseRabin(t *testing.T) {
 	t.Parallel()
 
@@ -79,5 +101,44 @@ func TestParseSize(t *testing.T) {
 	_, err = FromString(r, fmt.Sprintf("size-%d", 1+ChunkSizeLimit))
 	if err != ErrSizeMax {
 		t.Fatalf("Expected 'ErrSizeMax', got: %#v", err)
+	}
+
+	_, err = FromString(r, "size-123-extra")
+	if err == nil {
+		t.Fatal("expected error for size string with extra parameters")
+	}
+}
+
+func TestParseDefault(t *testing.T) {
+	t.Parallel()
+
+	r := bytes.NewReader(randBuf(t, 1000))
+
+	s, err := FromString(r, "")
+	if err != nil {
+		t.Fatalf("expected success for empty string, got: %v", err)
+	}
+	if s == nil {
+		t.Fatal("expected non-nil splitter for empty string")
+	}
+
+	r.Reset(randBuf(t, 1000))
+	s, err = FromString(r, "default")
+	if err != nil {
+		t.Fatalf("expected success for \"default\", got: %v", err)
+	}
+	if s == nil {
+		t.Fatal("expected non-nil splitter for \"default\"")
+	}
+}
+
+func TestParseUnknown(t *testing.T) {
+	t.Parallel()
+
+	r := bytes.NewReader(randBuf(t, 1000))
+
+	_, err := FromString(r, "unknown-chunker")
+	if err == nil {
+		t.Fatal("expected error for unregistered chunker")
 	}
 }

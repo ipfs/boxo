@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"slices"
 	"sync"
@@ -191,9 +190,11 @@ func MaxQueuedWantlistEntriesPerPeer(count uint) Option {
 	}
 }
 
-// MaxCidSize limits how big CIDs we are willing to serve.
-// We will ignore CIDs over this limit.
-// It defaults to [defaults.MaxCidSize].
+// MaxCidSize limits the size of incoming CIDs in requests that we are willing to accept.
+// We will ignore requests for CIDs whose total encoded size exceeds this limit.
+// This protects against malicious peers sending CIDs with pathologically large
+// varint encodings that could exhaust memory.
+// It defaults to [defaults.MaximumAllowedCid].
 // If it is 0 no limit is applied.
 func MaxCidSize(n uint) Option {
 	o := decision.WithMaxCidSize(n)
@@ -385,7 +386,7 @@ func (bs *Server) Stat() (Stat, error) {
 func (bs *Server) NotifyNewBlocks(ctx context.Context, blks ...blocks.Block) error {
 	select {
 	case <-bs.closing:
-		return errors.New("bitswap is closed")
+		return nil
 	default:
 	}
 

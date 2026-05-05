@@ -23,7 +23,6 @@ var bSizes = []bencSpec{
 
 func benchmarkChunker(b *testing.B, ns newSplitter) {
 	for _, s := range bSizes {
-		s := s
 		b.Run(s.name, func(b *testing.B) {
 			benchmarkChunkerSize(b, ns, s.size)
 		})
@@ -76,7 +75,7 @@ func benchmarkFilesAlloc(b *testing.B, ns newSplitter) {
 	var res uint64
 
 	for i := 0; i < b.N; i++ {
-		for j := 0; j < fileCount; j++ {
+		for range fileCount {
 			fileSize := rng.Intn(maxDataSize-minDataSize) + minDataSize
 			r := ns(bytes.NewReader(data[:fileSize]))
 			for {

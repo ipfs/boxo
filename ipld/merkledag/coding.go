@@ -38,17 +38,17 @@ func unmarshal(encodedBytes []byte) (*ProtoNode, error) {
 func fromImmutableNode(encoded *immutableProtoNode) *ProtoNode {
 	n := new(ProtoNode)
 	n.encoded = encoded
-	if n.encoded.PBNode.Data.Exists() {
-		n.data = n.encoded.PBNode.Data.Must().Bytes()
+	if n.encoded.Data.Exists() {
+		n.data = n.encoded.Data.Must().Bytes()
 	}
-	numLinks := n.encoded.PBNode.Links.Length()
+	numLinks := n.encoded.Links.Length()
 	// links may not be sorted after deserialization, but we don't change
 	// them until we mutate this node since we're representing the current,
 	// as-serialized state
 	n.links = make([]*format.Link, numLinks)
 	linkAllocs := make([]format.Link, numLinks)
-	for i := int64(0); i < numLinks; i++ {
-		next := n.encoded.PBNode.Links.Lookup(i)
+	for i := range numLinks {
+		next := n.encoded.Links.Lookup(i)
 		name := ""
 		if next.FieldName().Exists() {
 			name = next.FieldName().Must().String()
@@ -81,10 +81,8 @@ func (n *ProtoNode) marshalImmutable() (*immutableProtoNode, error) {
 					qp.ListEntry(la, qp.Map(3, func(ma ipld.MapAssembler) {
 						qp.MapEntry(ma, "Hash", qp.Link(cidlink.Link{Cid: link.Cid}))
 						qp.MapEntry(ma, "Name", qp.String(link.Name))
-						sz := int64(link.Size)
-						if sz < 0 { // overflow, >MaxInt64 is almost certainly an error
-							sz = 0
-						}
+						// overflow, >MaxInt64 is almost certainly an error
+						sz := max(int64(link.Size), 0)
 						qp.MapEntry(ma, "Tsize", qp.Int(sz))
 					}))
 				}

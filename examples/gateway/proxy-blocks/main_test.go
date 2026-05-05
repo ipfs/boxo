@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -83,8 +82,7 @@ func TestTraceContext(t *testing.T) {
 		traceFlags    = "00"
 	)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	tp, err := common.SetupTracing(ctx, "Proxy Test")
 	assert.NoError(t, err)

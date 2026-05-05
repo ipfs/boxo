@@ -10,22 +10,24 @@ import (
 	"context"
 
 	"github.com/gammazero/chanqueue"
-	blocks "github.com/ipfs/boxo/blockstore"
-	"github.com/ipfs/boxo/fetcher"
-	fetcherhelpers "github.com/ipfs/boxo/fetcher/helpers"
-	pin "github.com/ipfs/boxo/pinning/pinner"
 	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-cidutil"
-	logging "github.com/ipfs/go-log/v2"
-	cidlink "github.com/ipld/go-ipld-prime/linking/cid"
+	mh "github.com/multiformats/go-multihash"
 )
-
-var logR = logging.Logger("reprovider.simple")
 
 // Provider announces blocks to the network
 type Provider interface {
 	// Provide takes a cid and makes an attempt to announce it to the network
 	Provide(context.Context, cid.Cid, bool) error
+}
+
+// MultihashProvider is the interface implementing StartProviding.
+type MultihashProvider interface {
+	// StartProviding announces blocks to the network, batching multiple keys for efficiency.
+	// The force parameter, when true, forces re-providing even if the keys were recently provided.
+	// When false, the implementation may skip keys that were recently announced based on internal
+	// rate limiting or caching strategies.
+	StartProviding(force bool, keys ...mh.Multihash) error
 }
 
 // Reprovider reannounces blocks to the network
@@ -37,46 +39,18 @@ type Reprovider interface {
 // System defines the interface for interacting with the value
 // provider system
 type System interface {
+	// Clear removes all entries from the provide queue. Returns the number of
+	// CIDs removed from the queue.
+	Clear() int
 	Close() error
 	Stat() (ReproviderStats, error)
+	SetKeyProvider(kp KeyChanFunc)
 	Provider
 	Reprovider
 }
 
 // KeyChanFunc is function streaming CIDs to pass to content routing
 type KeyChanFunc func(context.Context) (<-chan cid.Cid, error)
-
-// NewBlockstoreProvider returns key provider using bstore.AllKeysChan
-func NewBlockstoreProvider(bstore blocks.Blockstore) KeyChanFunc {
-	return func(ctx context.Context) (<-chan cid.Cid, error) {
-		return bstore.AllKeysChan(ctx)
-	}
-}
-
-// NewPinnedProvider returns a KeyChanFunc supplying pinned keys. The Provider
-// will block when writing to the channel and there are no readers.
-func NewPinnedProvider(onlyRoots bool, pinning pin.Pinner, fetchConfig fetcher.Factory) KeyChanFunc {
-	return func(ctx context.Context) (<-chan cid.Cid, error) {
-		set, err := pinSet(ctx, pinning, fetchConfig, onlyRoots)
-		if err != nil {
-			return nil, err
-		}
-
-		outCh := make(chan cid.Cid)
-		go func() {
-			defer close(outCh)
-			for c := range set.New {
-				select {
-				case <-ctx.Done():
-					return
-				case outCh <- c:
-				}
-			}
-		}()
-
-		return outCh, nil
-	}
-}
 
 // NewBufferedProvider returns a KeyChanFunc supplying keys from a given
 // KeyChanFunction, but buffering keys in memory if we can read them faster
@@ -95,63 +69,7 @@ func NewBufferedProvider(pinsF KeyChanFunc) KeyChanFunc {
 	}
 }
 
-func pinSet(ctx context.Context, pinning pin.Pinner, fetchConfig fetcher.Factory, onlyRoots bool) (*cidutil.StreamingSet, error) {
-	set := cidutil.NewStreamingSet()
-	recursivePins := cidutil.NewSet()
-
-	go func() {
-		ctx, cancel := context.WithCancel(ctx)
-		defer cancel()
-		defer close(set.New)
-
-		// 1. Recursive keys
-		for sc := range pinning.RecursiveKeys(ctx, false) {
-			if sc.Err != nil {
-				logR.Errorf("reprovide recursive pins: %s", sc.Err)
-				return
-			}
-			if !onlyRoots {
-				// Save some bytes.
-				_ = recursivePins.Visit(sc.Pin.Key)
-			}
-			_ = set.Visitor(ctx)(sc.Pin.Key)
-		}
-
-		// 2. Direct pins
-		for sc := range pinning.DirectKeys(ctx, false) {
-			if sc.Err != nil {
-				logR.Errorf("reprovide direct pins: %s", sc.Err)
-				return
-			}
-			_ = set.Visitor(ctx)(sc.Pin.Key)
-		}
-
-		if onlyRoots {
-			return
-		}
-
-		// 3. Go through recursive pins to fetch remaining blocks if we want more
-		// than just roots.
-		session := fetchConfig.NewSession(ctx)
-		err := recursivePins.ForEach(func(c cid.Cid) error {
-			return fetcherhelpers.BlockAll(ctx, session, cidlink.Link{Cid: c}, func(res fetcher.FetchResult) error {
-				clink, ok := res.LastBlockLink.(cidlink.Link)
-				if ok {
-					_ = set.Visitor(ctx)(clink.Cid)
-				}
-				return nil
-			})
-		})
-		if err != nil {
-			logR.Errorf("reprovide indirect pins: %s", err)
-			return
-		}
-	}()
-
-	return set, nil
-}
-
-func NewPrioritizedProvider(priorityCids KeyChanFunc, otherCids KeyChanFunc) KeyChanFunc {
+func NewPrioritizedProvider(streams ...KeyChanFunc) KeyChanFunc {
 	return func(ctx context.Context) (<-chan cid.Cid, error) {
 		outCh := make(chan cid.Cid)
 
@@ -190,15 +108,58 @@ func NewPrioritizedProvider(priorityCids KeyChanFunc, otherCids KeyChanFunc) Key
 				}
 			}
 
-			err := handleStream(priorityCids, true)
-			if err != nil {
-				log.Warnf("error in prioritized strategy while handling priority CIDs: %w", err)
-				return
+			last := len(streams) - 1
+			for i, stream := range streams {
+				if err := handleStream(stream, i < last); err != nil {
+					log.Errorf("error in prioritized strategy while handling CID stream %d: %s", i, err)
+					continue // best-effort: e.g. MFS flush error should not prevent pinned content from being provided
+				}
 			}
+		}()
 
-			err = handleStream(otherCids, false)
-			if err != nil {
-				log.Warnf("error in prioritized strategy while handling other CIDs: %w", err)
+		return outCh, nil
+	}
+}
+
+// NewConcatProvider concatenates multiple KeyChanFunc streams into one,
+// running them sequentially in order. All CIDs from each stream are
+// forwarded to the output channel without deduplication.
+//
+// Use this when the input streams are already deduplicated externally
+// (e.g. via a shared [walker.VisitedTracker]). For streams that may
+// produce overlapping CIDs, use [NewPrioritizedProvider] instead, which
+// maintains its own visited set.
+//
+// Like [NewPrioritizedProvider], a failure in one stream's KeyChanFunc
+// is logged and skipped -- remaining streams still run.
+func NewConcatProvider(streams ...KeyChanFunc) KeyChanFunc {
+	return func(ctx context.Context) (<-chan cid.Cid, error) {
+		outCh := make(chan cid.Cid)
+
+		go func() {
+			defer close(outCh)
+			for i, stream := range streams {
+				ch, err := stream(ctx)
+				if err != nil {
+					log.Errorf("error in concat strategy while handling CID stream %d: %s", i, err)
+					continue
+				}
+			drain:
+				for {
+					select {
+					case <-ctx.Done():
+						return
+					case c, ok := <-ch:
+						if !ok {
+							break drain
+						}
+						select {
+						case <-ctx.Done():
+							return
+						case outCh <- c:
+						}
+					}
+				}
 			}
 		}()
 

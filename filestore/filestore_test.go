@@ -25,7 +25,7 @@ func newTestFilestore(t *testing.T, option ...Option) (string, *Filestore) {
 	fm.AllowFiles = true
 
 	bs := blockstore.NewBlockstore(mds)
-	fstore := NewFilestore(bs, fm)
+	fstore := NewFilestore(bs, fm, nil)
 	return testdir, fstore
 }
 
@@ -66,7 +66,7 @@ func TestBasicFilestore(t *testing.T) {
 			fname := makeFile(t, dir, buf)
 
 			var cids []cid.Cid
-			for i := 0; i < 100; i++ {
+			for i := range 100 {
 				n := &posinfo.FilestoreNode{
 					PosInfo: &posinfo.PosInfo{
 						FullPath: fname,

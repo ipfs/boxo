@@ -16,8 +16,8 @@ import (
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
 	format "github.com/ipfs/go-ipld-format"
+	logging "github.com/ipfs/go-log/v2"
 	"github.com/prometheus/client_golang/prometheus"
-	"go.uber.org/zap/zapcore"
 )
 
 type cacheBlockStore struct {
@@ -82,7 +82,7 @@ func (l *cacheBlockStore) Get(ctx context.Context, c cid.Cid) (blocks.Block, err
 
 	blkData, found := l.cache.Get(string(c.Hash()))
 	if !found {
-		if log.Level().Enabled(zapcore.DebugLevel) {
+		if log.LevelEnabled(logging.LevelDebug) {
 			log.Debugw("block not found in cache", "cid", c.String())
 		}
 		return nil, format.ErrNotFound{Cid: c}
@@ -90,9 +90,7 @@ func (l *cacheBlockStore) Get(ctx context.Context, c cid.Cid) (blocks.Block, err
 
 	// It's a HIT!
 	l.cacheHitsMetric.Add(1)
-	if log.Level().Enabled(zapcore.DebugLevel) {
-		log.Debugw("block found in cache", "cid", c.String())
-	}
+	log.Debugw("block found in cache", "cid", c)
 
 	if l.rehash.Load() {
 		rbcid, err := c.Prefix().Sum(blkData)

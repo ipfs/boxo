@@ -560,7 +560,7 @@ func chmodRecursive(t *testing.T, path string) {
 		if err != nil {
 			return err
 		}
-		return os.Chmod(path, fs.FileMode(0700))
+		return os.Chmod(path, fs.FileMode(0o700))
 	})
 	if err != nil {
 		t.Log("ERROR:", err)

@@ -101,7 +101,8 @@ func (r *basicResolver) ResolveToLastNode(ctx context.Context, fpath path.Immuta
 
 	if len(nodes) < 1 {
 		return cid.Cid{}, nil, fmt.Errorf("path %v did not resolve to a node", fpath)
-	} else if len(nodes) < len(remainder) {
+	}
+	if len(nodes) < len(remainder) {
 		return cid.Undef, nil, &ErrNoLink{Name: remainder[len(nodes)-1], Node: lastCid}
 	}
 

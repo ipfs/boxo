@@ -2,17 +2,14 @@ package main
 
 import (
 	"bytes"
-	"context"
 	"testing"
 
 	"github.com/ipfs/go-cid"
-
 	"github.com/libp2p/go-libp2p/core/peer"
 )
 
 func TestBitswapFetch(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	server, err := makeHost(0, 0)
 	if err != nil {
 		t.Fatal(err)

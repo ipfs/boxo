@@ -2,13 +2,13 @@ package httpnet
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"time"
 
 	"github.com/ipfs/boxo/bitswap/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
-	"go.uber.org/multierr"
 )
 
 // pinger pings connected hosts on regular intervals
@@ -52,7 +52,7 @@ func (pngr *pinger) ping(ctx context.Context, p peer.ID) ping.Result {
 	for _, u := range urls {
 		go func(u network.ParsedURL) {
 			start := time.Now()
-			err := pngr.ht.connectToURL(ctx, p, u, method)
+			_, err := pngr.ht.connectToURL(ctx, p, u, method)
 			if err != nil {
 				log.Debug(err)
 				results <- ping.Result{Error: err}
@@ -65,27 +65,27 @@ func (pngr *pinger) ping(ctx context.Context, p peer.ID) ping.Result {
 	}
 
 	var result ping.Result
-	var errors error
-	for i := 0; i < len(urls); i++ {
+	var errs []error
+	for range urls {
 		r := <-results
 		if r.Error != nil {
-			errors = multierr.Append(errors, r.Error)
+			errs = append(errs, r.Error)
 			continue
 		}
 		result.RTT += r.RTT
 	}
 	close(results)
 
-	lenErrors := len(multierr.Errors(errors))
+	lenErrors := len(errs)
 	// if all urls failed return that, otherwise ignore.
 	if lenErrors == len(urls) {
 		return ping.Result{
-			Error: errors,
+			Error: errors.Join(errs...),
 		}
 	}
 	result.RTT = result.RTT / time.Duration(len(urls)-lenErrors)
 
-	//log.Debugf("ping latency %s %s", p, result.RTT)
+	// log.Debugf("ping latency %s %s", p, result.RTT)
 	pngr.recordLatency(p, result.RTT)
 	return result
 }
@@ -127,11 +127,14 @@ func (pngr *pinger) startPinging(p peer.ID) {
 
 	_, ok := pngr.pings[p]
 	if ok {
+		log.Debugf("already pinging %s", p)
 		return
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	pngr.pings[p] = cancel
+
+	log.Debugf("starting pings to %s", p)
 
 	go func(ctx context.Context, p peer.ID) {
 		ticker := time.NewTicker(5 * time.Second)
@@ -144,10 +147,10 @@ func (pngr *pinger) startPinging(p peer.ID) {
 			}
 		}
 	}(ctx, p)
-
 }
 
 func (pngr *pinger) stopPinging(p peer.ID) {
+	log.Debugf("stopping pings to %s", p)
 	pngr.pingsLock.Lock()
 	{
 		cancel, ok := pngr.pings[p]
@@ -160,7 +163,6 @@ func (pngr *pinger) stopPinging(p peer.ID) {
 	pngr.latenciesLock.Lock()
 	delete(pngr.latencies, p)
 	pngr.latenciesLock.Unlock()
-
 }
 
 func (pngr *pinger) isPinging(p peer.ID) bool {

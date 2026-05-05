@@ -2,9 +2,8 @@ package internal
 
 import (
 	"context"
+	"slices"
 	"sync"
-
-	"github.com/samber/lo"
 )
 
 // DoBatch processes a slice of items with concurrency no higher than
@@ -15,19 +14,20 @@ func DoBatch[A any](ctx context.Context, maxBatchSize, maxConcurrency int, items
 	if len(items) == 0 {
 		return nil
 	}
-	batches := lo.Chunk(items, maxBatchSize)
+	batches := slices.Collect(slices.Chunk(items, maxBatchSize))
 	workerCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	batchChan := make(chan []A)
 	errChan := make(chan error)
 	wg := sync.WaitGroup{}
-	for i := 0; i < maxConcurrency && i < len(batches); i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	for range min(maxConcurrency, len(batches)) {
+		wg.Go(func() {
 			for {
 				select {
-				case batch := <-batchChan:
+				case batch, ok := <-batchChan:
+					if !ok {
+						return
+					}
 					err := f(workerCtx, batch)
 					if err != nil {
 						select {
@@ -40,13 +40,16 @@ func DoBatch[A any](ctx context.Context, maxBatchSize, maxConcurrency int, items
 					return
 				}
 			}
-		}()
+		})
 	}
 
 	// work sender
 	go func() {
-		defer close(errChan)
-		defer wg.Wait()
+		defer func() {
+			close(batchChan)
+			wg.Wait()
+			close(errChan)
+		}()
 		for _, batch := range batches {
 			select {
 			case batchChan <- batch:
@@ -54,7 +57,6 @@ func DoBatch[A any](ctx context.Context, maxBatchSize, maxConcurrency int, items
 				return
 			}
 		}
-		cancel()
 	}()
 
 	// receive any errors

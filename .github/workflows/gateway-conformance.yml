@@ -22,18 +22,18 @@ jobs:
     steps:
       # 1. Download the gateway-conformance fixtures
       - name: Download gateway-conformance fixtures
-        uses: ipfs/gateway-conformance/.github/actions/extract-fixtures@v0.8
+        uses: ipfs/gateway-conformance/.github/actions/extract-fixtures@v0.13
         with:
           output: fixtures
           merged: true
 
       # 2. Build the gateway binary
       - name: Checkout boxo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           path: boxo
       - name: Setup Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version-file: 'boxo/examples/go.mod'
           cache-dependency-path: "boxo/**/*.sum"
@@ -47,7 +47,7 @@ jobs:
 
       # 4. Run the gateway-conformance tests
       - name: Run gateway-conformance tests without IPNS and DNSLink
-        uses: ipfs/gateway-conformance/.github/actions/test@v0.8
+        uses: ipfs/gateway-conformance/.github/actions/test@v0.13
         with:
           gateway-url: http://127.0.0.1:8040
           subdomain-url: http://example.net:8040
@@ -63,13 +63,13 @@ jobs:
         run: cat output.md >> $GITHUB_STEP_SUMMARY
       - name: Upload HTML report
         if: failure() || success()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: gateway-conformance_local-block-backend.html
           path: output.html
       - name: Upload JSON report
         if: failure() || success()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: gateway-conformance_local-block-backend.json
           path: output.json
@@ -84,18 +84,18 @@ jobs:
     steps:
       # 1. Download the gateway-conformance fixtures
       - name: Download gateway-conformance fixtures
-        uses: ipfs/gateway-conformance/.github/actions/extract-fixtures@v0.8
+        uses: ipfs/gateway-conformance/.github/actions/extract-fixtures@v0.13
         with:
           output: fixtures
           merged: true
 
       # 2. Build the gateway binaries
       - name: Checkout boxo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           path: boxo
       - name: Setup Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version-file: 'boxo/examples/go.mod'
           cache-dependency-path: "boxo/**/*.sum"
@@ -114,7 +114,7 @@ jobs:
 
       # 4. Run the gateway-conformance tests
       - name: Run gateway-conformance tests without IPNS and DNSLink
-        uses: ipfs/gateway-conformance/.github/actions/test@v0.8
+        uses: ipfs/gateway-conformance/.github/actions/test@v0.13
         with:
           gateway-url: http://127.0.0.1:8040 # we test gateway that is backed by a remote block gateway
           subdomain-url: http://example.net:8040
@@ -131,13 +131,13 @@ jobs:
         run: cat output.md >> $GITHUB_STEP_SUMMARY
       - name: Upload HTML report
         if: failure() || success()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: gateway-conformance_remote-block-backend.html
           path: output.html
       - name: Upload JSON report
         if: failure() || success()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: gateway-conformance_remote-block-backend.json
           path: output.json
@@ -152,18 +152,18 @@ jobs:
     steps:
       # 1. Download the gateway-conformance fixtures
       - name: Download gateway-conformance fixtures
-        uses: ipfs/gateway-conformance/.github/actions/extract-fixtures@v0.8
+        uses: ipfs/gateway-conformance/.github/actions/extract-fixtures@v0.13
         with:
           output: fixtures
           merged: true
 
       # 2. Build the gateway binaries
       - name: Checkout boxo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           path: boxo
       - name: Setup Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version-file: 'boxo/examples/go.mod'
           cache-dependency-path: "boxo/**/*.sum"
@@ -182,7 +182,7 @@ jobs:
 
       # 4. Run the gateway-conformance tests
       - name: Run gateway-conformance tests without IPNS and DNSLink
-        uses: ipfs/gateway-conformance/.github/actions/test@v0.8
+        uses: ipfs/gateway-conformance/.github/actions/test@v0.13
         with:
           gateway-url: http://127.0.0.1:8040 # we test gateway that is backed by a remote car gateway
           subdomain-url: http://example.net:8040
@@ -199,13 +199,13 @@ jobs:
         run: cat output.md >> $GITHUB_STEP_SUMMARY
       - name: Upload HTML report
         if: failure() || success()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: gateway-conformance_remote-car-backend.html
           path: output.html
       - name: Upload JSON report
         if: failure() || success()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: gateway-conformance_remote-car-backend.json
           path: output.json

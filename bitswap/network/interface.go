@@ -5,17 +5,16 @@ import (
 	"time"
 
 	bsmsg "github.com/ipfs/boxo/bitswap/message"
-
 	cid "github.com/ipfs/go-cid"
-
+	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/routing"
 	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
 )
 
-// BitSwapNetwork provides network connectivity for BitSwap sessions.
+// BitSwapNetwork provides network connectivity for Bitswap sessions.
 type BitSwapNetwork interface {
-	// SendMessage sends a BitSwap message to a peer.
+	// SendMessage sends a Bitswap message to a peer.
 	SendMessage(
 		context.Context,
 		peer.ID,
@@ -28,8 +27,11 @@ type BitSwapNetwork interface {
 
 	Connect(context.Context, peer.AddrInfo) error
 	DisconnectFrom(context.Context, peer.ID) error
+	IsConnectedToPeer(context.Context, peer.ID) bool
 
 	NewMessageSender(context.Context, peer.ID, *MessageSenderOpts) (MessageSender, error)
+
+	Host() host.Host
 
 	Stats() Stats
 

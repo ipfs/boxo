@@ -4,10 +4,10 @@ import (
 	"encoding/binary"
 	"errors"
 	"io"
+	"maps"
 
 	"github.com/ipfs/boxo/bitswap/client/wantlist"
 	pb "github.com/ipfs/boxo/bitswap/message/pb"
-	u "github.com/ipfs/boxo/util"
 	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
 	pool "github.com/libp2p/go-buffer-pool"
@@ -17,7 +17,7 @@ import (
 )
 
 // BitSwapMessage is the basic interface for interacting building, encoding,
-// and decoding messages sent on the BitSwap protocol.
+// and decoding messages sent on the Bitswap protocol.
 type BitSwapMessage interface {
 	FillWantlist([]Entry) []Entry
 	// Wantlist returns a slice of unique keys that represent data wanted by
@@ -69,7 +69,7 @@ type BitSwapMessage interface {
 	SetPendingBytes(int32)
 	Exportable
 
-	Loggable() map[string]interface{}
+	Loggable() map[string]any
 
 	// Reset the values in the message back to defaults, so it can be reused
 	Reset(bool)
@@ -122,24 +122,6 @@ func (e *Entry) ToPB() *pb.Message_Wantlist_Entry {
 	}
 }
 
-var MaxEntrySize = maxEntrySize()
-
-func maxEntrySize() int {
-	var maxInt32 int32 = (1 << 31) - 1
-
-	c := cid.NewCidV0(u.Hash([]byte("cid")))
-	e := Entry{
-		Entry: wantlist.Entry{
-			Cid:      c,
-			Priority: maxInt32,
-			WantType: pb.Message_Wantlist_Have,
-		},
-		SendDontHave: true, // true takes up more space than false
-		Cancel:       true,
-	}
-	return e.Size()
-}
-
 type impl struct {
 	full           bool
 	wantlist       map[cid.Cid]*Entry
@@ -149,11 +131,7 @@ type impl struct {
 }
 
 // New returns a new, empty bitswap message
-func New(full bool) BitSwapMessage {
-	return newMsg(full)
-}
-
-func newMsg(full bool) *impl {
+func New(full bool) *impl {
 	return &impl{
 		full:           full,
 		wantlist:       make(map[cid.Cid]*Entry),
@@ -164,18 +142,13 @@ func newMsg(full bool) *impl {
 
 // Clone the message fields
 func (m *impl) Clone() BitSwapMessage {
-	msg := newMsg(m.full)
-	for k := range m.wantlist {
-		msg.wantlist[k] = m.wantlist[k]
+	return &impl{
+		full:           m.full,
+		wantlist:       maps.Clone(m.wantlist),
+		blocks:         maps.Clone(m.blocks),
+		blockPresences: maps.Clone(m.blockPresences),
+		pendingBytes:   m.pendingBytes,
 	}
-	for k := range m.blocks {
-		msg.blocks[k] = m.blocks[k]
-	}
-	for k := range m.blockPresences {
-		msg.blockPresences[k] = m.blockPresences[k]
-	}
-	msg.pendingBytes = m.pendingBytes
-	return msg
 }
 
 // Reset the values in the message back to defaults, so it can be reused
@@ -190,16 +163,19 @@ func (m *impl) Reset(full bool) {
 var errCidMissing = errors.New("missing cid")
 
 func newMessageFromProto(pbm *pb.Message) (BitSwapMessage, error) {
-	m := newMsg(pbm.Wantlist.Full)
-	for _, e := range pbm.Wantlist.Entries {
-		if len(e.Block) == 0 {
-			return nil, errCidMissing
+	m := New(pbm.Wantlist != nil && pbm.Wantlist.Full)
+
+	if pbm.Wantlist != nil {
+		for _, e := range pbm.Wantlist.Entries {
+			if len(e.Block) == 0 {
+				return nil, errCidMissing
+			}
+			c, err := cid.Cast(e.Block)
+			if err != nil {
+				return nil, err
+			}
+			m.addEntry(c, e.Priority, e.Cancel, e.WantType, e.SendDontHave)
 		}
-		c, err := cid.Cast(e.Block)
-		if err != nil {
-			return nil, err
-		}
-		m.addEntry(c, e.Priority, e.Cancel, e.WantType, e.SendDontHave)
 	}
 
 	// deprecated
@@ -216,12 +192,7 @@ func newMessageFromProto(pbm *pb.Message) (BitSwapMessage, error) {
 			return nil, err
 		}
 
-		c, err := pref.Sum(b.GetData())
-		if err != nil {
-			return nil, err
-		}
-
-		blk, err := blocks.NewBlockWithCid(b.GetData(), c)
+		blk, err := NewWantlistBlock(b.GetData(), cid.Undef, pref)
 		if err != nil {
 			return nil, err
 		}
@@ -258,42 +229,36 @@ func (m *impl) Empty() bool {
 
 func (m *impl) FillWantlist(out []Entry) []Entry {
 	if cap(out) < len(m.wantlist) {
-		out = make([]Entry, len(m.wantlist))
+		out = make([]Entry, 0, len(m.wantlist))
+	} else {
+		out = out[:0]
 	}
-	var i int
 	for _, e := range m.wantlist {
-		out[i] = *e
-		i++
+		out = append(out, *e)
 	}
 	return out
 }
 
 func (m *impl) Wantlist() []Entry {
-	out := make([]Entry, len(m.wantlist))
-	var i int
+	out := make([]Entry, 0, len(m.wantlist))
 	for _, e := range m.wantlist {
-		out[i] = *e
-		i++
+		out = append(out, *e)
 	}
 	return out
 }
 
 func (m *impl) Blocks() []blocks.Block {
-	bs := make([]blocks.Block, len(m.blocks))
-	var i int
+	bs := make([]blocks.Block, 0, len(m.blocks))
 	for _, block := range m.blocks {
-		bs[i] = block
-		i++
+		bs = append(bs, block)
 	}
 	return bs
 }
 
 func (m *impl) BlockPresences() []BlockPresence {
-	bps := make([]BlockPresence, len(m.blockPresences))
-	var i int
+	bps := make([]BlockPresence, 0, len(m.blockPresences))
 	for c, t := range m.blockPresences {
-		bps[i] = BlockPresence{c, t}
-		i++
+		bps = append(bps, BlockPresence{c, t})
 	}
 	return bps
 }
@@ -442,6 +407,20 @@ func FromMsgReader(r msgio.Reader) (BitSwapMessage, int, error) {
 	return m, len(msg), nil
 }
 
+// NewWantlistBlock makes a block from a payload.
+func NewWantlistBlock(bs []byte, c cid.Cid, prefix cid.Prefix) (blocks.Block, error) {
+	blockCid, err := prefix.Sum(bs)
+	if err != nil {
+		return nil, err
+	}
+	if c.Defined() {
+		if !blockCid.Equals(c) {
+			return nil, blocks.ErrWrongHash
+		}
+	}
+	return blocks.NewBlockWithCid(bs, blockCid)
+}
+
 func (m *impl) ToProtoV0() *pb.Message {
 	pbm := &pb.Message{
 		Wantlist: &pb.Message_Wantlist{
@@ -522,12 +501,12 @@ func write(w io.Writer, m *pb.Message) error {
 	return err
 }
 
-func (m *impl) Loggable() map[string]interface{} {
+func (m *impl) Loggable() map[string]any {
 	blocks := make([]string, 0, len(m.blocks))
 	for _, v := range m.blocks {
 		blocks = append(blocks, v.Cid().String())
 	}
-	return map[string]interface{}{
+	return map[string]any{
 		"blocks": blocks,
 		"wants":  m.Wantlist(),
 	}

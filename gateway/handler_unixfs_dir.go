@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/dustin/go-humanize"
-	"github.com/ipfs/boxo/files"
 	"github.com/ipfs/boxo/gateway/assets"
 	"github.com/ipfs/boxo/path"
 	cid "github.com/ipfs/go-cid"
@@ -92,7 +91,7 @@ func (i *handler) serveDirectory(ctx context.Context, w http.ResponseWriter, r *
 		if err == nil {
 			defer idxHeadResp.Close()
 			if !idxHeadResp.isFile {
-				i.webError(w, r, fmt.Errorf("%q could not be read: %w", imIndexPath, files.ErrNotReader), http.StatusUnprocessableEntity)
+				i.webError(w, r, errIndexNotReadable, http.StatusUnprocessableEntity)
 				return false
 			}
 			returnRangeStartsAtZero = true
@@ -105,7 +104,7 @@ func (i *handler) serveDirectory(ctx context.Context, w http.ResponseWriter, r *
 		if err == nil {
 			defer idxGetResp.Close()
 			if idxGetResp.bytes == nil {
-				i.webError(w, r, fmt.Errorf("%q could not be read: %w", imIndexPath, files.ErrNotReader), http.StatusUnprocessableEntity)
+				i.webError(w, r, errIndexNotReadable, http.StatusUnprocessableEntity)
 				return false
 			}
 			if len(ranges) > 0 {
@@ -221,7 +220,7 @@ func (i *handler) serveDirectory(ctx context.Context, w http.ResponseWriter, r *
 	rq.logger.Debugw("request processed", "tplDataDNSLink", globalData.DNSLink, "tplDataSize", size, "tplDataBackLink", backLink, "tplDataHash", hash)
 
 	if err := assets.DirectoryTemplate.Execute(w, tplData); err != nil {
-		_, _ = w.Write([]byte(fmt.Sprintf("error during body generation: %v", err)))
+		_, _ = fmt.Fprintf(w, "error during body generation: %v", err)
 		return false
 	}
 

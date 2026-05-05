@@ -21,8 +21,7 @@ func createIndexer() Indexer {
 }
 
 func TestAdd(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	nameIndex := createIndexer()
 	err := nameIndex.Add(ctx, "someone", "s1")
 	if err != nil {
@@ -45,8 +44,7 @@ func TestAdd(t *testing.T) {
 }
 
 func TestHasValue(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	nameIndex := createIndexer()
 
 	ok, err := nameIndex.HasValue(ctx, "bob", "b1")
@@ -77,8 +75,7 @@ func TestHasValue(t *testing.T) {
 }
 
 func TestHasAny(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	nameIndex := createIndexer()
 
 	ok, err := nameIndex.HasAny(ctx, "nothere")
@@ -117,8 +114,7 @@ func TestHasAny(t *testing.T) {
 }
 
 func TestForEach(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	nameIndex := createIndexer()
 
 	found := make(map[string]struct{})
@@ -164,8 +160,7 @@ func TestForEach(t *testing.T) {
 }
 
 func TestSearch(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	nameIndex := createIndexer()
 
 	ids, err := nameIndex.Search(ctx, "bob")
@@ -202,8 +197,7 @@ func TestSearch(t *testing.T) {
 }
 
 func TestDelete(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	nameIndex := createIndexer()
 
 	err := nameIndex.Delete(ctx, "bob", "b3")
@@ -238,8 +232,7 @@ func TestDelete(t *testing.T) {
 }
 
 func TestSyncIndex(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	nameIndex := createIndexer()
 
 	dstore := ds.NewMapDatastore()

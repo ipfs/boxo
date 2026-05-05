@@ -20,15 +20,304 @@ The following emojis are used to highlight certain changes:
 
 ### Removed
 
+### Fixed
+
+- Improvements to support WASM builds
+
+### Security
+
+
+## [v0.39.0]
+
+### Added
+
+- `gateway`: `Config.MaxDeserializedResponseSize` allows setting a maximum file/directory size for deserialized gateway responses. Content exceeding this limit returns `410 Gone`, directing users to run their own IPFS node. Trustless response formats (`application/vnd.ipld.raw`, `application/vnd.ipld.car`) are not affected. The size is read from the UnixFS root block, so no extra block fetches are needed for the check. [#1138](https://github.com/ipfs/boxo/pull/1138)
+- `gateway`: `Config.MaxUnixFSDAGResponseSize` allows setting a maximum content size applied to all response formats (deserialized, raw blocks, CAR, TAR). Content exceeding this limit returns `410 Gone`. For most handlers the check reuses size information already available in the request path; for CAR responses a lightweight `Head` call is made only when the limit is configured. [#1138](https://github.com/ipfs/boxo/pull/1138)
+
+### Changed
+
+- `bitswap/server`: the default peer comparator now schedules peers fairly. A peer that has never been served, or has waited longer than 10s, outranks non-starved peers. Pending counts cap at 16 for ordering purposes, so peers with small wantlists no longer wait behind peers with large ones. The final tiebreak uses a per-process salted hash of peer.ID, so no peer can craft an ID that permanently outranks everyone. Engines built with `WithTaskComparator` keep their existing behavior. [#1141](https://github.com/ipfs/boxo/issues/1141)
+- upgrade to `go-libp2p-kad-dht` [v0.39.1](https://github.com/libp2p/go-libp2p-kad-dht/releases/tag/v0.39.1)
+
+### Fixed
+
+- `bitswap/network/bsnet`: `SendMessage` and `handleNewStream` now close streams in a background goroutine. Previously, `stream.Close` could hold the caller for up to `DefaultNegotiationTimeout` (10s) while `lazyClientConn.Close` waited for the remote peer to complete the multistream handshake. This saturated the bitswap `TaskWorkerCount` pool when peers were unresponsive and stopped bitswap from serving blocks to other peers. As a side effect, `SendMessage` no longer returns errors from `stream.Close`; close failures are logged at Debug. [#1142](https://github.com/ipfs/boxo/issues/1142)
+- `bitswap/server`: a peer with a single pending want no longer waits behind peers with large wantlists. [#1141](https://github.com/ipfs/boxo/issues/1141)
+- `pinner/dspinner`: `RecursiveKeys` and `DirectKeys` now snapshot the pin index under the read lock and release it before emitting pins, so a slow consumer (e.g. the reprovider draining the channel at DHT speed under `Provide.Strategy=pinned*`) can no longer starve `Pin`/`Unpin`/`Flush` writers. [#1140](https://github.com/ipfs/boxo/pull/1140)
+
+
+## [v0.38.0]
+
+### Added
+
+- `ipns`: `NewRecord` accepts `WithMetadata(map[string]any)` option for storing custom scalar key-value pairs (string, `[]byte`, int64, int, bool) in the signed DAG-CBOR data of IPNS records. Metadata can be read back via `Record.Metadata` (returns typed `MetadataValue` with `Kind()` discriminator) and iterated with `Record.MetadataEntries`. Reserved IPNS field names, empty keys, and unsupported value types are rejected. [#1085](https://github.com/ipfs/boxo/pull/1085)
+- `dag/walker`: new package for memory-efficient DAG traversal with deduplication. `VisitedTracker` interface with `BloomTracker` (scalable bloom filter chain, ~4 bytes/CID vs ~75 bytes for a map) and `MapTracker` (exact, for tests). `WalkDAG` provides iterative DFS traversal with integrated dedup, supporting dag-pb, dag-cbor, raw, and other registered codecs. ~2x faster than the legacy go-ipld-prime selector-based traversal. `WalkEntityRoots` emits only entity roots (files, directories, HAMT shards) instead of every block, skipping internal file chunks. [#1124](https://github.com/ipfs/boxo/pull/1124)
+- `pinner`: `NewUniquePinnedProvider` and `NewPinnedEntityRootsProvider` log and skip corrupted pin entries instead of aborting the provide cycle, allowing remaining pins to still be provided. [#1124](https://github.com/ipfs/boxo/pull/1124)
+- `routing/http/client`: `WithProviderInfoFunc` option resolves provider addresses at provide-time instead of client construction time. This only impacts legacy HTTP-only custom routing setups that depend on [IPIP-526](https://github.com/ipfs/specs/pull/526) and were sending unresolved `0.0.0.0` addresses in provider records instead of actual interface addresses. [#1115](https://github.com/ipfs/boxo/pull/1115)
+- `chunker`: added `Register` function to allow custom chunkers to be registered for use with `FromString`.
+- `mfs`: added `Directory.Mode()` and `Directory.ModTime()` getters to match the existing `File.Mode()` and `File.ModTime()` API. [#1131](https://github.com/ipfs/boxo/pull/1131)
+
+### Changed
+
+- `provider`: `NewPrioritizedProvider` now continues to the next stream when one fails instead of stopping all streams. `NewConcatProvider` added for pre-deduplicated streams. [#1124](https://github.com/ipfs/boxo/pull/1124)
+- `chunker`: `FromString` now rejects malformed `size-` strings with extra parameters (e.g. `size-123-extra` was previously silently accepted).
+- `gateway`: compliance with gateway-conformance [v0.13](https://github.com/ipfs/gateway-conformance/releases/tag/v0.13)
+- upgrade to `go-libp2p` [v0.48.0](https://github.com/libp2p/go-libp2p/releases/tag/v0.48.0)
+- 🛠 `mfs`: replaced `RootOption` with a unified `Option` functional options pattern (e.g. `WithCidBuilder`, `WithChunker`, `WithMaxLinks`). `NewRoot`, `NewEmptyRoot`, `MkdirWithOpts`, and `NewEmptyDirectory` now accept `...Option`. `Mkdir` takes a `MkdirOpts` struct (narrowed to `Mkparents` and `Flush` flags) followed by `...Option` for directory configuration. [#1125](https://github.com/ipfs/boxo/pull/1125)
+
+### Removed
+
+- `gateway`: removed dead DoH resolver for `.crypto` TLD (Unstoppable Domains) [#772](https://github.com/ipfs/boxo/issues/772)
+- `cmd/boxo-migrate`: removed code for go-ipfs migration -- no longer needed.
+- `cmd/deprecator`: removed code to deprecare relocated ipfs packages -- no longer needed.
+
+### Fixed
+
+- `bitswap/server`: incoming identity CIDs in wantlist messages are now silently ignored instead of killing the connection to the remote peer. Some IPFS implementations naively send identity CIDs, and disconnecting them for it caused unnecessary churn. [#1117](https://github.com/ipfs/boxo/pull/1117)
+- `bitswap/network`: `ExtractHTTPAddress` now infers default ports for portless HTTP multiaddrs (e.g. `/dns/host/https` without `/tcp/443`). [#1123](https://github.com/ipfs/boxo/pull/1123)
+- `mfs`: `FileDescriptor` operations are serialized with a mutex, preventing data races on the underlying `DagModifier` when FUSE mounts or Kubo RPC commands dispatch concurrent Read, Write, Seek, Truncate, Flush, or Close calls. `Flush` after `Close` returns `ErrClosed`. [#1131](https://github.com/ipfs/boxo/pull/1131) [#1133](https://github.com/ipfs/boxo/pull/1133)
+- `mfs`: preserve `CidBuilder` and `SizeEstimationMode` across `setNodeData()`, `Mkdir()` and `NewRoot()`. [#1125](https://github.com/ipfs/boxo/pull/1125)
+- `mfs`: closing a file descriptor after its directory entry was removed (e.g. FUSE RELEASE racing with RENAME) no longer re-adds the stale entry to the parent directory. [#1134](https://github.com/ipfs/boxo/pull/1134)
+- `mfs`: `SetMode` and `SetModTime` no longer drop file content links when updating UnixFS metadata. [#1134](https://github.com/ipfs/boxo/pull/1134)
+
+
+## [v0.37.0]
+
+### Added
+
+- `ipld/unixfs/io`: added `SizeEstimationMode` for configurable HAMT sharding threshold decisions. Supports legacy link-based estimation (`SizeEstimationLinks`), accurate block-based estimation (`SizeEstimationBlock`), or disabling size-based thresholds (`SizeEstimationDisabled`). [#1088](https://github.com/ipfs/boxo/pull/1088), [IPIP-499](https://github.com/ipfs/specs/pull/499)
+- `ipld/unixfs/io`: added `UnixFSProfile` with `UnixFS_v0_2015` and `UnixFS_v1_2025` presets for CID-deterministic file and directory DAG construction. [#1088](https://github.com/ipfs/boxo/pull/1088), [IPIP-499](https://github.com/ipfs/specs/pull/499)
+- `files`: `NewSerialFileWithOptions` now supports controlling whether symlinks are preserved or dereferenced before being added to IPFS. See `SerialFileOptions.DereferenceSymlinks`. [#1088](https://github.com/ipfs/boxo/pull/1088), [IPIP-499](https://github.com/ipfs/specs/pull/499)
+
+### Changed
+
+- 🛠 `chunker`, `ipld/unixfs/importer/helpers`: block size limits raised from 1MiB to 2MiB to match the [bitswap spec](https://specs.ipfs.tech/bitswap-protocol/#block-sizes). Max chunker size is `2MiB - 256 bytes` to leave room for protobuf framing when `--raw-leaves=false`. IPIP-499 profiles use lower chunk sizes (256KiB and 1MiB) and are not affected.
+- 🛠 `chunker`: `DefaultBlockSize` changed from `const` to `var` to allow runtime configuration via global profiles. [#1088](https://github.com/ipfs/boxo/pull/1088), [IPIP-499](https://github.com/ipfs/specs/pull/499)
+- `gateway`: 🛠 ✨ [IPIP-523](https://github.com/ipfs/specs/pull/523) `?format=` URL query parameter now takes precedence over `Accept` HTTP header, ensuring deterministic HTTP cache behavior and allowing browsers to use `?format=` even when they send `Accept` headers with specific content types. [#1074](https://github.com/ipfs/boxo/pull/1074)
+- `gateway`: 🛠 ✨ [IPIP-524](https://github.com/ipfs/specs/pull/524) codec conversions (e.g., dag-pb to dag-json, dag-json to dag-cbor) are no longer performed by default. Requesting a format that differs from the block's codec now returns HTTP 406 Not Acceptable with a hint to fetch raw blocks (`?format=raw`) and convert client-side. Set `Config.AllowCodecConversion` to `true` to restore the old behavior. [#1077](https://github.com/ipfs/boxo/pull/1077)
+- `gateway`: compliance with gateway-conformance [v0.10.0](https://github.com/ipfs/gateway-conformance/releases/tag/v0.10.0) (since v0.8: relaxed DAG-CBOR HTML preview cache headers, relaxed CAR 200/404 for missing paths, [IPIP-523](https://github.com/ipfs/specs/pull/523) format query precedence, [IPIP-524](https://github.com/ipfs/specs/pull/524) codec mismatch returns 406)
+- upgrade to `go-ipld-prime` [v0.22.0](https://github.com/ipld/go-ipld-prime/releases/tag/v0.22.0)
+- upgrade to `go-libp2p-kad-dht` [v0.38.0](https://github.com/libp2p/go-libp2p-kad-dht/releases/tag/v0.38.0)
+
+### Removed
+
+ - `tracing`: opentelemetry zipkin exporter (`go.opentelemetry.io/otel/exporters/zipkin`) is deprecated and has been removed. It is recommended to switch to OTLP. Configure your application to send traces using OTLP and enable [Zipkin’s OTLP ingestion support](https://github.com/openzipkin-contrib/zipkin-otel).
+
+### Fixed
+
+- 🛠 `ipld/unixfs/io`: fixed HAMT sharding threshold comparison to use `>` instead of `>=`. A directory exactly at the threshold now stays as a basic (flat) directory, aligning behavior with code documentation and the JS implementation. This is a theoretical breaking change, but unlikely to impact real-world users as it requires a directory to be exactly at the threshold boundary. If you depend on the old behavior, adjust `HAMTShardingSize` to be 1 byte lower. [#1088](https://github.com/ipfs/boxo/pull/1088), [IPIP-499](https://github.com/ipfs/specs/pull/499)
+- `ipld/unixfs/mod`: fixed sparse file writes in MFS. Writing past the end of a file (e.g., `ipfs files write --offset 1000 /file` on a smaller file) would lose data because `expandSparse` created the zero-padding node but didn't update the internal pointer. Subsequent writes went to the old unexpanded node.
+- `ipld/unixfs/io`: fixed mode/mtime metadata loss during Basic<->HAMT directory conversions. Previously, directories with `WithStat(mode, mtime)` would lose this metadata when converting between basic and sharded formats, or when reloading a HAMT directory from disk.
+
+
+## [v0.36.0]
+
+### Added
+- `routing/http`: `GET /routing/v1/dht/closest/peers/{key}` per [IPIP-476](https://github.com/ipfs/specs/pull/476)
+- `ipld/merkledag`: Added fetched node size reporting to the progress tracker. See [kubo#8915](https://github.com/ipfs/kubo/issues/8915)
+- `gateway`: Added a configurable fallback timeout for the gateway handler, defaulting to 1 hour. Configurable via `MaxRequestDuration` in the gateway config.
+
+### Changed
+
+- `keystore`: improve error messages and include key file name [#1080](https://github.com/ipfs/boxo/pull/1080)
+- upgrade to `go-libp2p-kad-dht` [v0.37.1](https://github.com/libp2p/go-libp2p-kad-dht/releases/tag/v0.37.1)
+- upgrade to `go-libp2p` [v0.47.0](https://github.com/libp2p/go-libp2p/releases/tag/v0.47.0)
+
+### Fixed
+
+- `bitswap/network`: Fixed goroutine leak that could cause bitswap to stop serving blocks after extended uptime. The root cause is `stream.Close()` blocking indefinitely when remote peers are unresponsive during multistream handshake ([go-libp2p#3448](https://github.com/libp2p/go-libp2p/pull/3448)). This PR ([#1083](https://github.com/ipfs/boxo/pull/1083)) adds a localized fix specific to bitswap's `SendMessage` by setting a read deadline before closing streams.
+
+
+## [v0.35.2]
+
+### Changed
+
+- upgrade to `go-libp2p` [v0.45.0](https://github.com/libp2p/go-libp2p/releases/tag/v0.45.0)
+- upgrade to `go-log/v2` [v2.9.0](https://github.com/ipfs/go-log/releases/tag/v2.9.0)
+  - Applications using go-log (>=2.9)+go-libp2p(>=0.45) may need to initialize their application to bridge slog-based libraries to into go-log. See documentation for go-log [release](https://github.com/ipfs/go-log/releases/tag/v2.9.0) and [slog integration](https://github.com/ipfs/go-log/blob/master/README.md#slog-integration).
+
+
+## [v0.35.1]
+
+### Added
+
+- new span for the `handleIncoming` bitswap client `getter` plus events when blocks are received.
+- mark opentelemetry spans, span attributes, and span events as being used by ProbeLab's analysis scripts
+
+### Changed
+
+- upgrade to `go-dsqueue` [v0.1.0](https://github.com/ipfs/go-dsqueue/releases/tag/v0.1.0) - Fixes batch reuse that could cause panic.
+
+### Fixed
+
+- `gateway`: Fixed duplicate peer IDs appearing in retrieval timeout error messages
+- `bitswap/client`: fix tracing by using context to pass trace and retrieval state to session [#1059](https://github.com/ipfs/boxo/pull/1059)
+  - `bitswap/client`: propagate trace state when calling GetBlocks [#1060](https://github.com/ipfs/boxo/pull/1060)
+- `bitswap/network/httpnet`: improved error detection on HTTP and block fetches:
+  - Do not attempt to GET a test CID if the endpoint returns 429 to the test HEAD request.
+  - Unify error parsing and handling of http statues and content.
+
+
+## [v0.35.0]
+
+### Added
+
+- `pinning/pinner`: Added `CheckIfPinnedWithType` method to `Pinner` interface for efficient type-specific pin checks with optional name loading ([#1035](https://github.com/ipfs/boxo/pull/1035))
+  - Enables checking specific pin types (recursive, direct, indirect) without loading all pins
+  - Optional `includeNames` parameter controls whether pin names are loaded from datastore
+  - `CheckIfPinned` now delegates to `CheckIfPinnedWithType` for consistency
+- `gateway`: Enhanced error handling and UX for timeouts:
+  - Added retrieval state tracking for timeout diagnostics. When retrieval timeouts occur, the error messages now include detailed information about which phase failed (path resolution, provider discovery, connecting, or data retrieval) and provider statistics including failed peer IDs [#1015](https://github.com/ipfs/boxo/pull/1015) [#1023](https://github.com/ipfs/boxo/pull/1023)
+  - Added `Config.DiagnosticServiceURL` to configure a CID retrievability diagnostic service. When set, 504 Gateway Timeout errors show a "Check CID retrievability" button linking to the service with `?cid=<failed-cid>` [#1023](https://github.com/ipfs/boxo/pull/1023)
+  - Improved 504 error pages with "Retry" button, diagnostic service integration, and clear indication when timeout occurs on sub-resource vs root CID [#1023](https://github.com/ipfs/boxo/pull/1023)
+- `gateway`: Added `Config.MaxRangeRequestFileSize` to protect against CDN issues with large file range requests. When set to a non-zero value, range requests for files larger than this limit return HTTP 501 Not Implemented with a suggestion to use verifiable block requests (`application/vnd.ipld.raw`) instead. This provides protection against Cloudflare's issue where range requests for files over 5GiB are silently ignored, causing excess bandwidth consumption and billing
+
+### Changed
+
+- `routing/http`: ✨ Delegated Routing V1 HTTP endpoints now return 200 with empty results instead of 404 when no records are found, per [IPIP-513](https://github.com/ipfs/specs/pull/513) ([#1024](https://github.com/ipfs/boxo/issues/1024))
+  - Server endpoints (`/routing/v1/providers/{cid}`, `/routing/v1/peers/{peer-id}`, `/routing/v1/ipns/{name}`) return HTTP 200 with empty JSON arrays or appropriate content types for empty results
+  - Client maintains backward compatibility by treating both 200 with empty results and 404 as "no records found"
+  - IPNS endpoint distinguishes between valid records (Content-Type: `application/vnd.ipfs.ipns-record`) and no record found (any other content type)
+- `verifcid`: 🛠 Enhanced Allowlist interface with per-hash size limits ([#1018](https://github.com/ipfs/boxo/pull/1018))
+  - Expanded `Allowlist` interface with `MinDigestSize(code uint64)` and `MaxDigestSize(code uint64)` methods for per-hash function size validation
+  - Added public constants: `DefaultMinDigestSize` (20 bytes), `DefaultMaxDigestSize` (128 bytes for cryptographic hashes), and `DefaultMaxIdentityDigestSize` (128 bytes for identity CIDs)
+  - `DefaultAllowlist` implementation now uses these constants and supports different size limits per hash type
+  - Renamed errors for clarity: Added `ErrDigestTooSmall` and `ErrDigestTooLarge` as the new primary errors
+  - `ErrBelowMinimumHashLength` and `ErrAboveMaximumHashLength` remain as deprecated aliases pointing to the new errors
+- `bitswap`: Updated to use `verifcid.DefaultMaxDigestSize` for `MaximumHashLength` constant
+  - The default `MaximumAllowedCid` limit for incoming CIDs can be adjusted using `bitswap.MaxCidSize` or `server.MaxCidSize` options
+- 🛠 `bitswap/client`: The `RebroadcastDelay` option now takes a `time.Duration` value. This is a potentially BREAKING CHANGE. The time-varying functionality of `delay.Delay` was never used, so it was replaced with a fixed duration value. This also removes the `github.com/ipfs/go-ipfs-delay` dependency.
+- `filestore`: Support providing filestore-blocks. A new `provider.MultihashProvider` parameter has been added to `filestore.New()`. When used, the blocks handled by the Filestore's `FileManager` will be provided on write (Put and PutMany).
+
+### Removed
+- `provider`: `Provide()` calls are replaced with `StartProviding()` to benefit from the Reprovide Sweep improvement. See [kubo#10834](https://github.com/ipfs/kubo/pull/10834) and [kad-dht#1095](https://github.com/libp2p/go-libp2p-kad-dht/pull/1095).- `provider`: `Provide()` calls are replaced with `StartProviding()` to benefit from the Reprovide Sweep improvement. See [kubo#10834](https://github.com/ipfs/kubo/pull/10834) and [kad-dht#1095](https://github.com/libp2p/go-libp2p-kad-dht/pull/1095).
+
+### Fixed
+
+- `routing/http/client`:
+  - Fixed off-by-one error in `routing_http_client_length` metric - the metric now correctly reports 0 for empty results instead of 1
+  - Added metrics for IPNS operations (`GetIPNS` and `PutIPNS`) - these now report latency, status code, and result count (0 or 1 for GetIPNS)
+  - Added simple counter metrics to avoid confusing histogram bucket math:
+    - `routing_http_client_requests_total` - total requests including errors
+    - `routing_http_client_positive_responses_total` - requests that returned at least 1 result
+- `ipld/unixfs/mod`:
+  - `DagModifier` now correctly preserves raw node codec when modifying data under the chunker threshold, instead of incorrectly forcing everything to dag-pb
+  - `DagModifier` prevents creation of identity CIDs exceeding `verifcid.DefaultMaxIdentityDigestSize` limit when modifying data, automatically switching to proper cryptographic hash while preserving small identity CIDs
+  - `DagModifier` now supports appending data to a `RawNode` by automatically converting it into a UnixFS file structure where the original `RawNode` becomes the first leaf block, fixing previously impossible append operations that would fail with "expected protobuf dag node" errors
+- `mfs`:
+  - Files with identity CIDs now properly inherit full CID prefix from parent directories (version, codec, hash type, length), not just hash type ([#1018](https://github.com/ipfs/boxo/pull/1018))
+
+### Security
+
+- `verifcid`: Now enforces maximum size limit of 128 bytes for identity CIDs to prevent abuse ([#1018](https://github.com/ipfs/boxo/pull/1018), [ipfs/specs#512](https://github.com/ipfs/specs/pull/512)).
+  - 🛠 Attempts to read CIDs with identity multihash digests longer than `DefaultMaxIdentityDigestSize` will now produce `ErrDigestTooLarge` error.
+  - Identity CIDs can inline data directly, and without a size limit, they could embed arbitrary amounts of data. Limiting the size also protects gateways from poorly written clients that might send absurdly big data to the gateway encoded as identity CIDs only to retrieve it back. Note that identity CIDs do not provide integrity verification, making them vulnerable to bit flips. They should only be used in controlled contexts like raw leaves of a larger DAG. The limit is explicitly defined as `DefaultMaxIdentityDigestSize` (128 bytes).
+
+
+## [v0.34.0]
+
+### Added
+
+- `autoconf`: Client library for fetching, caching and expanding IPFS network configurations using "auto" placeholders
+- `gateway`: Added configurable limits for gateway resource protection:
+  - `Config.RetrievalTimeout`: Maximum duration between writes of non-empty data to HTTP response body (default: 30s). Returns 504 Gateway Timeout when gateway cannot retrieve content within this period.
+  - `Config.MaxConcurrentRequests`: Limits concurrent HTTP requests (default: 4096, suitable for most deployments). Returns 429 Too Many Requests with 60s Retry-After header when exceeded. To restore previous unlimited behavior set both `RetrievalTimeout` and `MaxConcurrentRequests` to `0`.
+    > [!IMPORTANT]
+    > If your gateway returns many HTTP 429 responses while having available resources (CPU, memory), increase `MaxConcurrentRequests`. If experiencing high load or resource exhaustion, decrease it. See the [`MaxConcurrentRequests` godoc](https://pkg.go.dev/github.com/ipfs/boxo/gateway#Config) for detailed tuning guidance.
+  - `Config.MetricsRegistry`: Optional Prometheus registry for metrics isolation. When nil, uses the default global registry. Useful for testing and deployments with multiple gateway instances.
+  - New middleware with Prometheus metrics:
+    - `ipfs_http_gw_concurrent_requests`: Gauge tracking number of concurrent requests
+    - `ipfs_http_gw_responses_total{code}`: Counter for all HTTP responses by status code
+    - `ipfs_http_gw_retrieval_timeouts_total{code,truncated}`: Counter for retrieval timeout events with details on truncation
+- `namesys/IPNSPublisher`: option to `PublishOptions` that allows for setting a custom sequence number for the IPNS record with proper validation to prevent unintentional replay attacks. [#962](https://github.com/ipfs/boxo/pull/962)
+- `blockstore`: Added `ValidatingBlockstore` wrapper. This replaces the `HashOnRead` blockstore API.
+
+### Changed
+- `bitswap/network`: The connection event manager now has a `SetListeners` method. Both `bsnet` and `httpnet` now have options to provide the `ConnectionEventManager` during `New(...)`. This allows sharing the connection event manager when using both. The connection manager SHOULD be shared when using both networks with the `network.Router` utility.
+- `provider`: Distribute the responsability of providing new blocks to the places that play a role in the different providing strategies [#976](https://github.com/ipfs/boxo/pull/976). Refactor the logic to perform Provides, when the component has been given a provider:
+  - Remove `providing.Exchange`
+  - Provide directly from Blockstore when `provider` is set (via Option).
+  - Provide directly from pinner/merkledag on dag traversal when `provider` is set (via Option).
+  - Provide from MFS whenever there is a call to `DAGService.Add` and `provider` is set (via constructor param).
+- upgrade to `go-libp2p` [v0.43.0](https://github.com/libp2p/go-libp2p/releases/tag/v0.43.0)
+- replace `uber-go/multierr` with `errors.Join` [#996](https://github.com/ipfs/boxo/pull/996)
+- updated Go in `go.mod` to 1.24.0 [#999](https://github.com/ipfs/boxo/pull/999)
+
+### Removed
+
+- `blockstore`: Removed HashOnRead API. This is a potentially BREAKING CHANGE for any users of the HashOnRead API. Use the `ValidatingBlocksore` instead.
+  - The `HashOnRead` function was also removed from `Filestore`. To use this functionality, provide a `ValidatingBlockstore` when creating a new `Filestore`.
+
+
+## [v0.33.1]
+
+### Added
+
+- `provider`: Add ability to clear provide queue [#978](https://github.com/ipfs/boxo/pull/978)
+
+### Changed
+
+- `bitswap/network`: The connection event manager now has a `SetListeners` method. Both `bsnet` and `httpnet` now have options to provide the `ConnectionEventManager` during `New(...)`. This allows sharing the connection event manager when using both. The connection manager SHOULD be shared when using both networks with the `network.Router` utility.
+- `bootstrap`: Relay-only peers (with `/p2p-circuit/` addresses) are now filtered out when selecting backup bootstrap peers to improve reliability.
+- upgrade to `go-libp2p` [v0.42.1](https://github.com/libp2p/go-libp2p/releases/tag/v0.42.1)
+
+### Fixed
+
+- `bitswap`: fix an issue where boxo silently stops making http retrieval requests. [#981](https://github.com/ipfs/boxo/pull/978), [#980](https://github.com/ipfs/boxo/pull/980), [#979](https://github.com/ipfs/boxo/pull/978) and [#984 (writeup)](https://github.com/ipfs/boxo/pull/984), [#986](https://github.com/ipfs/boxo/pull/986).
+
+
+## [v0.33.0]
+
+### Added
+
+- `bitswap/network/httpnet`: New `WithMetricsLabelsForEndpoints` allows defining which hosts/endpoints can be used for labelling metrics that support such label. '*' enables this for all endpoints receiving HTTP requests, but may cause metric cardinality growth when too many endpoints exist. These labels allow tracking, for example, number or requests per response status AND endpoint used. Non-labelled request hosts are labelled with same value: `other`.
+
+### Changed
+
+- `bitswap/client` The bitswap client's [`traceability.Block`](https://github.com/ipfs/boxo/blob/main/bitswap/client/traceability/block.go) is now disabled by default. It is only used for testing an debugging and is not needed for typical operation. Using it costs additional allocation. To enable `traceability.Block`, use the bitswap client option `WithTraceBlock(true)`.
+- `DontHaveTimeoutConfig`'s default `MinTimeout` is changed from `0` to `50ms` [#959](https://github.com/ipfs/boxo/pull/959) [#965](https://github.com/ipfs/boxo/pull/965).
+- upgrade to `go-libp2p` [v0.42.0](https://github.com/libp2p/go-libp2p/releases/tag/v0.42.0)
+
+### Removed
+
+### Fixed
+- `bitswap/client`: Fix sending extra wants [#968](https://github.com/ipfs/boxo/pull/968) + [#975](https://github.com/ipfs/boxo/pull/975)
+- `routing/http/client`: Improve URL handling for delegated routing endpoints [#971](https://github.com/ipfs/boxo/pull/971)
+
+### Security
+
+- fix panic when incoming Bitswap protobuf message does not contain `Wantlist` [#961](https://github.com/ipfs/boxo/pull/961)
+
+
+## [v0.32.0]
+
+### Added
+
+- `provider` includes metrics on the number of keys provided so far(`reprovider_provide_count`) and the number of keys reprovided so far (`reprovider_reprovide_count`) [#944](https://github.com/ipfs/boxo/pull/944)
+- `bitswap/client`: New metrics:
+  - `ipfs_bitswap_wanthaves_broadcast`: Count of want-haves broadcasts
+  - `ipfs_bitswap_haves_received`:  Count of total have responses
+  - `ipfs_bitswap_bcast_skips_total{`: Count of broadcasts skipped as part of spam reduction logic (see "Changed" below)
+  - `ipfs_bitswap_unique_blocks_received`: Count of non-duplicate blocks recieved
+
+### Changed
+
+- `provider`: previously, the code in this module was logging to `reprovider.simple`, `provider.batched` and `provider.queue` facilities. They have now been consolidated in a single `provider` logging facility, along with some adjustments to logging levels and extra debug statements.
+- `bitswap/client`: Added an opt-in ability to reduce bitswap broadcast volume by limiting broadcasts to peers that have previously responded as having wanted blocks and peers on local network. The following bitswap client options are available to configure the behavior of broadcast reduction:
+  - `BroadcastControlEnable` enables or disables broadcast reduction logic. Setting this to `false` restores the previous broadcast behavior of sending broadcasts to all peers, and ignores all other `BroadcastControl` options. Default is `false` (disabled).
+  - `BroadcastControlMaxPeers` sets a hard limit on the number of peers to send broadcasts to. A value of `0` means no broadcasts are sent. A value of `-1` means there is no limit. Default is `-1` (unlimited).
+  - `BroadcastControlLocalPeers` enables or disables broadcast control for peers on the local network. If `false`, then always broadcast to peers on the local network. If `true`, apply broadcast control to local peers. Default is `false` (always broadcast to local peers).
+  - `BroadcastControlPeeredPeers` enables or disables broadcast control for peers configured for peering. If `false`, then always broadcast to peers configured for peering. If `true`, apply broadcast control to peered peers. Default is `false` (always broadcast to peered peers).
+  - `BroadcastControlMaxRandomPeers` sets the number of peers to broadcast to anyway, even though broadcast control logic has determined that they are not broadcast targets. Setting this to a non-zero value ensures at least this number of random peers receives a broadcast. This may be helpful in cases where peers that are not receiving broadcasts may have wanted blocks. Default is `0` (no random broadcasts).
+  - `BroadcastControlSendToPendingPeers` enables or disables sending broadcasts to any peers to which there is a pending message to send. When `true` (enabled), this sends broadcasts to many more peers, but does so in a way that does not increase the number of separate broadcast messages. There is still the increased cost of the recipients having to process and respond to the broadcasts. Default is `false`.
+
+### Removed
+
 - `bitswap/server` do not allow override of peer ledger with `WithPeerLedger` [#938](https://github.com/ipfs/boxo/pull/938)
 
 ### Fixed
 
-- Improvements to support WASM builds
 - `gateway`: Fixed suffix range-requests and updated tests to [gateway-conformance v0.8](https://github.com/ipfs/gateway-conformance/releases/tag/v0.8.0) [#922](https://github.com/ipfs/boxo/pull/922)
-
-
-### Security
 
 
 ## [v0.31.0]

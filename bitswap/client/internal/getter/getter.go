@@ -10,6 +10,8 @@ import (
 	cid "github.com/ipfs/go-cid"
 	ipld "github.com/ipfs/go-ipld-format"
 	logging "github.com/ipfs/go-log/v2"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 var log = logging.Logger("bitswap/client/getter")
@@ -66,15 +68,14 @@ type WantFunc func(context.Context, []cid.Cid)
 // AsyncGetBlocks take a set of block cids, a pubsub channel for incoming
 // blocks, a want function, and a close function, and returns a channel of
 // incoming blocks.
-func AsyncGetBlocks(ctx context.Context, sessctx context.Context, keys []cid.Cid, notif notifications.PubSub,
-	want WantFunc, cwants func([]cid.Cid),
-) (<-chan blocks.Block, error) {
+func AsyncGetBlocks(ctx, sessctx context.Context, keys []cid.Cid, notif notifications.PubSub, want WantFunc, cwants func([]cid.Cid)) (<-chan blocks.Block, error) {
 	ctx, span := internal.StartSpan(ctx, "Getter.AsyncGetBlocks")
 	defer span.End()
 
+	out := make(chan blocks.Block)
+
 	// If there are no keys supplied, just return a closed channel
 	if len(keys) == 0 {
-		out := make(chan blocks.Block)
 		close(out)
 		return out, nil
 	}
@@ -89,7 +90,6 @@ func AsyncGetBlocks(ctx context.Context, sessctx context.Context, keys []cid.Cid
 	// Send the want request for the keys to the network
 	want(ctx, keys)
 
-	out := make(chan blocks.Block)
 	go handleIncoming(ctx, sessctx, remaining, promise, out, cwants)
 	return out, nil
 }
@@ -97,20 +97,20 @@ func AsyncGetBlocks(ctx context.Context, sessctx context.Context, keys []cid.Cid
 // Listens for incoming blocks, passing them to the out channel.
 // If the context is cancelled or the incoming channel closes, calls cfun with
 // any keys corresponding to blocks that were never received.
-func handleIncoming(ctx context.Context, sessctx context.Context, remaining *cid.Set,
-	in <-chan blocks.Block, out chan blocks.Block, cfun func([]cid.Cid),
-) {
-	ctx, cancel := context.WithCancel(ctx)
+func handleIncoming(ctx, sessctx context.Context, remaining *cid.Set, in <-chan blocks.Block, out chan blocks.Block, cfun func([]cid.Cid)) {
+	ctx, span := internal.StartSpan(ctx, "Getter.handleIncoming") // ProbeLab: don't delete/change span without notice
+	defer span.End()
 
 	// Clean up before exiting this function, and call the cancel function on
 	// any remaining keys
 	defer func() {
-		cancel()
 		close(out)
 		// can't just defer this call on its own, arguments are resolved *when* the defer is created
 		cfun(remaining.Keys())
 	}()
 
+	ctxDone := ctx.Done()
+	sessDone := sessctx.Done()
 	for {
 		select {
 		case blk, ok := <-in:
@@ -120,17 +120,19 @@ func handleIncoming(ctx context.Context, sessctx context.Context, remaining *cid
 				return
 			}
 
+			span.AddEvent("received block", trace.WithAttributes(attribute.String("cid", blk.Cid().String()))) // ProbeLab: don't delete/change without notice
+
 			remaining.Remove(blk.Cid())
 			select {
 			case out <- blk:
-			case <-ctx.Done():
+			case <-ctxDone:
 				return
-			case <-sessctx.Done():
+			case <-sessDone:
 				return
 			}
-		case <-ctx.Done():
+		case <-ctxDone:
 			return
-		case <-sessctx.Done():
+		case <-sessDone:
 			return
 		}
 	}

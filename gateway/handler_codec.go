@@ -14,12 +14,10 @@ import (
 	"github.com/ipfs/boxo/gateway/assets"
 	"github.com/ipfs/boxo/path"
 	"github.com/ipfs/go-cid"
-
-	// Ensure basic codecs are registered.
-	_ "github.com/ipld/go-ipld-prime/codec/cbor"
-	_ "github.com/ipld/go-ipld-prime/codec/dagcbor"
-	_ "github.com/ipld/go-ipld-prime/codec/dagjson"
-	_ "github.com/ipld/go-ipld-prime/codec/json"
+	_ "github.com/ipld/go-ipld-prime/codec/cbor"    // Ensure basic codecs are registered.
+	_ "github.com/ipld/go-ipld-prime/codec/dagcbor" // Ensure basic codecs are registered.
+	_ "github.com/ipld/go-ipld-prime/codec/dagjson" // Ensure basic codecs are registered.
+	_ "github.com/ipld/go-ipld-prime/codec/json"    // Ensure basic codecs are registered.
 	"github.com/ipld/go-ipld-prime/multicodec"
 	"github.com/ipld/go-ipld-prime/node/basicnode"
 	mc "github.com/multiformats/go-multicodec"
@@ -59,6 +57,10 @@ var contentTypeToExtension = map[string]string{
 	dagCborResponseFormat: ".cbor",
 }
 
+// errCodecConversionHint is the user-facing hint returned in 406 responses
+// when codec conversion is not allowed (IPIP-524).
+const errCodecConversionHint = "codec conversion is not supported, fetch raw block with ?format=raw and convert client-side"
+
 func (i *handler) serveCodec(ctx context.Context, w http.ResponseWriter, r *http.Request, rq *requestData) bool {
 	ctx, span := spanTrace(ctx, "Handler.ServeCodec", trace.WithAttributes(attribute.String("path", rq.immutablePath.String()), attribute.String("requestedContentType", rq.responseFormat)))
 	defer span.End()
@@ -69,12 +71,18 @@ func (i *handler) serveCodec(ctx context.Context, w http.ResponseWriter, r *http
 	}
 	defer data.Close()
 
-	setIpfsRootsHeader(w, rq, &pathMetadata)
-
 	blockSize, err := data.Size()
 	if !i.handleRequestErrors(w, r, rq.contentPath, err) {
 		return false
 	}
+
+	// Check size limit before setting response headers so 410 responses
+	// stay clean.
+	if i.exceedsMaxUnixFSDAGResponseSize(w, r, blockSize) {
+		return false
+	}
+
+	setIpfsRootsHeader(w, rq, &pathMetadata)
 
 	return i.renderCodec(ctx, w, r, rq, blockSize, data)
 }
@@ -146,12 +154,24 @@ func (i *handler) renderCodec(ctx context.Context, w http.ResponseWriter, r *htt
 	// Let's first get the codecs that can be used with this content type.
 	toCodec, ok := contentTypeToCodec[rq.responseFormat]
 	if !ok {
-		err := fmt.Errorf("converting from %q to %q is not supported", cidCodec.String(), rq.responseFormat)
-		i.webError(w, r, err, http.StatusBadRequest)
+		i.webError(w, r, errConversionNotSupported, http.StatusBadRequest)
 		return false
 	}
 
-	// This handles DAG-* conversions and validations.
+	// IPIP-524: Check if codec conversion is allowed
+	if !i.config.AllowCodecConversion && toCodec != cidCodec {
+		// Conversion not allowed and codecs don't match - return 406
+		err := fmt.Errorf("format %q requested but block has codec %q: %s", rq.responseFormat, cidCodec.String(), errCodecConversionHint)
+		i.webError(w, r, err, http.StatusNotAcceptable)
+		return false
+	}
+
+	// If codecs match, serve raw (no conversion needed)
+	if toCodec == cidCodec {
+		return i.serveCodecRaw(ctx, w, r, blockSize, blockData, rq.contentPath, modtime, rq.begin)
+	}
+
+	// AllowCodecConversion is true - perform DAG-* conversion
 	return i.serveCodecConverted(ctx, w, r, blockCid, blockData, rq.contentPath, toCodec, modtime, rq.begin)
 }
 
@@ -200,15 +220,16 @@ func (i *handler) serveCodecHTML(ctx context.Context, w http.ResponseWriter, r *
 
 	cidCodec := mc.Code(resolvedPath.RootCid().Prefix().Codec)
 	err = assets.DagTemplate.Execute(w, assets.DagTemplateData{
-		GlobalData: i.getTemplateGlobalData(r, contentPath),
-		Path:       contentPath.String(),
-		CID:        resolvedPath.RootCid().String(),
-		CodecName:  cidCodec.String(),
-		CodecHex:   fmt.Sprintf("0x%x", uint64(cidCodec)),
-		Node:       parseNode(blockCid, blockData),
+		GlobalData:           i.getTemplateGlobalData(r, contentPath),
+		Path:                 contentPath.String(),
+		CID:                  resolvedPath.RootCid().String(),
+		CodecName:            cidCodec.String(),
+		CodecHex:             fmt.Sprintf("0x%x", uint64(cidCodec)),
+		Node:                 parseNode(blockCid, blockData),
+		AllowCodecConversion: i.config.AllowCodecConversion,
 	})
 	if err != nil {
-		_, _ = w.Write([]byte(fmt.Sprintf("error during body generation: %v", err)))
+		_, _ = fmt.Fprintf(w, "error during body generation: %v", err)
 	}
 
 	return err == nil
@@ -299,6 +320,9 @@ func (i *handler) serveCodecConverted(ctx context.Context, w http.ResponseWriter
 		return true
 	}
 
+	log.Debugw("failed to write codec response",
+		"path", contentPath,
+		"error", err)
 	return false
 }
 

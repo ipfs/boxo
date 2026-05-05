@@ -1,6 +1,6 @@
 <h1 align="center">
   <br>
-  <a href="#readme"><img src="https://github.com/ipfs/boxo/assets/157609/3c5e7391-fbc2-405b-9efc-920f4fd13b39" alt="Boxo logo" title="Boxo logo" width="200"></a>
+  <a href="https://github.com/ipfs/boxo/blob/main/docs/logo/"><img src="https://github.com/ipfs/boxo/assets/157609/3c5e7391-fbc2-405b-9efc-920f4fd13b39" alt="Boxo logo" title="Boxo logo" width="200"></a>
   <br>
   BOXO: IPFS SDK for GO
   <br>
@@ -30,8 +30,7 @@
   - [Is everything related to IPFS in the Go ecosystem in this repo?](#is-everything-related-to-ipfs-in-the-go-ecosystem-in-this-repo)
 - [Consuming](#consuming)
   - [Getting started](#getting-started)
-  - [Migrating to Boxo](#migrating-to-boxo)
-  - [What is the deprecation and breaking change policy?](#what-is-the-deprecation-and-breaking-change-policy)
+  - [Deprecations and Breaking Changes](#deprecations-and-breaking-changes)
 - [Development](#development)
   - [Should I add my IPFS component to Boxo?](#should-i-add-my-ipfs-component-to-boxo)
   - [Release Process](#release-process)
@@ -42,7 +41,7 @@
   - [What are some projects that depend on this project?](#what-are-some-projects-that-depend-on-this-project)
   - [Governance and Access](#governance-and-access)
   - [Why is this named "Boxo"?](#why-is-this-named-boxo)
-  - [Additional FAQs](#additional-faqs)
+  - [Additional Docs and FAQs](#additional-docs-and-faqs)
   - [License](#license)
 
 <!-- /TOC -->
@@ -101,26 +100,7 @@ No. Not everything related to IPFS is intended to be in Boxo. View it as a start
 
 See [examples](./examples/README.md).
 
-If you are migrating to Boxo, see [Migrating to Boxo](#migrating-to-boxo).
-
-### Migrating to Boxo
-
-Many Go modules under github.com/ipfs have moved here. Boxo provides a tool to ease this migration, which does most of the work for you:
-
-* `cd` into the root directory of your module (where the `go.mod` file is)
-* Run: `go run github.com/ipfs/boxo/cmd/boxo-migrate@latest update-imports`
-  * This will upgrade your module to Boxo v0.8.0 and rewrite your import paths
-* Run: `go run github.com/ipfs/boxo/cmd/boxo-migrate@latest check-dependencies`
-  * This will print unmaintained dependencies you still have
-  * These aren't necessarily an immediate problem, but you should eventually get them out of your dependency graph
-  
-This tool only upgrades your module to Boxo v0.8.0, to minimize backwards-incompatible changes. Depending on the versions of IPFS modules before the upgrade, your code may require additional changes to build.
-
-We recommend upgrading to v0.8.0 first, and _then_ upgrading to the latest Boxo release.
-
-If you encounter any challenges, please [open an issue](https://github.com/ipfs/boxo/issues/new/choose) and Boxo maintainers will help you.
-
-### Deprecations & Breaking Changes
+### Deprecations and Breaking Changes
 
 See [RELEASE.md](./RELEASE.md).
 
@@ -173,6 +153,7 @@ The exhaustive list is https://github.com/ipfs/boxo/network/dependents. Some not
 3. [rainbow](https://github.com/ipfs/rainbow), a specialized IPFS gateway
 4. [ipfs-check](https://github.com/ipfs/ipfs-check), checks IPFS data availability
 5. [someguy](https://github.com/ipfs/someguy), a dedicated Delegated Routing V1 server and client
+6. [IPFS Desktop](https://github.com/ipfs/ipfs-desktop), a desktop application for running an IPFS node
 
 ### Governance and Access
 
@@ -182,7 +163,7 @@ See [CODEOWNERS](./docs/CODEOWNERS) for the current maintainers list. Governance
 
 See https://github.com/ipfs/boxo/issues/215. 
 
-### Additional Docs & FAQs
+### Additional Docs and FAQs
 
 See [the wiki](https://github.com/ipfs/boxo/wiki).
 

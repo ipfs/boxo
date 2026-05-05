@@ -12,12 +12,12 @@ func main() {
 	rnd := rand.New(rand.NewSource(0))
 
 	lut := make([]uint32, 256)
-	for i := 0; i < 256/2; i++ {
+	for i := range 256 / 2 {
 		lut[i] = 1<<32 - 1
 	}
 
-	for r := 0; r < nRounds; r++ {
-		for b := uint32(0); b < 32; b++ {
+	for range nRounds {
+		for b := range uint32(32) {
 			mask := uint32(1) << b
 			nmask := ^mask
 			for i, j := range rnd.Perm(256) {

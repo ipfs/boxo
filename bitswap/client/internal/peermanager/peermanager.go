@@ -4,6 +4,7 @@ import (
 	"context"
 	"sync"
 
+	"github.com/ipfs/boxo/bitswap/client/internal/messagequeue"
 	cid "github.com/ipfs/go-cid"
 	logging "github.com/ipfs/go-log/v2"
 	"github.com/ipfs/go-metrics-interface"
@@ -18,6 +19,7 @@ type PeerQueue interface {
 	AddWants([]cid.Cid, []cid.Cid)
 	AddCancels([]cid.Cid)
 	ResponseReceived(ks []cid.Cid)
+	HasMessage() bool
 	Startup()
 	Shutdown()
 }
@@ -44,20 +46,25 @@ type PeerManager struct {
 	psLk         sync.RWMutex
 	sessions     map[uint64]Session
 	peerSessions map[peer.ID]map[uint64]struct{}
+
+	bcastGauge Gauge
 }
 
 // New creates a new PeerManager, given a context and a peerQueueFactory.
-func New(ctx context.Context, createPeerQueue PeerQueueFactory) *PeerManager {
+func New(ctx context.Context, createPeerQueue PeerQueueFactory, bcastControl BroadcastControl) *PeerManager {
 	wantGauge := metrics.NewCtx(ctx, "wantlist_total", "Number of items in wantlist.").Gauge()
 	wantBlockGauge := metrics.NewCtx(ctx, "want_blocks_total", "Number of want-blocks in wantlist.").Gauge()
+
 	return &PeerManager{
 		peerQueues:      make(map[peer.ID]PeerQueue),
-		pwm:             newPeerWantManager(wantGauge, wantBlockGauge),
+		pwm:             newPeerWantManager(wantGauge, wantBlockGauge, bcastControl),
 		createPeerQueue: createPeerQueue,
 		ctx:             ctx,
 
 		sessions:     make(map[uint64]Session),
 		peerSessions: make(map[peer.ID]map[uint64]struct{}),
+
+		bcastGauge: metrics.NewCtx(ctx, "wanthaves_broadcast", "Number of want-haves broadcast.").Gauge(),
 	}
 }
 
@@ -83,6 +90,7 @@ func (pm *PeerManager) ConnectedPeers() []peer.ID {
 func (pm *PeerManager) Connected(p peer.ID) {
 	pm.pqLk.Lock()
 
+	log.Debugf("connect notification for %s", p)
 	pq := pm.getOrCreate(p)
 	// Inform the peer want manager that there's a new peer
 	pm.pwm.addPeer(pq, p)
@@ -97,6 +105,7 @@ func (pm *PeerManager) Connected(p peer.ID) {
 func (pm *PeerManager) Disconnected(p peer.ID) {
 	pm.pqLk.Lock()
 
+	log.Debugf("disconnect notification for %s", p)
 	pq, ok := pm.peerQueues[p]
 	if !ok {
 		pm.pqLk.Unlock()
@@ -131,7 +140,7 @@ func (pm *PeerManager) ResponseReceived(p peer.ID, ks []cid.Cid) {
 // to discover seeds).
 // For each peer it filters out want-haves that have previously been sent to
 // the peer.
-func (pm *PeerManager) BroadcastWantHaves(ctx context.Context, wantHaves []cid.Cid) {
+func (pm *PeerManager) BroadcastWantHaves(wantHaves []cid.Cid) {
 	pm.pqLk.Lock()
 	defer pm.pqLk.Unlock()
 
@@ -140,7 +149,7 @@ func (pm *PeerManager) BroadcastWantHaves(ctx context.Context, wantHaves []cid.C
 
 // SendWants sends the given want-blocks and want-haves to the given peer.
 // It filters out wants that have previously been sent to the peer.
-func (pm *PeerManager) SendWants(ctx context.Context, p peer.ID, wantBlocks []cid.Cid, wantHaves []cid.Cid) bool {
+func (pm *PeerManager) SendWants(p peer.ID, wantBlocks []cid.Cid, wantHaves []cid.Cid) bool {
 	pm.pqLk.Lock()
 	defer pm.pqLk.Unlock()
 
@@ -153,7 +162,7 @@ func (pm *PeerManager) SendWants(ctx context.Context, p peer.ID, wantBlocks []ci
 
 // SendCancels sends cancels for the given keys to all peers who had previously
 // received a want for those keys.
-func (pm *PeerManager) SendCancels(ctx context.Context, cancelKs []cid.Cid) {
+func (pm *PeerManager) SendCancels(cancelKs []cid.Cid) {
 	pm.pqLk.Lock()
 	defer pm.pqLk.Unlock()
 
@@ -189,8 +198,15 @@ func (pm *PeerManager) getOrCreate(p peer.ID) PeerQueue {
 	pq, ok := pm.peerQueues[p]
 	if !ok {
 		pq = pm.createPeerQueue(pm.ctx, p)
+		mq, ok := pq.(*messagequeue.MessageQueue)
+		if ok {
+			mq.BcastInc = pm.bcastGauge.Inc
+		}
 		pq.Startup()
 		pm.peerQueues[p] = pq
+		log.Debugf("getOrCreate: new queue for %s", p)
+	} else {
+		log.Debugf("getOrCreate: queue exists already for %s", p)
 	}
 	return pq
 }
@@ -217,14 +233,18 @@ func (pm *PeerManager) UnregisterSession(ses uint64) {
 	pm.psLk.Lock()
 	defer pm.psLk.Unlock()
 
-	for p := range pm.peerSessions {
-		delete(pm.peerSessions[p], ses)
-		if len(pm.peerSessions[p]) == 0 {
+	for p, sesSet := range pm.peerSessions {
+		delete(sesSet, ses)
+		if len(sesSet) == 0 {
 			delete(pm.peerSessions, p)
 		}
 	}
 
 	delete(pm.sessions, ses)
+}
+
+func (pm *PeerManager) MarkBroadcastTarget(from peer.ID) {
+	pm.pwm.markBroadcastTarget(from)
 }
 
 // signalAvailability is called when a peer's connectivity changes.

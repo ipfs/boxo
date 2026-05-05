@@ -30,7 +30,7 @@ func TestExtractHTTPAddress(t *testing.T) {
 			maStr: "/dns4/example.com/tcp/443/https",
 			want: &url.URL{
 				Scheme: "https",
-				Host:   "example.com:443",
+				Host:   "example.com",
 			},
 			expectErr: false,
 		},
@@ -39,7 +39,7 @@ func TestExtractHTTPAddress(t *testing.T) {
 			maStr: "/dns6/example.com/tcp/443/https",
 			want: &url.URL{
 				Scheme: "https",
-				Host:   "example.com:443",
+				Host:   "example.com",
 			},
 			expectErr: false,
 		},
@@ -48,17 +48,16 @@ func TestExtractHTTPAddress(t *testing.T) {
 			maStr: "/dns/example.com/tcp/443/https",
 			want: &url.URL{
 				Scheme: "https",
-				Host:   "example.com:443",
+				Host:   "example.com",
 			},
 			expectErr: false,
 		},
 		{
-
-			name:  "Valid HTTPS multiaddress with DNS",
+			name:  "Valid HTTPS multiaddress with DNS (dns4)",
 			maStr: "/dns4/example.com/tcp/443/https",
 			want: &url.URL{
 				Scheme: "https",
-				Host:   "example.com:443",
+				Host:   "example.com",
 			},
 			expectErr: false,
 		},
@@ -78,10 +77,88 @@ func TestExtractHTTPAddress(t *testing.T) {
 			expectErr: false,
 		},
 		{
-			name:      "Missing port",
+			name:      "HTTP without port on non-local DNS rejects (no TLS)",
 			maStr:     "/dns4/example.com/http",
 			want:      nil,
-			expectErr: true,
+			expectErr: true, // default port 80 is inferred, but rejected: non-local without TLS
+		},
+		{
+			name:  "HTTPS non-default port preserved",
+			maStr: "/dns4/example.com/tcp/8443/https",
+			want: &url.URL{
+				Scheme: "https",
+				Host:   "example.com:8443",
+			},
+			expectErr: false,
+		},
+		// Mismatched default ports: port must be preserved when it does
+		// not match the schema default (e.g. http+443, https+80).
+		{
+			name:  "HTTP with port 443 preserves port (non-local, errors)",
+			maStr: "/dns/example.com/tcp/443/http",
+			want: &url.URL{
+				Scheme: "http",
+				Host:   "example.com:443",
+			},
+			expectErr: true, // non-local without TLS
+		},
+		{
+			name:  "HTTPS with port 80 preserves port",
+			maStr: "/dns/example.com/tcp/80/https",
+			want: &url.URL{
+				Scheme: "https",
+				Host:   "example.com:80",
+			},
+			expectErr: false,
+		},
+		{
+			name:  "HTTP with port 443 on loopback preserves port",
+			maStr: "/ip4/127.0.0.1/tcp/443/http",
+			want: &url.URL{
+				Scheme: "http",
+				Host:   "127.0.0.1:443",
+			},
+			expectErr: false,
+		},
+		// Regression tests: some HTTP providers advertise /dns/host/https
+		// without the /tcp/443 component. Port 443 must be inferred for
+		// https and port 80 for http to match the behavior of browsers
+		// and curl.
+		{
+			name:  "HTTPS without tcp component infers port 443 (dns)",
+			maStr: "/dns/example.com/https",
+			want: &url.URL{
+				Scheme: "https",
+				Host:   "example.com",
+			},
+			expectErr: false,
+		},
+		{
+			name:  "HTTPS without tcp component infers port 443 (dns4)",
+			maStr: "/dns4/example.net/https",
+			want: &url.URL{
+				Scheme: "https",
+				Host:   "example.net",
+			},
+			expectErr: false,
+		},
+		{
+			name:  "HTTPS without tcp component infers port 443 (dns6)",
+			maStr: "/dns6/example.net/https",
+			want: &url.URL{
+				Scheme: "https",
+				Host:   "example.net",
+			},
+			expectErr: false,
+		},
+		{
+			name:  "HTTP without tcp component infers port 80 (loopback)",
+			maStr: "/ip4/127.0.0.1/http",
+			want: &url.URL{
+				Scheme: "http",
+				Host:   "127.0.0.1",
+			},
+			expectErr: false,
 		},
 		{
 			name:      "Invalid multiaddress",
@@ -118,7 +195,7 @@ func TestExtractHTTPAddress(t *testing.T) {
 			maStr: "/dns4/example.com/tcp/443/tls/sni/example2.com/http",
 			want: &url.URL{
 				Scheme: "https",
-				Host:   "example.com:443",
+				Host:   "example.com",
 			},
 			sni:       "example2.com",
 			expectErr: false,
@@ -189,6 +266,47 @@ func TestExtractHTTPAddressesFromPeer(t *testing.T) {
 				Addrs: []multiaddr.Multiaddr{},
 			},
 			want: nil,
+		},
+		{
+			name: "HTTPS without tcp component (portless multiaddr)",
+			peerInfo: &peer.AddrInfo{
+				ID: "12D3KooWQrKv5jtT5anTrKjwgb5dkt7DYHhTT9JzLs7dABZ1mkTf",
+				Addrs: []multiaddr.Multiaddr{
+					multiaddr.StringCast("/dns/example.com/https"),
+					multiaddr.StringCast("/dns/example.net/https"),
+				},
+			},
+			want: []*url.URL{
+				{
+					Scheme: "https",
+					Host:   "example.com",
+				},
+				{
+					Scheme: "https",
+					Host:   "example.net",
+				},
+			},
+		},
+		{
+			name: "Mix of explicit port and inferred port",
+			peerInfo: &peer.AddrInfo{
+				ID: "12D3KooWQrKv5jtT5anTrKjwgb5dkt7DYHhTT9JzLs7dABZ1mkTf",
+				Addrs: []multiaddr.Multiaddr{
+					multiaddr.StringCast("/dns/example.com/tcp/443/https"),
+					multiaddr.StringCast("/dns/example.net/https"),
+					multiaddr.StringCast("/ip4/127.0.0.1/tcp/9000"), // Non-HTTP
+				},
+			},
+			want: []*url.URL{
+				{
+					Scheme: "https",
+					Host:   "example.com",
+				},
+				{
+					Scheme: "https",
+					Host:   "example.net",
+				},
+			},
 		},
 	}
 

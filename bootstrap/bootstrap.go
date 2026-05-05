@@ -15,6 +15,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/peerstore"
 	"github.com/libp2p/go-libp2p/core/routing"
+	"github.com/multiformats/go-multiaddr"
 )
 
 var log = logging.Logger("bootstrap")
@@ -214,6 +215,12 @@ func saveConnectedPeersAsTemporaryBootstrap(ctx context.Context, host host.Host,
 	// Randomize the list of connected peers, we don't prioritize anyone.
 	connectedPeers := randomizeList(host.Network().Peers())
 
+	// Early exit if we have no connected peers to save
+	if len(connectedPeers) == 0 {
+		log.Debugf("no connected peers to save as bootstrap backup")
+		return nil
+	}
+
 	bootstrapPeers := cfg.BootstrapPeers()
 	backupPeers := make([]peer.AddrInfo, 0, cfg.MaxBackupBootstrapSize)
 	foundPeers := make(map[peer.ID]struct{}, cfg.MaxBackupBootstrapSize+len(bootstrapPeers))
@@ -230,10 +237,14 @@ func saveConnectedPeersAsTemporaryBootstrap(ctx context.Context, host host.Host,
 		}
 		foundPeers[p] = struct{}{}
 
-		backupPeers = append(backupPeers, peer.AddrInfo{
+		peerInfo := peer.AddrInfo{
 			ID:    p,
 			Addrs: host.Network().Peerstore().Addrs(p),
-		})
+		}
+		// Only include peers with direct addresses (filter out relay-only peers)
+		if hasDirectAddresses(peerInfo) {
+			backupPeers = append(backupPeers, peerInfo)
+		}
 
 		if len(backupPeers) >= cfg.MaxBackupBootstrapSize {
 			break
@@ -274,17 +285,19 @@ func bootstrapRound(ctx context.Context, host host.Host, cfg BootstrapConfig) er
 	defer cancel()
 	id := host.ID()
 
-	// get bootstrap peers from config. retrieving them here makes
-	// sure we remain observant of changes to client configuration.
-	peers := cfg.BootstrapPeers()
-	// determine how many bootstrap connections to open
+	// Check if we need to bootstrap at all before retrieving bootstrap peers.
+	// This avoids unnecessary calls to cfg.BootstrapPeers() when already well-connected.
 	connected := host.Network().Peers()
 	if len(connected) >= cfg.MinPeerThreshold {
-		log.Debugf("%s core bootstrap skipped -- connected to %d (> %d) nodes",
+		log.Debugf("%s core bootstrap skipped -- connected to %d (>= %d) nodes",
 			id, len(connected), cfg.MinPeerThreshold)
 		return nil
 	}
 	numToDial := cfg.MinPeerThreshold - len(connected) // numToDial > 0
+
+	// Now that we know we need to bootstrap, get the bootstrap peers from config.
+	// Retrieving them here makes sure we remain observant of changes to client configuration.
+	peers := cfg.BootstrapPeers()
 
 	if len(peers) > 0 {
 		numToDial -= int(peersConnect(ctx, host, peers, numToDial, true))
@@ -396,4 +409,27 @@ func randomizeList[T any](in []T) []T {
 		out[i] = in[val]
 	}
 	return out
+}
+
+// hasDirectAddresses checks if a peer has any direct (non-relay) addresses.
+// Peers with only relay addresses (P_CIRCUIT protocol) are considered unreliable
+// for bootstrap purposes and should be filtered out.
+func hasDirectAddresses(p peer.AddrInfo) bool {
+	for _, addr := range p.Addrs {
+		if !hasCircuitProtocol(addr) {
+			return true
+		}
+	}
+	return false
+}
+
+// hasCircuitProtocol checks if a multiaddr contains the circuit relay protocol.
+func hasCircuitProtocol(addr multiaddr.Multiaddr) bool {
+	protocols := addr.Protocols()
+	for _, proto := range protocols {
+		if proto.Code == multiaddr.P_CIRCUIT {
+			return true
+		}
+	}
+	return false
 }

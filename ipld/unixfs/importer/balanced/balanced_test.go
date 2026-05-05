@@ -278,7 +278,7 @@ func TestSeekingStress(t *testing.T) {
 	}
 
 	testbuf := make([]byte, nbytes)
-	for i := 0; i < 50; i++ {
+	for range 50 {
 		offset := mrand.Intn(int(nbytes))
 		l := int(nbytes) - offset
 		n, err := rs.Seek(int64(offset), io.SeekStart)

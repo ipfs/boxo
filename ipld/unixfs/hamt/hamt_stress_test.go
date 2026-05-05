@@ -15,7 +15,7 @@ import (
 
 func getNames(prefix string, count int) []string {
 	out := make([]string, count)
-	for i := 0; i < count; i++ {
+	for i := range count {
 		out[i] = fmt.Sprintf("%s%d", prefix, i)
 	}
 	return out

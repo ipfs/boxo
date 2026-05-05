@@ -3,8 +3,8 @@ package gateway
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -14,6 +14,32 @@ import (
 	"github.com/ipfs/boxo/ipld/unixfs"
 	"github.com/ipfs/boxo/path"
 	"github.com/ipfs/go-cid"
+	"github.com/prometheus/client_golang/prometheus"
+)
+
+// Default values for gateway configuration limits
+const (
+	// DefaultRetrievalTimeout is the default maximum duration for initial content retrieval
+	// (time to first byte) and subsequent writes to the HTTP response body.
+	DefaultRetrievalTimeout = 30 * time.Second
+
+	// DefaultMaxConcurrentRequests is the default maximum number of concurrent HTTP requests
+	// that the gateway will process. The default value of 4096 is suitable for most deployments
+	// and aligns with common reverse proxy configurations (e.g., nginx with 8 workers × 1024 connections).
+	//
+	// When to adjust this value:
+	//  - Too many HTTP 429 responses with available resources: increase the value
+	//  - High memory usage or resource exhaustion: decrease the value
+	//
+	// See the MaxConcurrentRequests field documentation for detailed tuning guidance.
+	DefaultMaxConcurrentRequests = 4096
+
+	// DefaultMaxRequestDuration is the default per-request timeout for the
+	// gateway handler.
+	DefaultMaxRequestDuration = time.Hour
+
+	// DefaultDiagnosticServiceURL is the default URL for CID diagnostic service
+	DefaultDiagnosticServiceURL = "https://check.ipfs.network"
 )
 
 // Config is the configuration used when creating a new gateway handler.
@@ -29,6 +55,19 @@ type Config struct {
 	// [application/vnd.ipld.car]: https://www.iana.org/assignments/media-types/application/vnd.ipld.car
 	// [Trustless Gateway]: https://specs.ipfs.tech/http-gateways/trustless-gateway/
 	DeserializedResponses bool
+
+	// AllowCodecConversion enables automatic conversion between codecs when
+	// the requested format differs from the block's native codec. For example,
+	// converting dag-pb (UnixFS) to dag-json.
+	//
+	// When false (default), the gateway returns 406 Not Acceptable if the
+	// requested format doesn't match the block's codec. This follows the
+	// behavior specified in IPIP-524.
+	//
+	// When true, the gateway attempts to convert between legacy IPLD formats.
+	// This is provided for backwards compatibility but is not required by
+	// the gateway specification.
+	AllowCodecConversion bool
 
 	// NoDNSLink configures the gateway to _not_ perform DNS TXT record lookups in
 	// response to requests with values in `Host` HTTP header. This flag can be
@@ -48,6 +87,126 @@ type Config struct {
 	// directory listings, DAG previews and errors. These will be displayed to the
 	// right of "About IPFS" and "Install IPFS".
 	Menu []assets.MenuItem
+
+	// RetrievalTimeout enforces a maximum duration for content retrieval:
+	// - Time to first byte: If the gateway cannot start writing the response within
+	//   this duration (e.g., stuck searching for providers), a 504 Gateway Timeout
+	//   is returned.
+	// - Time between writes: After the first byte, the timeout resets each time new
+	//   bytes are written to the client. If the gateway cannot write additional data
+	//   within this duration after the last successful write, the response is
+	//   terminated (with 504 for headers not sent, or truncation for headers already sent).
+	// This helps free resources when the gateway gets stuck looking for providers
+	// or cannot retrieve parts of the requested content.
+	// A value of 0 disables this timeout.
+	RetrievalTimeout time.Duration
+
+	// MaxConcurrentRequests sets the maximum number of concurrent HTTP requests
+	// that the gateway will process. This limit protects against resource exhaustion
+	// by constraining memory usage, file descriptors, and concurrent goroutines.
+	//
+	// The default value of 4096 works well for most deployments. Adjust only if you
+	// experience specific symptoms:
+	//
+	// Symptoms and solutions:
+	//  - Many HTTP 429 responses with low resource usage: increase this value
+	//  - High memory usage or resource exhaustion: decrease this value
+	//  - Poor throughput despite available resources: increase this value
+	//
+	// How to tune this value:
+	//
+	//  1. Calculate your reverse proxy's capacity:
+	//     - nginx: worker_processes × worker_connections ÷ 2
+	//     - Example: 8 workers × 1024 connections = 4096 max proxied requests
+	//     - Check: nginx -T | grep -E 'worker_processes|worker_connections'
+	//     - Apache: Check MaxRequestWorkers in httpd.conf
+	//     - HAProxy: Check global maxconn and frontend/backend limits
+	//     - Caddy/Traefik: Check system limits (ulimit -n)
+	//
+	//  2. Monitor your gateway metrics:
+	//     - Count of 429 responses (indicates limit is too low)
+	//     - Active connection count (should stay below limit)
+	//     - Resource utilization (CPU, memory, file descriptors)
+	//
+	//  3. Set MaxConcurrentRequests to match your deployment:
+	//     - Start with proxy capacity (e.g., 4096 for nginx example above)
+	//     - Reduce by 5-10% if you want safety margin
+	//     - Increase if your proxy has higher limits or if using CDN
+	//
+	// A value of 0 disables the limit entirely (use with caution).
+	MaxConcurrentRequests int
+
+	// DiagnosticServiceURL is the URL for a service that can be used to diagnose
+	// issues with CID retrievability. When the gateway returns a 504 Gateway Timeout
+	// error, an "Inspect retrievability of CID" button will be shown that links to
+	// this service with the CID as a query parameter. When set to empty string, the
+	// button is not shown.
+	DiagnosticServiceURL string
+
+	// MaxRangeRequestFileSize is the maximum file size in bytes for which range
+	// requests are supported. When set to a value greater than 0, range requests
+	// for files larger than this limit will return 501 Not Implemented error.
+	// This provides protection against CDN/proxy issues with large files
+	// (e.g., Cloudflare's 5GB limit). A value of 0 disables this limit.
+	MaxRangeRequestFileSize int64
+
+	// MaxDeserializedResponseSize is the maximum file or directory DAG size
+	// in bytes for deserialized responses. When set to a value greater than 0,
+	// requests for UnixFS content larger than this limit will return
+	// 410 Gone, directing users to run their own IPFS node for large content.
+	// This applies to both regular and range requests: if the underlying file
+	// exceeds the limit, even a small range is rejected.
+	// No additional block fetches are needed; size is already available from
+	// the request's normal processing of the UnixFS root block.
+	// A value of 0 disables this limit. Only affects deserialized responses;
+	// trustless formats (application/vnd.ipld.raw, application/vnd.ipld.car)
+	// are not affected.
+	MaxDeserializedResponseSize int64
+
+	// MaxUnixFSDAGResponseSize is the maximum UnixFS file or directory DAG
+	// size in bytes, applied to all response formats: deserialized, raw
+	// blocks, CAR, and TAR. When set to a value greater than 0, any request
+	// whose resolved content exceeds this limit will return 410 Gone,
+	// regardless of response format. This allows gateway operators to cap
+	// bandwidth across all response types.
+	// Most handlers reuse the size already available from normal request
+	// processing; the CAR handler performs a lightweight Head call (root
+	// block is then cached for the subsequent CAR traversal).
+	// A value of 0 disables this limit.
+	MaxUnixFSDAGResponseSize int64
+
+	// MaxRequestDuration is the maximum total time a request can take.
+	// Unlike RetrievalTimeout (which resets on each data write and catches
+	// stalled transfers), this is an absolute deadline for the entire request.
+	// Zero or negative values will use DefaultMaxRequestDuration (1 hour).
+	MaxRequestDuration time.Duration
+
+	// MetricsRegistry is the Prometheus registry to use for metrics.
+	// If nil, prometheus.DefaultRegisterer will be used.
+	MetricsRegistry prometheus.Registerer
+}
+
+// validateConfig validates and normalizes the Config, returning a modified copy.
+// Invalid values are logged and set to safe defaults.
+func validateConfig(c Config) Config {
+	// Validate DiagnosticServiceURL
+	if c.DiagnosticServiceURL != "" {
+		if _, err := url.Parse(c.DiagnosticServiceURL); err != nil {
+			log.Errorf("invalid DiagnosticServiceURL %q: %v, disabling diagnostic service", c.DiagnosticServiceURL, err)
+			c.DiagnosticServiceURL = ""
+		}
+	}
+
+	if c.MaxRequestDuration <= 0 {
+		if c.MaxRequestDuration < 0 {
+			log.Errorf("invalid MaxRequestDuration %s, using default %s", c.MaxRequestDuration.String(), DefaultMaxRequestDuration.String())
+		}
+		c.MaxRequestDuration = DefaultMaxRequestDuration
+	}
+
+	// Future validations can be added here
+
+	return c
 }
 
 // PublicGateway is the specification of an IPFS Public Gateway.
@@ -186,7 +345,7 @@ func NewDuplicateBlocksPolicy(dupsValue string) (DuplicateBlocksPolicy, error) {
 	case "":
 		return DuplicateBlocksUnspecified, nil
 	}
-	return 0, fmt.Errorf("unsupported application/vnd.ipld.car content type dups parameter: %q", dupsValue)
+	return 0, errUnsupportedCarDups
 }
 
 func (d DuplicateBlocksPolicy) Bool() bool {

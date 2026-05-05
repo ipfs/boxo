@@ -332,6 +332,13 @@ func PerformDistributionTest(t *testing.T, numInstances, numBlocks int) {
 			t.Fatal(err)
 		}
 	}
+
+	for _, inst := range instances {
+		err := inst.Exchange.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
 }
 
 // TODO simplify this test. get to the _essence_!
@@ -375,6 +382,13 @@ func TestSendToWantingPeer(t *testing.T) {
 	if !blkrecvd.Cid().Equals(alpha.Cid()) {
 		t.Fatal("Wrong block!")
 	}
+
+	for _, inst := range peers {
+		err := inst.Exchange.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
 }
 
 func TestEmptyKey(t *testing.T) {
@@ -389,7 +403,11 @@ func TestEmptyKey(t *testing.T) {
 
 	_, err := bs.GetBlock(ctx, cid.Cid{})
 	if !ipld.IsNotFound(err) {
-		t.Error("empty str key should return ErrNotFound")
+		t.Error("empty string key should return ErrNotFound")
+	}
+
+	if err = bs.Close(); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -442,7 +460,7 @@ func TestBasicBitswap(t *testing.T) {
 			return errors.New("should have no items in other peers wantlist")
 		}
 		if len(instances[1].Exchange.GetWantlist()) != 0 {
-			return errors.New("shouldnt have anything in wantlist")
+			return errors.New("should not have anything in wantlist")
 		}
 		return nil
 	}); err != nil {
@@ -503,8 +521,7 @@ func TestDoubleGet(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	ctx2, cancel2 := context.WithCancel(context.Background())
-	defer cancel2()
+	ctx2 := t.Context()
 
 	blkch2, err := instances[1].Exchange.GetBlocks(ctx2, []cid.Cid{blocks[0].Cid()})
 	if err != nil {
@@ -531,7 +548,7 @@ func TestDoubleGet(t *testing.T) {
 	case <-time.After(time.Second * 5):
 		p1wl := instances[0].Exchange.WantlistForPeer(instances[1].Identity.ID())
 		if len(p1wl) != 1 {
-			t.Logf("wantlist view didnt have 1 item (had %d)", len(p1wl))
+			t.Logf("wantlist view did not have 1 item (had %d)", len(p1wl))
 		} else if !p1wl[0].Equals(blocks[0].Cid()) {
 			t.Logf("had 1 item, it was wrong: %s %s", blocks[0].Cid(), p1wl[0])
 		} else {
@@ -557,6 +574,8 @@ func TestWantlistCleanup(t *testing.T) {
 	instances := ig.Instances(2)
 	instance := instances[0]
 	bswap := instance.Exchange
+	defer bswap.Close()
+	defer instances[1].Exchange.Close()
 	blocks := random.BlocksOfSize(20, blockSize)
 
 	var keys []cid.Cid
@@ -569,13 +588,13 @@ func TestWantlistCleanup(t *testing.T) {
 	defer cancel()
 	_, err := bswap.GetBlock(ctx, keys[0])
 	if err != context.DeadlineExceeded {
-		t.Fatal("shouldnt have fetched any blocks")
+		t.Fatal("should not have fetched any blocks")
 	}
 
 	time.Sleep(time.Millisecond * 50)
 
 	if len(bswap.GetWantHaves()) > 0 {
-		t.Fatal("should not have anyting in wantlist")
+		t.Fatal("should not have anything in wantlist")
 	}
 
 	// Once context times out, keys should be removed from wantlist
@@ -590,7 +609,7 @@ func TestWantlistCleanup(t *testing.T) {
 	time.Sleep(time.Millisecond * 50)
 
 	if len(bswap.GetWantHaves()) > 0 {
-		t.Fatal("should not have anyting in wantlist")
+		t.Fatal("should not have anything in wantlist")
 	}
 
 	// Send want for single block, with no timeout
@@ -606,7 +625,7 @@ func TestWantlistCleanup(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Even after 50 milli-seconds we haven't explicitly cancelled anything
+	// Even after 50 milliseconds we haven't explicitly canceled anything
 	// and no timeouts have expired, so we should have 11 want-haves
 	time.Sleep(time.Millisecond * 50)
 	if len(bswap.GetWantHaves()) != 11 {
@@ -834,7 +853,7 @@ func TestWithScoreLedger(t *testing.T) {
 	}
 }
 
-// TestWithServerDisabled tests that BitSwap can function properly with the server disabled.
+// TestWithServerDisabled tests that Bitswap can function properly with the server disabled.
 // In this mode, it should still be able to request and receive blocks from other peers,
 // but should not respond to requests from others.
 func TestWithServerDisabled(t *testing.T) {

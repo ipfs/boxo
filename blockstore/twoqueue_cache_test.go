@@ -349,7 +349,6 @@ func BenchmarkTwoQueueCacheConcurrentOps(b *testing.B) {
 	}
 
 	for _, test := range testOps {
-		test := test // prevent reuse of the range var
 		b.Run(test.name, func(b *testing.B) {
 			c, _, _ := createStores(b)
 			putHalfBlocks(c)

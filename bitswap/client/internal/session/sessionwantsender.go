@@ -2,8 +2,11 @@ package session
 
 import (
 	"context"
+	"slices"
 
+	"github.com/gammazero/chanqueue"
 	bsbpm "github.com/ipfs/boxo/bitswap/client/internal/blockpresencemanager"
+	bspm "github.com/ipfs/boxo/bitswap/client/internal/peermanager"
 	cid "github.com/ipfs/go-cid"
 	peer "github.com/libp2p/go-libp2p/core/peer"
 )
@@ -88,7 +91,7 @@ type sessionWantSender struct {
 	// The session ID
 	sessionID uint64
 	// A channel that collects incoming changes (events)
-	changes chan change
+	changes *chanqueue.ChanQueue[change]
 	// Information about each want indexed by CID
 	wants map[cid.Cid]*wantInfo
 	// Keeps track of how many consecutive DONT_HAVEs a peer has sent
@@ -107,10 +110,12 @@ type sessionWantSender struct {
 	onSend onSendFn
 	// Called when all peers explicitly don't have a block
 	onPeersExhausted onPeersExhaustedFn
+	// Tracks number of haves received.
+	havesReceivedGauge bspm.Gauge
 }
 
 func newSessionWantSender(sid uint64, pm PeerManager, spm SessionPeerManager, canceller SessionWantsCanceller,
-	bpm *bsbpm.BlockPresenceManager, onSend onSendFn, onPeersExhausted onPeersExhaustedFn,
+	bpm *bsbpm.BlockPresenceManager, onSend onSendFn, onPeersExhausted onPeersExhaustedFn, havesReceivedGauge bspm.Gauge,
 ) sessionWantSender {
 	ctx, cancel := context.WithCancel(context.Background())
 	sws := sessionWantSender{
@@ -118,7 +123,7 @@ func newSessionWantSender(sid uint64, pm PeerManager, spm SessionPeerManager, ca
 		shutdown:                 cancel,
 		closed:                   make(chan struct{}),
 		sessionID:                sid,
-		changes:                  make(chan change, changesBufferSize),
+		changes:                  chanqueue.New(chanqueue.WithBaseCapacity[change](changesBufferSize)),
 		wants:                    make(map[cid.Cid]*wantInfo),
 		peerConsecutiveDontHaves: make(map[peer.ID]int),
 		peerRspTrkr:              newPeerResponseTracker(),
@@ -129,6 +134,8 @@ func newSessionWantSender(sid uint64, pm PeerManager, spm SessionPeerManager, ca
 		bpm:              bpm,
 		onSend:           onSend,
 		onPeersExhausted: onPeersExhausted,
+
+		havesReceivedGauge: havesReceivedGauge,
 	}
 
 	return sws
@@ -172,14 +179,16 @@ func (sws *sessionWantSender) SignalAvailability(p peer.ID, isAvailable bool) {
 	availability := peerAvailability{p, isAvailable}
 	// Add the change in a non-blocking manner to avoid the possibility of a
 	// deadlock
-	sws.addChangeNonBlocking(change{availability: availability})
+	sws.addChange(change{availability: availability})
 }
 
 // Run is the main loop for processing incoming changes
 func (sws *sessionWantSender) Run() {
+	changes := sws.changes.Out()
+
 	for {
 		select {
-		case ch := <-sws.changes:
+		case ch := <-changes:
 			sws.onChange([]change{ch})
 		case <-sws.ctx.Done():
 			// Unregister the session with the PeerManager
@@ -199,33 +208,24 @@ func (sws *sessionWantSender) Shutdown() {
 	sws.shutdown()
 	// Wait for run loop to complete
 	<-sws.closed
+	sws.changes.Stop()
 }
 
 // addChange adds a new change to the queue
 func (sws *sessionWantSender) addChange(c change) {
 	select {
-	case sws.changes <- c:
+	case sws.changes.In() <- c:
 	case <-sws.ctx.Done():
-	}
-}
-
-// addChangeNonBlocking adds a new change to the queue, using a go-routine
-// if the change blocks, so as to avoid potential deadlocks
-func (sws *sessionWantSender) addChangeNonBlocking(c change) {
-	select {
-	case sws.changes <- c:
-	default:
-		// changes channel is full, so add change in a go routine instead
-		go sws.addChange(c)
 	}
 }
 
 // collectChanges collects all the changes that have occurred since the last
 // invocation of onChange
 func (sws *sessionWantSender) collectChanges(changes []change) []change {
-	for len(changes) < changesBufferSize {
+	changes = slices.Grow(changes, sws.changes.Len())
+	for range sws.changes.Len() {
 		select {
-		case next := <-sws.changes:
+		case next := <-sws.changes.Out():
 			changes = append(changes, next)
 		default:
 			return changes
@@ -262,6 +262,7 @@ func (sws *sessionWantSender) onChange(changes []change) {
 			// the peer is available
 			if len(chng.update.ks) > 0 || len(chng.update.haves) > 0 {
 				p := chng.update.from
+				log.Debugf("change: availability (update includes blocks/haves): %s -> true", p)
 				availability[p] = true
 
 				// Register with the PeerManager
@@ -270,8 +271,9 @@ func (sws *sessionWantSender) onChange(changes []change) {
 
 			updates = append(updates, chng.update)
 		}
-		if chng.availability.target != "" {
-			availability[chng.availability.target] = chng.availability.available
+		if t := chng.availability.target; t != "" {
+			log.Debugf("change: availability: %s -> %t", t, chng.availability.available)
+			availability[t] = chng.availability.available
 		}
 	}
 
@@ -329,7 +331,9 @@ func (sws *sessionWantSender) processAvailability(availability map[peer.ID]bool)
 			delete(sws.peerConsecutiveDontHaves, p)
 		}
 	}
-
+	if len(newlyAvailable)+len(newlyUnavailable) > 0 {
+		log.Infof("newly available: %s, newlyUnavailable: %s", newlyAvailable, newlyUnavailable)
+	}
 	return newlyAvailable, newlyUnavailable
 }
 
@@ -575,7 +579,7 @@ func (sws *sessionWantSender) sendWants(sends allWants) {
 		// precedence over want-haves.
 		wblks := snd.wantBlocks.Keys()
 		whaves := snd.wantHaves.Keys()
-		snd.sent = sws.pm.SendWants(sws.ctx, p, wblks, whaves)
+		snd.sent = sws.pm.SendWants(p, wblks, whaves)
 		if !snd.sent {
 			// Do not update state if the wants not sent.
 			continue
@@ -634,6 +638,9 @@ func (sws *sessionWantSender) updateWantBlockPresence(c cid.Cid, p peer.ID) {
 	switch {
 	case sws.bpm.PeerHasBlock(p, c):
 		wi.setPeerBlockPresence(p, BPHave)
+		if sws.havesReceivedGauge != nil {
+			sws.havesReceivedGauge.Inc()
+		}
 	case sws.bpm.PeerDoesNotHaveBlock(p, c):
 		wi.setPeerBlockPresence(p, BPDontHave)
 	default:

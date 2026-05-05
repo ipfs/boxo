@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"slices"
 	"strconv"
@@ -32,7 +31,7 @@ const (
 	// request can take.
 	DefaultSendTimeout = 5 * time.Second
 	// SendErrorBackoff specifies how long to wait between retries to the
-	// same endpoint after failure. It is overriden by Retry-After
+	// same endpoint after failure. It is overridden by Retry-After
 	// headers and must be at least 50ms.
 	DefaultSendErrorBackoff = time.Second
 )
@@ -91,8 +90,7 @@ func (sender *httpMsgSender) sortURLS() []*senderURL {
 
 	// sender.urls must be read-only as multiple workers
 	// attempt to sort it.
-	urlCopy := make([]*senderURL, len(sender.urls))
-	copy(urlCopy, sender.urls)
+	urlCopy := slices.Clone(sender.urls)
 
 	slices.SortFunc(urlCopy, func(a, b *senderURL) int {
 		// urls without exhausted retries come first
@@ -176,27 +174,29 @@ func (err senderError) Error() string {
 	return err.Err.Error()
 }
 
-// tryURL attemps to make a request to the given URL using the given entry.
+// tryURL attempts to make a request to the given URL using the given entry.
 // Blocks, Haves etc. are recorded in the given response. cancellations are
 // processed. tryURL returns an error so that it can be decided what to do next:
 // i.e. retry, or move to next item in wantlist, or abort completely.
 func (sender *httpMsgSender) tryURL(ctx context.Context, u *senderURL, entry bsmsg.Entry) (blocks.Block, *senderError) {
-	if dl := u.cooldown.Load().(time.Time); !dl.IsZero() {
-		return nil, &senderError{
-			Type: typeRetryLater,
-			Err:  fmt.Errorf("%q is in cooldown period", u.URL),
-		}
-	}
-
 	var method string
 
-	switch {
-	case entry.WantType == pb.Message_Wantlist_Block:
-		method = "GET"
-	case entry.WantType == pb.Message_Wantlist_Have:
-		method = "HEAD"
+	switch entry.WantType {
+	case pb.Message_Wantlist_Block:
+		method = http.MethodGet
+	case pb.Message_Wantlist_Have:
+		method = http.MethodHead
 	default:
 		panic("unknown bitswap entry type")
+	}
+
+	if dl := u.cooldown.Load().(time.Time); !dl.IsZero() {
+		err := fmt.Errorf("cooldown (%s): %s %q ", dl, method, u.URL)
+		log.Debug(err)
+		return nil, &senderError{
+			Type: typeRetryLater,
+			Err:  err,
+		}
 	}
 
 	// We do not abort ongoing requests.  This is known to cause "http2:
@@ -204,7 +204,7 @@ func (sender *httpMsgSender) tryURL(ctx context.Context, u *senderURL, entry bsm
 	// is worse than downloading some extra bytes.  We do abort if the
 	// context WAS already cancelled before making the request.
 	if err := ctx.Err(); err != nil {
-		log.Debugf("aborted before sending: %s %q", method, u.ParsedURL.URL)
+		log.Debugf("aborted before sending: %s %q", method, u.URL)
 		return nil, &senderError{
 			Type: typeContext,
 			Err:  err,
@@ -277,10 +277,9 @@ func (sender *httpMsgSender) tryURL(ctx context.Context, u *senderURL, entry bsm
 	statusCode := resp.StatusCode
 	// 1) Observed that some gateway implementation returns 500 instead of
 	// 404.
-	if statusCode == 500 &&
-		(string(body) == "ipld: could not find node" || strings.HasPrefix(string(body), "peer does not have")) {
-		log.Debugf("treating as 404: %q -> %d: %q", req.URL, resp.StatusCode, string(body))
+	if statusCode != 200 && isKnownNotFoundError(string(body)) {
 		statusCode = 404
+		log.Debugf("treating as 404: %q -> %d: %q", req.URL, resp.StatusCode, string(body))
 	}
 
 	// Calculate full response size with headers and everything.
@@ -292,7 +291,7 @@ func (sender *httpMsgSender) tryURL(ctx context.Context, u *senderURL, entry bsm
 
 	sender.ht.metrics.ResponseSizes.Observe(float64(respLen))
 	sender.ht.metrics.RequestsInFlight.Dec()
-	host, _, _ := net.SplitHostPort(u.URL.Host)
+	host := u.URL.Hostname()
 	// updateStatusCounter
 	sender.ht.metrics.updateStatusCounter(req.Method, statusCode, host)
 
@@ -329,13 +328,13 @@ func (sender *httpMsgSender) tryURL(ctx context.Context, u *senderURL, entry bsm
 		}
 		log.Debugf("%s %q -> %d (%d bytes)", req.Method, req.URL, statusCode, len(body))
 
-		if req.Method == "HEAD" {
+		if req.Method == http.MethodHead {
 			return nil, nil
 		}
 		// GET
-		b, err := blocks.NewBlockWithCid(body, entry.Cid)
+		b, err := bsmsg.NewWantlistBlock(body, entry.Cid, entry.Cid.Prefix())
 		if err != nil {
-			log.Error("block received for cid %s does not match!", entry.Cid)
+			log.Debugf("error making wantlist block for %s: %s", entry.Cid, err)
 			// avoid entertaining servers that send us wrong data
 			// too much.
 			return nil, &senderError{
@@ -354,7 +353,7 @@ func (sender *httpMsgSender) tryURL(ctx context.Context, u *senderURL, entry bsm
 		// Retry-After. They are used to signal that a block cannot
 		// be fetched too, not only fatal server issues, which poses a
 		// difficult overlap. Current approach treats these errors as
-		// non fatal if they don't happen repeteadly:
+		// non fatal if they don't happen repeatedly:
 		// - By default we disconnect on server errors: MaxRetries = 1.
 		// - First try errors. We add default backoff if non specified.
 		// - Retry same CID. If it fails again, count that as server
@@ -364,12 +363,12 @@ func (sender *httpMsgSender) tryURL(ctx context.Context, u *senderURL, entry bsm
 
 		// In practice, our wantlists should be 1/3 elements. It
 		// doesn't make sense to tolerate 5 server errors for 3
-		// requests as we will repeteadly hit broken servers that way.
+		// requests as we will repeatedly hit broken servers that way.
 		// It is always better if endpoints keep these errors for
 		// server issues, and simply return 404 when they cannot find
 		// the content but everything else is fine.
-		err := fmt.Errorf("%q -> %d: %q", req.URL, statusCode, string(body))
-		log.Error(err)
+		err := fmt.Errorf("%s %q -> %d: %q", req.Method, req.URL, statusCode, string(body))
+		log.Warn(err)
 		retryAfter := resp.Header.Get("Retry-After")
 		cooldownUntil, ok := parseRetryAfter(retryAfter)
 		if ok { // it means we should retry, so we will retry.
@@ -391,7 +390,7 @@ func (sender *httpMsgSender) tryURL(ctx context.Context, u *senderURL, entry bsm
 	// it fails MaxRetries, we will fully disconnect.
 	default:
 		err := fmt.Errorf("%q -> %d: %q", req.URL, statusCode, string(body))
-		log.Error(err)
+		log.Warn(err)
 		sender.ht.cooldownTracker.setByDuration(req.URL.Host, sender.opts.SendErrorBackoff)
 		u.cooldown.Store(time.Now().Add(sender.opts.SendErrorBackoff))
 		return nil, &senderError{
@@ -401,8 +400,28 @@ func (sender *httpMsgSender) tryURL(ctx context.Context, u *senderURL, entry bsm
 	}
 }
 
+// isKnownNotFoundError checks if the response body contains a known IPLD-specific
+// error message that indicates the content was not found. Some gateway implementations
+// return 500 (Internal Server Error) with these error messages instead of the more
+// appropriate 404 (Not Found).
+//
+// Following IPFS's robustness principle of "be strict about the outcomes, be tolerant
+// about the methods" (https://specs.ipfs.tech/architecture/principles/#robustness),
+// we recognize these error patterns to enable interoperability with gateways that
+// understand IPLD and bitswap semantics but return non-standard status codes.
+//
+// The strictness comes from verifying the error message proves the server understands
+// IPLD requests (not just any 500 error). The tolerance allows us to work with more
+// gateway implementations without requiring them to change their error codes first.
+func isKnownNotFoundError(body string) bool {
+	return strings.HasPrefix(body, "ipld: could not find node") ||
+		strings.HasPrefix(body, "peer does not have") ||
+		strings.HasPrefix(body, "getting pieces containing cid") ||
+		strings.HasPrefix(body, "failed to load root node")
+}
+
 // SendMsg performs an http request for the wanted cids per the msg's
-// Wantlist. It reads the response and records it in a reponse BitswapMessage
+// Wantlist. It reads the response and records it in a response BitswapMessage
 // which is forwarded to the receivers (in a separate goroutine).
 func (sender *httpMsgSender) SendMsg(ctx context.Context, msg bsmsg.BitSwapMessage) error {
 	// SendMsg gets called from MessageQueue and returning an error
@@ -470,9 +489,10 @@ WANTLIST_LOOP:
 			// against bsnet requests-time.
 			// sender.ht.metrics.RequestTime.Observe(float64(time.Since(reqStart))
 			// / float64(time.Second))
+			log.Debugf("wantlist msg %d/%d: %s %s cancel", i, lenWantlist-1, sender.peer, entry.Cid)
 			continue
 		}
-		log.Debugf("wantlist msg %d/%d: %s %s %s DH:%t", i, lenWantlist, sender.peer, entry.Cid, entry.WantType, entry.SendDontHave)
+		log.Debugf("wantlist msg %d/%d: %s %s %s DH:%t", i, lenWantlist-1, sender.peer, entry.Cid, entry.WantType, entry.SendDontHave)
 
 		reqInfo := httpRequestInfo{
 			ctx:       entryCtxs[i],
@@ -522,7 +542,7 @@ WANTLIST_LOOP:
 				// error handling
 				switch result.err.Type {
 				case typeFatal:
-					log.Errorf("fatal error. Disconnecting from %s: %s", sender.peer, result.err.Err)
+					log.Warnf("disconnecting from %s: %s", sender.peer, result.err.Err)
 					sender.ht.DisconnectFrom(ctx, sender.peer)
 					err = result.err
 					// continue processing responses as workers
@@ -551,7 +571,6 @@ WANTLIST_LOOP:
 		if err := sender.ht.errorTracker.logErrors(sender.peer, totalClientErrors, sender.ht.maxDontHaveErrors); err != nil {
 			log.Debugf("too many client errors. Disconnecting from %s", sender.peer)
 			sender.ht.DisconnectFrom(ctx, sender.peer)
-
 		}
 
 		// We return a special "cancel" function that we need to call
@@ -581,7 +600,7 @@ func (sender *httpMsgSender) notifyReceivers(bsresp bsmsg.BitSwapMessage) {
 	}
 
 	for i, recv := range sender.ht.receivers {
-		log.Debugf("ReceiveMessage from %s#%d. Blocks: %d. Haves: %d", sender.peer, i, lb, lh)
+		log.Debugf("ReceiveMessage from %s#%d. Blocks: %d. Haves: %d. DontHaves: %d", sender.peer, i, lb, lh, ldh)
 		recv.ReceiveMessage(
 			context.Background(),
 			sender.peer,

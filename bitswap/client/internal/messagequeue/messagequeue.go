@@ -7,7 +7,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/filecoin-project/go-clock"
 	bswl "github.com/ipfs/boxo/bitswap/client/wantlist"
 	bsmsg "github.com/ipfs/boxo/bitswap/message"
 	pb "github.com/ipfs/boxo/bitswap/message/pb"
@@ -16,7 +15,6 @@ import (
 	logging "github.com/ipfs/go-log/v2"
 	peer "github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
-	"go.uber.org/zap/zapcore"
 )
 
 var log = logging.Logger("bitswap/client/msgq")
@@ -100,13 +98,12 @@ type MessageQueue struct {
 	// instead of creating a new one every time.
 	msg bsmsg.BitSwapMessage
 
-	// For simulating time -- uses mock in test
-	clock clock.Clock
-
 	// Used to track things that happen asynchronously -- used only in test
 	events chan<- messageEvent
 
 	perPeerDelay time.Duration
+
+	BcastInc func()
 }
 
 // recallWantlist keeps a list of pending wants and a list of sent wants
@@ -275,7 +272,7 @@ func New(ctx context.Context, p peer.ID, network MessageNetwork, onDontHaveTimeo
 		}
 		dhTimeoutMgr = newDontHaveTimeoutMgr(newPeerConnection(p, network), onTimeout, opts.dhtConfig)
 	}
-	mq := newMessageQueue(ctx, p, network, maxMessageSize, sendErrorBackoff, maxValidLatency, dhTimeoutMgr, nil, nil)
+	mq := newMessageQueue(ctx, p, network, maxMessageSize, sendErrorBackoff, maxValidLatency, dhTimeoutMgr, nil)
 	mq.perPeerDelay = opts.perPeerDelay
 	return mq
 }
@@ -297,12 +294,8 @@ func newMessageQueue(
 	sendErrorBackoff time.Duration,
 	maxValidLatency time.Duration,
 	dhTimeoutMgr DontHaveTimeoutManager,
-	clk clock.Clock,
 	events chan<- messageEvent,
 ) *MessageQueue {
-	if clk == nil {
-		clk = clock.New()
-	}
 	ctx, cancel := context.WithCancel(ctx)
 	return &MessageQueue{
 		ctx:              ctx,
@@ -323,7 +316,6 @@ func newMessageQueue(
 		// For performance reasons we just clear out the fields of the message
 		// after using it, instead of creating a new one every time.
 		msg:    bsmsg.New(false),
-		clock:  clk,
 		events: events,
 	}
 }
@@ -424,6 +416,13 @@ func (mq *MessageQueue) AddCancels(cancelKs []cid.Cid) {
 	}
 }
 
+func (mq *MessageQueue) HasMessage() bool {
+	mq.wllock.Lock()
+	defer mq.wllock.Unlock()
+
+	return mq.bcstWants.pending.Len() != 0 || mq.peerWants.pending.Len() != 0 || mq.cancels.Len() != 0
+}
+
 // ResponseReceived is called when a message is received from the network.
 // ks is the set of blocks, HAVEs and DONT_HAVEs in the message
 // Note that this is just used to calculate latency.
@@ -478,7 +477,7 @@ func (mq *MessageQueue) runQueue() {
 	defer mq.onShutdown()
 
 	// Create a timer for debouncing scheduled work.
-	scheduleWork := mq.clock.Timer(0)
+	scheduleWork := time.NewTimer(0)
 	if !scheduleWork.Stop() {
 		// Need to drain the timer if Stop() returns false
 		// See: https://golang.org/pkg/time/#Timer.Stop
@@ -488,7 +487,7 @@ func (mq *MessageQueue) runQueue() {
 	perPeerDelay := mq.perPeerDelay
 	hasWorkChan := mq.outgoingWork
 
-	rebroadcastTimer := mq.clock.Timer(runRebroadcastsInterval)
+	rebroadcastTimer := time.NewTimer(runRebroadcastsInterval)
 	defer rebroadcastTimer.Stop()
 
 	for {
@@ -498,7 +497,7 @@ func (mq *MessageQueue) runQueue() {
 			rebroadcastTimer.Reset(runRebroadcastsInterval)
 
 		case <-mq.rebroadcastNow:
-			mq.rebroadcastWantlist(mq.clock.Now(), 0)
+			mq.rebroadcastWantlist(time.Now(), 0)
 
 		case <-hasWorkChan:
 			if mq.events != nil {
@@ -553,7 +552,7 @@ func (mq *MessageQueue) sendMessage() {
 		// If we fail to initialize the sender, the networking layer will
 		// emit a Disconnect event and the MessageQueue will get cleaned up
 		log.Infof("Could not open message sender to peer %s: %s", mq.p, err)
-		mq.Shutdown()
+		// do not shudown the queue here, wait for Disconnect to arrive.
 		return
 	}
 
@@ -584,7 +583,7 @@ func (mq *MessageQueue) sendMessage() {
 			// If the message couldn't be sent, the networking layer will
 			// emit a Disconnect event and the MessageQueue will get cleaned up
 			log.Infof("Could not send message to peer %s: %s", mq.p, err)
-			mq.Shutdown()
+			// do not shudown the queue here, wait for Disconnect to arrive.
 			return
 		}
 
@@ -642,7 +641,7 @@ func (mq *MessageQueue) simulateDontHaveWithTimeout(wantlist []bsmsg.Entry) {
 // handleResponse is called when a response is received from the peer,
 // with the CIDs of received blocks / HAVEs / DONT_HAVEs
 func (mq *MessageQueue) handleResponse(ks []cid.Cid) {
-	now := mq.clock.Now()
+	now := time.Now()
 	earliest := time.Time{}
 
 	mq.wllock.Lock()
@@ -689,7 +688,7 @@ func (mq *MessageQueue) handleResponse(ks []cid.Cid) {
 
 func (mq *MessageQueue) logOutgoingMessage(wantlist []bsmsg.Entry) {
 	// Save some CPU cycles and allocations if log level is higher than debug
-	if !log.Level().Enabled(zapcore.DebugLevel) {
+	if !log.LevelEnabled(logging.LevelDebug) {
 		return
 	}
 
@@ -849,7 +848,7 @@ FINISH:
 	// When the message has been sent, record the time at which each want was
 	// sent so we can calculate message latency
 	onSent := func() {
-		now := mq.clock.Now()
+		now := time.Now()
 
 		mq.wllock.Lock()
 
@@ -862,6 +861,9 @@ FINISH:
 		for _, e := range bcstEntries[:sentBcstEntries] {
 			if e.Cid.Defined() { // Check if want was canceled in the interim
 				mq.bcstWants.setSentAt(e.Cid, now)
+				if mq.BcastInc != nil {
+					mq.BcastInc()
+				}
 			}
 		}
 

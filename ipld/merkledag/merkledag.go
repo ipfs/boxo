@@ -8,15 +8,21 @@ import (
 
 	"github.com/gammazero/deque"
 	bserv "github.com/ipfs/boxo/blockservice"
+	"github.com/ipfs/boxo/provider"
 	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
 	format "github.com/ipfs/go-ipld-format"
 	legacy "github.com/ipfs/go-ipld-legacy"
 	dagpb "github.com/ipld/go-codec-dagpb"
-
-	// blank import is used to register the IPLD raw codec
-	_ "github.com/ipld/go-ipld-prime/codec/raw"
+	_ "github.com/ipld/go-ipld-prime/codec/raw" // register the IPLD raw codec
 	basicnode "github.com/ipld/go-ipld-prime/node/basic"
+)
+
+var (
+	_ format.LinkGetter = &dagService{}
+	_ format.NodeGetter = &dagService{}
+	_ format.NodeGetter = &sesGetter{}
+	_ format.DAGService = &dagService{}
 )
 
 var ipldLegacyDecoder *legacy.Decoder
@@ -46,9 +52,9 @@ func NewDAGService(bs bserv.BlockService) *dagService {
 // dagService is an IPFS Merkle DAG service.
 // - the root is virtual (like a forest)
 // - stores nodes' data in a BlockService
-// TODO: should cache Nodes that are in memory, and be
 //
-//	able to free some of them when vm pressure is high
+// TODO: should cache Nodes that are in memory, and be able to free some of
+// them when vm pressure is high
 type dagService struct {
 	Blocks  bserv.BlockService
 	decoder *legacy.Decoder
@@ -59,7 +65,6 @@ func (n *dagService) Add(ctx context.Context, nd format.Node) error {
 	if n == nil { // FIXME remove this assertion. protect with constructor invariant
 		return errors.New("dagService is nil")
 	}
-
 	return n.Blocks.AddBlock(ctx, nd)
 }
 
@@ -105,8 +110,8 @@ func (n *dagService) Remove(ctx context.Context, c cid.Cid) error {
 	return n.Blocks.DeleteBlock(ctx, c)
 }
 
-// RemoveMany removes multiple nodes from the DAG. It will likely be faster than
-// removing them individually.
+// RemoveMany removes multiple nodes from the DAG. It will likely be faster
+// than removing them individually.
 //
 // This operation is not atomic. If it returns an error, some nodes may or may
 // not have been removed.
@@ -120,15 +125,29 @@ func (n *dagService) RemoveMany(ctx context.Context, cids []cid.Cid) error {
 	return nil
 }
 
-// GetLinksDirect creates a function to get the links for a node, from
-// the node, bypassing the LinkService.  If the node does not exist
-// locally (and can not be retrieved) an error will be returned.
+// GetLinksDirect creates a function to get the links for a node, from the
+// node, bypassing the LinkService. If the node does not exist locally (and can
+// not be retrieved) an error will be returned.
 func GetLinksDirect(serv format.NodeGetter) GetLinks {
 	return func(ctx context.Context, c cid.Cid) ([]*format.Link, error) {
 		nd, err := serv.Get(ctx, c)
 		if err != nil {
 			return nil, err
 		}
+		return nd.Links(), nil
+	}
+}
+
+// GetLinksDirectWithProgressTracker creates a function as GetLinksDirect, but
+// updates the ProgressTracker with the raw block data size of the retrieved node.
+func GetLinksDirectWithProgressTracker(serv format.NodeGetter, tracker *ProgressTracker) GetLinks {
+	return func(ctx context.Context, c cid.Cid) ([]*format.Link, error) {
+		nd, err := serv.Get(ctx, c)
+		if err != nil {
+			return nil, err
+		}
+		// We don't use Size() as it returns cumulative size including linked nodes.
+		tracker.Update(uint64(len(nd.RawData())))
 		return nd.Links(), nil
 	}
 }
@@ -153,7 +172,8 @@ func (sg *sesGetter) GetMany(ctx context.Context, keys []cid.Cid) <-chan *format
 	return getNodesFromBG(ctx, sg.bs, keys, sg.decoder)
 }
 
-// WrapSession wraps a blockservice session to satisfy the format.NodeGetter interface
+// WrapSession wraps a blockservice session to satisfy the format.NodeGetter
+// interface.
 func WrapSession(s *bserv.Session) format.NodeGetter {
 	return &sesGetter{
 		bs:      s,
@@ -170,17 +190,17 @@ func (n *dagService) Session(ctx context.Context) format.NodeGetter {
 	}
 }
 
-// FetchGraph fetches all nodes that are children of the given node
-func FetchGraph(ctx context.Context, root cid.Cid, serv format.DAGService) error {
-	return FetchGraphWithDepthLimit(ctx, root, -1, serv)
+// FetchGraph fetches all nodes that are children of the given node.
+func FetchGraph(ctx context.Context, root cid.Cid, serv format.DAGService, opts ...WalkOption) error {
+	return FetchGraphWithDepthLimit(ctx, root, -1, serv, opts...)
 }
 
 // FetchGraphWithDepthLimit fetches all nodes that are children to the given
-// node down to the given depth. maxDepth=0 means "only fetch root",
-// maxDepth=1 means "fetch root and its direct children" and so on...
-// maxDepth=-1 means unlimited.
-func FetchGraphWithDepthLimit(ctx context.Context, root cid.Cid, depthLim int, serv format.DAGService) error {
-	var ng format.NodeGetter = NewSession(ctx, serv)
+// node down to the given depth. maxDepth=0 means "only fetch root", maxDepth=1
+// means "fetch root and its direct children" and so on... maxDepth=-1 means
+// unlimited.
+func FetchGraphWithDepthLimit(ctx context.Context, root cid.Cid, depthLim int, serv format.DAGService, opts ...WalkOption) error {
+	ng := NewSession(ctx, serv)
 
 	set := make(map[cid.Cid]int)
 
@@ -205,20 +225,16 @@ func FetchGraphWithDepthLimit(ctx context.Context, root cid.Cid, depthLim int, s
 		return false
 	}
 
-	// If we have a ProgressTracker, we wrap the visit function to handle it
+	// We default to Concurrent() walk.
+	opts = append([]WalkOption{Concurrent()}, opts...)
+
+	// If we have a ProgressTracker, we wrap the get links function to handle it.
 	v, _ := ctx.Value(progressContextKey).(*ProgressTracker)
 	if v == nil {
-		return WalkDepth(ctx, GetLinksDirect(ng), root, visit, Concurrent())
+		return WalkDepth(ctx, GetLinksDirect(ng), root, visit, opts...)
 	}
 
-	visitProgress := func(c cid.Cid, depth int) bool {
-		if visit(c, depth) {
-			v.Increment()
-			return true
-		}
-		return false
-	}
-	return WalkDepth(ctx, GetLinksDirect(ng), root, visitProgress, Concurrent())
+	return WalkDepth(ctx, GetLinksDirectWithProgressTracker(ng, v), root, visit, opts...)
 }
 
 // GetMany gets many nodes from the DAG at once.
@@ -283,9 +299,9 @@ func getNodesFromBG(ctx context.Context, bs bserv.BlockGetter, keys []cid.Cid, d
 type GetLinks func(context.Context, cid.Cid) ([]*format.Link, error)
 
 // GetLinksWithDAG returns a GetLinks function that tries to use the given
-// NodeGetter as a LinkGetter to get the children of a given IPLD node. This may
-// allow us to traverse the DAG without actually loading and parsing the node in
-// question (if we already have the links cached).
+// NodeGetter as a LinkGetter to get the children of a given IPLD node. This
+// may allow us to traverse the DAG without actually loading and parsing the
+// node in question (if we already have the links cached).
 func GetLinksWithDAG(ng format.NodeGetter) GetLinks {
 	return func(ctx context.Context, c cid.Cid) ([]*format.Link, error) {
 		return format.GetLinks(ctx, ng, c)
@@ -293,7 +309,7 @@ func GetLinksWithDAG(ng format.NodeGetter) GetLinks {
 }
 
 // defaultConcurrentFetch is the default maximum number of concurrent fetches
-// that 'fetchNodes' will start at a time
+// that 'fetchNodes' will start at a time.
 const defaultConcurrentFetch = 32
 
 // walkOptions represent the parameters of a graph walking algorithm
@@ -301,6 +317,7 @@ type walkOptions struct {
 	SkipRoot     bool
 	Concurrency  int
 	ErrorHandler func(c cid.Cid, err error) error
+	Provider     provider.MultihashProvider
 }
 
 // WalkOption is a setter for walkOptions
@@ -324,8 +341,9 @@ func SkipRoot() WalkOption {
 }
 
 // Concurrent is a WalkOption indicating that node fetching should be done in
-// parallel, with the default concurrency factor.
-// NOTE: When using that option, the walk order is *not* guarantee.
+// parallel, with the default concurrency factor. When using this option, the
+// walk order is not guaranteed.
+//
 // NOTE: It *does not* make multiple concurrent calls to the passed `visit` function.
 func Concurrent() WalkOption {
 	return func(walkOptions *walkOptions) {
@@ -334,8 +352,9 @@ func Concurrent() WalkOption {
 }
 
 // Concurrency is a WalkOption indicating that node fetching should be done in
-// parallel, with a specific concurrency factor.
-// NOTE: When using that option, the walk order is *not* guarantee.
+// parallel, with a specific concurrency factor. When using that option, the
+// walk order is not guaranteed.
+//
 // NOTE: It *does not* make multiple concurrent calls to the passed `visit` function.
 func Concurrency(worker int) WalkOption {
 	return func(walkOptions *walkOptions) {
@@ -366,8 +385,8 @@ func IgnoreMissing() WalkOption {
 	}
 }
 
-// OnMissing is a WalkOption adding a callback that will be triggered on a missing
-// node.
+// OnMissing is a WalkOption adding a callback that will be triggered on a
+// missing node.
 func OnMissing(callback func(c cid.Cid)) WalkOption {
 	return func(walkOptions *walkOptions) {
 		walkOptions.addHandler(func(c cid.Cid, err error) error {
@@ -379,20 +398,27 @@ func OnMissing(callback func(c cid.Cid)) WalkOption {
 	}
 }
 
-// OnError is a WalkOption adding a custom error handler.
-// If this handler return a nil error, the walk will continue.
+// OnError is a WalkOption that adds a custom error handler. The walk is
+// stopped if this handler returns a non-nil error.
 func OnError(handler func(c cid.Cid, err error) error) WalkOption {
 	return func(walkOptions *walkOptions) {
 		walkOptions.addHandler(handler)
 	}
 }
 
-// WalkGraph will walk the dag in order (depth first) starting at the given root.
+// WithProvider calls StartProviding() on every fetched node while traversing a DAG.
+func WithProvider(p provider.MultihashProvider) WalkOption {
+	log.Debug("merkledag provider configured")
+	return func(walkOptions *walkOptions) {
+		walkOptions.Provider = p
+	}
+}
+
+// WalkGraph walks the dag in depth-first order starting at the given root.
 func Walk(ctx context.Context, getLinks GetLinks, c cid.Cid, visit func(cid.Cid) bool, options ...WalkOption) error {
 	visitDepth := func(c cid.Cid, depth int) bool {
 		return visit(c)
 	}
-
 	return WalkDepth(ctx, getLinks, c, visitDepth, options...)
 }
 
@@ -407,13 +433,12 @@ func WalkDepth(ctx context.Context, getLinks GetLinks, c cid.Cid, visit func(cid
 
 	if opts.Concurrency > 1 {
 		return parallelWalkDepth(ctx, getLinks, c, visit, opts)
-	} else {
-		return sequentialWalkDepth(ctx, getLinks, c, 0, visit, opts)
 	}
+	return sequentialWalkDepth(ctx, getLinks, c, 0, visit, opts)
 }
 
 func sequentialWalkDepth(ctx context.Context, getLinks GetLinks, root cid.Cid, depth int, visit func(cid.Cid, int) bool, options *walkOptions) error {
-	if !(options.SkipRoot && depth == 0) {
+	if !options.SkipRoot || depth != 0 {
 		if !visit(root, depth) {
 			return nil
 		}
@@ -427,38 +452,62 @@ func sequentialWalkDepth(ctx context.Context, getLinks GetLinks, root cid.Cid, d
 		return err
 	}
 
+	// Successfully fetched "root". Provide it when needed.
+	if prov := options.Provider; prov != nil {
+		log.Debugf("merkledag: provide %s", root)
+		if err = prov.StartProviding(false, root.Hash()); err != nil {
+			log.Warnf("merkledag: error while providing %s: %s", root, err)
+		}
+	}
+
 	for _, lnk := range links {
-		if err := sequentialWalkDepth(ctx, getLinks, lnk.Cid, depth+1, visit, options); err != nil {
+		if err = sequentialWalkDepth(ctx, getLinks, lnk.Cid, depth+1, visit, options); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-// ProgressTracker is used to show progress when fetching nodes.
-type ProgressTracker struct {
-	Total int
-	lk    sync.Mutex
+// ProgressStat represents the progress of a fetch operation.
+type ProgressStat struct {
+	// Nodes is the total number of nodes fetched.
+	Nodes int
+	// Bytes is the total bytes of raw block data.
+	Bytes uint64
 }
 
-// DeriveContext returns a new context with value "progress" derived from
-// the given one.
+// ProgressTracker is used to show progress when fetching nodes.
+type ProgressTracker struct {
+	stat ProgressStat
+	lk   sync.Mutex
+}
+
+// DeriveContext returns a new context with value "progress" derived from the
+// given one.
 func (p *ProgressTracker) DeriveContext(ctx context.Context) context.Context {
 	return context.WithValue(ctx, progressContextKey, p)
 }
 
-// Increment adds one to the total progress.
-func (p *ProgressTracker) Increment() {
+// Update adds one to the total nodes and updates the total bytes.
+func (p *ProgressTracker) Update(bytes uint64) {
 	p.lk.Lock()
 	defer p.lk.Unlock()
-	p.Total++
+	p.stat.Nodes++
+	p.stat.Bytes += bytes
 }
 
 // Value returns the current progress.
 func (p *ProgressTracker) Value() int {
 	p.lk.Lock()
 	defer p.lk.Unlock()
-	return p.Total
+	return p.stat.Nodes
+}
+
+// ProgressStat returns the current progress stat.
+func (p *ProgressTracker) ProgressStat() ProgressStat {
+	p.lk.Lock()
+	defer p.lk.Unlock()
+	return p.stat
 }
 
 func parallelWalkDepth(ctx context.Context, getLinks GetLinks, root cid.Cid, visit func(cid.Cid, int) bool, options *walkOptions) error {
@@ -483,10 +532,8 @@ func parallelWalkDepth(ctx context.Context, getLinks GetLinks, root cid.Cid, vis
 	fetchersCtx, cancel := context.WithCancel(ctx)
 	defer wg.Wait()
 	defer cancel()
-	for i := 0; i < options.Concurrency; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	for range options.Concurrency {
+		wg.Go(func() {
 			for cdepth := range feed {
 				ci := cdepth.cid
 				depth := cdepth.depth
@@ -494,12 +541,12 @@ func parallelWalkDepth(ctx context.Context, getLinks GetLinks, root cid.Cid, vis
 				var shouldVisit bool
 
 				// bypass the root if needed
-				if !(options.SkipRoot && depth == 0) {
+				if options.SkipRoot && depth == 0 {
+					shouldVisit = true
+				} else {
 					visitlk.Lock()
 					shouldVisit = visit(ci, depth)
 					visitlk.Unlock()
-				} else {
-					shouldVisit = true
 				}
 
 				if shouldVisit {
@@ -515,6 +562,13 @@ func parallelWalkDepth(ctx context.Context, getLinks GetLinks, root cid.Cid, vis
 						return
 					}
 
+					// Successfully fetched "ci". Provide it when needed,
+					if prov := options.Provider; prov != nil {
+						log.Debugf("merkledag: provide %s", root)
+						if err := prov.StartProviding(false, root.Hash()); err != nil {
+							log.Warnf("merkledag: error while providing %s: %s", root, err)
+						}
+					}
 					outLinks := linksDepth{
 						links: links,
 						depth: depth + 1,
@@ -531,7 +585,7 @@ func parallelWalkDepth(ctx context.Context, getLinks GetLinks, root cid.Cid, vis
 				case <-fetchersCtx.Done():
 				}
 			}
-		}()
+		})
 	}
 	defer close(feed)
 
@@ -581,10 +635,3 @@ func parallelWalkDepth(ctx context.Context, getLinks GetLinks, root cid.Cid, vis
 		}
 	}
 }
-
-var (
-	_ format.LinkGetter = &dagService{}
-	_ format.NodeGetter = &dagService{}
-	_ format.NodeGetter = &sesGetter{}
-	_ format.DAGService = &dagService{}
-)

@@ -1,3 +1,5 @@
+//go:build go1.25
+
 package client
 
 import (
@@ -9,9 +11,9 @@ import (
 	"net/http/httptest"
 	"runtime"
 	"testing"
+	"testing/synctest"
 	"time"
 
-	"github.com/filecoin-project/go-clock"
 	ipns "github.com/ipfs/boxo/ipns"
 	"github.com/ipfs/boxo/path"
 	"github.com/ipfs/boxo/routing/http/server"
@@ -20,6 +22,7 @@ import (
 	"github.com/ipfs/go-cid"
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/libp2p/go-libp2p/core/routing"
 	"github.com/multiformats/go-multiaddr"
 	"github.com/multiformats/go-multibase"
 	"github.com/multiformats/go-multihash"
@@ -44,6 +47,11 @@ func (m *mockContentRouter) ProvideBitswap(ctx context.Context, req *server.Bits
 
 func (m *mockContentRouter) FindPeers(ctx context.Context, pid peer.ID, limit int) (iter.ResultIter[*types.PeerRecord], error) {
 	args := m.Called(ctx, pid, limit)
+	return args.Get(0).(iter.ResultIter[*types.PeerRecord]), args.Error(1)
+}
+
+func (m *mockContentRouter) GetClosestPeers(ctx context.Context, key cid.Cid) (iter.ResultIter[*types.PeerRecord], error) {
+	args := m.Called(ctx, key)
 	return args.Get(0).(iter.ResultIter[*types.PeerRecord]), args.Error(1)
 }
 
@@ -95,7 +103,7 @@ func (c *recordingHTTPClient) Do(req *http.Request) (*http.Response, error) {
 	return resp, err
 }
 
-func makeTestDeps(t *testing.T, clientsOpts []Option, serverOpts []server.Option) testDeps {
+func makeTestDeps(t *testing.T, clientsOpts []Option, serverOpts []server.Option, resolver func() []multiaddr.Multiaddr) testDeps {
 	const testUserAgent = "testUserAgent"
 	peerID, addrs, identity := makeProviderAndIdentity()
 	router := &mockContentRouter{}
@@ -111,8 +119,16 @@ func makeTestDeps(t *testing.T, clientsOpts []Option, serverOpts []server.Option
 	t.Cleanup(server.Close)
 	serverAddr := "http://" + server.Listener.Addr().String()
 	recordingHTTPClient := &recordingHTTPClient{httpClient: newDefaultHTTPClient(testUserAgent)}
+
+	var providerOpt Option
+	if resolver == nil {
+		providerOpt = WithProviderInfo(peerID, addrs)
+	} else {
+		providerOpt = WithProviderInfoFunc(peerID, resolver)
+	}
+
 	defaultClientOpts := []Option{
-		WithProviderInfo(peerID, addrs),
+		providerOpt,
 		WithIdentity(identity),
 		WithHTTPClient(recordingHTTPClient),
 	}
@@ -317,6 +333,19 @@ func TestClient_FindProviders(t *testing.T) {
 			httpStatusCode: 404,
 			expResult:      nil,
 		},
+		{
+			name:                    "returns no providers if the HTTP server returns 200 with empty JSON array",
+			routerResult:            []iter.Result[types.Record]{},
+			expResult:               nil,
+			serverStreamingDisabled: true,
+			expJSONResponse:         true,
+		},
+		{
+			name:                 "returns no providers if the HTTP server returns 200 with empty NDJSON",
+			routerResult:         []iter.Result[types.Record]{},
+			expResult:            nil,
+			expStreamingResponse: true,
+		},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -351,7 +380,7 @@ func TestClient_FindProviders(t *testing.T) {
 				})
 			}
 
-			deps := makeTestDeps(t, clientOpts, serverOpts)
+			deps := makeTestDeps(t, clientOpts, serverOpts, nil)
 
 			deps.recordingHTTPClient.f = append(deps.recordingHTTPClient.f, onRespReceived...)
 			deps.recordingHandler.f = append(deps.recordingHandler.f, onReqReceived...)
@@ -447,72 +476,70 @@ func TestClient_Provide(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			deps := makeTestDeps(t, nil, nil)
-			client := deps.client
-			router := deps.router
+			synctest.Test(t, func(t *testing.T) {
+				deps := makeTestDeps(t, nil, nil, nil)
+				client := deps.client
+				router := deps.router
 
-			if c.noIdentity {
-				client.identity = nil
-			}
-			if c.noProviderInfo {
-				client.peerID = ""
-				client.addrs = nil
-			}
+				if c.noIdentity {
+					client.identity = nil
+				}
+				if c.noProviderInfo {
+					client.peerID = ""
+					client.addrs = nil
+				}
 
-			clock := clock.NewMock()
-			clock.Set(time.Now())
-			client.clock = clock
+				ctx := context.Background()
 
-			ctx := context.Background()
+				if c.manglePath {
+					client.baseURL += "/foo"
+				}
+				if c.stopServer {
+					deps.server.Close()
+				}
+				if c.mangleSignature {
+					//nolint:staticcheck
+					//lint:ignore SA1019 // ignore staticcheck
+					client.afterSignCallback = func(req *types.WriteBitswapRecord) {
+						mh, err := multihash.Encode([]byte("boom"), multihash.SHA2_256)
+						require.NoError(t, err)
+						mb, err := multibase.Encode(multibase.Base64, mh)
+						require.NoError(t, err)
 
-			if c.manglePath {
-				client.baseURL += "/foo"
-			}
-			if c.stopServer {
-				deps.server.Close()
-			}
-			if c.mangleSignature {
+						req.Signature = mb
+					}
+				}
+
 				//nolint:staticcheck
 				//lint:ignore SA1019 // ignore staticcheck
-				client.afterSignCallback = func(req *types.WriteBitswapRecord) {
-					mh, err := multihash.Encode([]byte("boom"), multihash.SHA2_256)
-					require.NoError(t, err)
-					mb, err := multibase.Encode(multibase.Base64, mh)
-					require.NoError(t, err)
-
-					req.Signature = mb
+				expectedProvReq := &server.BitswapWriteProvideRequest{
+					Keys:        c.cids,
+					Timestamp:   time.Now().Truncate(time.Millisecond),
+					AdvisoryTTL: c.ttl,
+					Addrs:       drAddrsToAddrs(client.addrs),
+					ID:          client.peerID,
 				}
-			}
 
-			//nolint:staticcheck
-			//lint:ignore SA1019 // ignore staticcheck
-			expectedProvReq := &server.BitswapWriteProvideRequest{
-				Keys:        c.cids,
-				Timestamp:   clock.Now().Truncate(time.Millisecond),
-				AdvisoryTTL: c.ttl,
-				Addrs:       drAddrsToAddrs(client.addrs),
-				ID:          client.peerID,
-			}
+				router.On("ProvideBitswap", mock.Anything, expectedProvReq).
+					Return(c.routerAdvisoryTTL, c.routerErr)
 
-			router.On("ProvideBitswap", mock.Anything, expectedProvReq).
-				Return(c.routerAdvisoryTTL, c.routerErr)
+				advisoryTTL, err := client.ProvideBitswap(ctx, c.cids, c.ttl)
 
-			advisoryTTL, err := client.ProvideBitswap(ctx, c.cids, c.ttl)
+				var errorString string
+				if runtime.GOOS == "windows" && c.expWinErrContains != "" {
+					errorString = c.expWinErrContains
+				} else {
+					errorString = c.expErrContains
+				}
 
-			var errorString string
-			if runtime.GOOS == "windows" && c.expWinErrContains != "" {
-				errorString = c.expWinErrContains
-			} else {
-				errorString = c.expErrContains
-			}
+				if errorString != "" {
+					require.ErrorContains(t, err, errorString)
+				} else {
+					require.NoError(t, err)
+				}
 
-			if errorString != "" {
-				require.ErrorContains(t, err, errorString)
-			} else {
-				require.NoError(t, err)
-			}
-
-			assert.Equal(t, c.expAdvisoryTTL, advisoryTTL)
+				assert.Equal(t, c.expAdvisoryTTL, advisoryTTL)
+			})
 		})
 	}
 }
@@ -604,6 +631,19 @@ func TestClient_FindPeers(t *testing.T) {
 			httpStatusCode: 404,
 			expResult:      nil,
 		},
+		{
+			name:                    "returns no providers if the HTTP server returns 200 with empty JSON array",
+			routerResult:            []iter.Result[*types.PeerRecord]{},
+			expResult:               nil,
+			serverStreamingDisabled: true,
+			expJSONResponse:         true,
+		},
+		{
+			name:                 "returns no providers if the HTTP server returns 200 with empty NDJSON",
+			routerResult:         []iter.Result[*types.PeerRecord]{},
+			expResult:            nil,
+			expStreamingResponse: true,
+		},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -639,7 +679,7 @@ func TestClient_FindPeers(t *testing.T) {
 				})
 			}
 
-			deps := makeTestDeps(t, clientOpts, serverOpts)
+			deps := makeTestDeps(t, clientOpts, serverOpts, nil)
 
 			deps.recordingHTTPClient.f = append(deps.recordingHTTPClient.f, onRespReceived...)
 			deps.recordingHandler.f = append(deps.recordingHandler.f, onReqReceived...)
@@ -676,6 +716,342 @@ func TestClient_FindPeers(t *testing.T) {
 	}
 }
 
+func TestClient_EmptyResponses(t *testing.T) {
+	// Test that client handles various empty response formats correctly
+	cid := makeCID()
+	pid := peer.ID("12D3KooWD3eckifWpRn9wQpMG9R9hX3sD158z7EqHWmweQAJU5SA")
+	_, name := makeName(t)
+
+	// Helper to create test server with given response
+	makeTestServer := func(handler http.HandlerFunc) *httptest.Server {
+		return httptest.NewServer(handler)
+	}
+
+	// Helper to verify empty results for providers
+	verifyEmptyProviders := func(t *testing.T, serverURL string) {
+		client, err := New(serverURL, WithHTTPClient((&http.Client{})))
+		require.NoError(t, err)
+
+		resultsIter, err := client.FindProviders(context.Background(), cid)
+		require.NoError(t, err)
+
+		results, err := iter.ReadAllResults(resultsIter)
+		require.NoError(t, err)
+		require.Empty(t, results)
+	}
+
+	// Helper to verify empty results for peers
+	verifyEmptyPeers := func(t *testing.T, serverURL string) {
+		client, err := New(serverURL, WithHTTPClient((&http.Client{})))
+		require.NoError(t, err)
+
+		resultsIter, err := client.FindPeers(context.Background(), pid)
+		require.NoError(t, err)
+
+		results, err := iter.ReadAllResults(resultsIter)
+		require.NoError(t, err)
+		require.Empty(t, results)
+	}
+
+	// Helper to verify IPNS not found
+	verifyIPNSNotFound := func(t *testing.T, serverURL string) {
+		client, err := New(serverURL, WithHTTPClient((&http.Client{})))
+		require.NoError(t, err)
+
+		record, err := client.GetIPNS(context.Background(), name)
+		require.ErrorIs(t, err, routing.ErrNotFound)
+		require.Nil(t, record)
+	}
+
+	testCases := []struct {
+		name     string
+		handler  http.HandlerFunc
+		testFunc func(*testing.T, string)
+	}{
+		// FindProviders tests
+		{
+			name: "404 Not Found (legacy server)",
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusNotFound)
+				w.Write([]byte("404 page not found"))
+			},
+			testFunc: verifyEmptyProviders,
+		},
+		{
+			name: "200 with null providers in JSON",
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				// Old server behavior - returns null instead of empty array
+				w.Write([]byte(`{"Providers":null}`))
+			},
+			testFunc: verifyEmptyProviders,
+		},
+		{
+			name: "200 with empty array in JSON",
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				// New server behavior - returns empty array
+				w.Write([]byte(`{"Providers":[]}`))
+			},
+			testFunc: verifyEmptyProviders,
+		},
+		{
+			name: "200 with empty NDJSON stream",
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/x-ndjson")
+				// Empty body - no NDJSON lines
+			},
+			testFunc: verifyEmptyProviders,
+		},
+		// FindPeers tests
+		{
+			name: "FindPeers: 404 Not Found (legacy server)",
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusNotFound)
+				w.Write([]byte("404 page not found"))
+			},
+			testFunc: verifyEmptyPeers,
+		},
+		{
+			name: "FindPeers: 200 with null peers in JSON",
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				// Old server behavior - returns null instead of empty array
+				w.Write([]byte(`{"Peers":null}`))
+			},
+			testFunc: verifyEmptyPeers,
+		},
+		// IPNS tests
+		{
+			name: "IPNS: 404 Not Found (legacy server)",
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusNotFound)
+				w.Write([]byte("404 page not found"))
+			},
+			testFunc: verifyIPNSNotFound,
+		},
+		{
+			name: "IPNS: 200 with text/plain (no record found)",
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+				w.Write([]byte("delegate error: routing: not found"))
+			},
+			testFunc: verifyIPNSNotFound,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			server := makeTestServer(tc.handler)
+			defer server.Close()
+			tc.testFunc(t, server.URL)
+		})
+	}
+}
+
+func TestClient_GetClosestPeers(t *testing.T) {
+	bitswapPeerRecord := makePeerRecord([]string{"transport-bitswap"})
+	httpPeerRecord := makePeerRecord([]string{"transport-ipfs-gateway-http"})
+
+	peerRecords := []iter.Result[*types.PeerRecord]{
+		{Val: &bitswapPeerRecord},
+		{Val: &httpPeerRecord},
+	}
+
+	key := peer.ToCid(*bitswapPeerRecord.ID)
+
+	cases := []struct {
+		name                    string
+		httpStatusCode          int
+		stopServer              bool
+		routerResult            []iter.Result[*types.PeerRecord]
+		routerErr               error
+		clientRequiresStreaming bool
+		serverStreamingDisabled bool
+
+		expErrContains       osErrContains
+		expResult            []iter.Result[*types.PeerRecord]
+		expStreamingResponse bool
+		expJSONResponse      bool
+	}{
+		{
+			name:                 "happy case",
+			routerResult:         peerRecords,
+			expResult:            peerRecords,
+			expStreamingResponse: true,
+		},
+		{
+			name:                    "server doesn't support streaming",
+			routerResult:            peerRecords,
+			expResult:               peerRecords,
+			serverStreamingDisabled: true,
+			expJSONResponse:         true,
+		},
+		{
+			name:                    "client requires streaming but server doesn't support it",
+			serverStreamingDisabled: true,
+			clientRequiresStreaming: true,
+			expErrContains:          osErrContains{expContains: "HTTP error with StatusCode=400: no supported content types"},
+		},
+		{
+			name:           "returns an error if there's a non-200 response",
+			httpStatusCode: 500,
+			expErrContains: osErrContains{expContains: "HTTP error with StatusCode=500"},
+		},
+		{
+			name:       "returns an error if the HTTP client returns a non-HTTP error",
+			stopServer: true,
+			expErrContains: osErrContains{
+				expContains:    "connect: connection refused",
+				expContainsWin: "connectex: No connection could be made because the target machine actively refused it.",
+			},
+		},
+		{
+			name:           "returns no providers if the HTTP server returns a 404 response",
+			httpStatusCode: 404,
+			expResult:      nil,
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			var clientOpts []Option
+			var serverOpts []server.Option
+			var onRespReceived []func(*http.Response)
+			var onReqReceived []func(*http.Request)
+
+			if c.serverStreamingDisabled {
+				serverOpts = append(serverOpts, server.WithStreamingResultsDisabled())
+			}
+
+			if c.clientRequiresStreaming {
+				clientOpts = append(clientOpts, WithStreamResultsRequired())
+				onReqReceived = append(onReqReceived, func(r *http.Request) {
+					assert.Equal(t, mediaTypeNDJSON, r.Header.Get("Accept"))
+				})
+			}
+
+			if c.expStreamingResponse {
+				onRespReceived = append(onRespReceived, func(r *http.Response) {
+					assert.Equal(t, mediaTypeNDJSON, r.Header.Get("Content-Type"))
+				})
+			}
+
+			if c.expJSONResponse {
+				onRespReceived = append(onRespReceived, func(r *http.Response) {
+					assert.Equal(t, mediaTypeJSON, r.Header.Get("Content-Type"))
+				})
+			}
+
+			deps := makeTestDeps(t, clientOpts, serverOpts, nil)
+
+			deps.recordingHTTPClient.f = append(deps.recordingHTTPClient.f, onRespReceived...)
+			deps.recordingHandler.f = append(deps.recordingHandler.f, onReqReceived...)
+
+			client := deps.client
+			router := deps.router
+
+			ctx, cancel := context.WithCancel(context.Background())
+			t.Cleanup(cancel)
+
+			if c.httpStatusCode != 0 {
+				deps.server.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					w.WriteHeader(c.httpStatusCode)
+				})
+			}
+
+			if c.stopServer {
+				deps.server.Close()
+			}
+
+			routerResultIter := iter.FromSlice(c.routerResult)
+			router.On("GetClosestPeers", mock.Anything, key).Return(routerResultIter, c.routerErr)
+
+			resultIter, err := client.GetClosestPeers(ctx, key)
+			c.expErrContains.errContains(t, err)
+
+			results := iter.ReadAll(resultIter)
+			assert.Equal(t, c.expResult, results)
+		})
+	}
+}
+
+func TestNormalizeBaseURL(t *testing.T) {
+	cases := []struct {
+		name        string
+		input       string
+		expected    string
+		expectError bool
+	}{
+		{
+			name:     "URL with trailing /routing/v1",
+			input:    "https://delegated-routing.example.net/routing/v1",
+			expected: "https://delegated-routing.example.net",
+		},
+		{
+			name:     "URL with trailing /routing/v1/",
+			input:    "https://delegated-routing.example.net/routing/v1/",
+			expected: "https://delegated-routing.example.net",
+		},
+		{
+			name:     "URL without /routing/v1",
+			input:    "https://delegated-routing.example.net",
+			expected: "https://delegated-routing.example.net",
+		},
+		{
+			name:     "URL with trailing slash but no /routing/v1",
+			input:    "https://delegated-routing.example.net/",
+			expected: "https://delegated-routing.example.net",
+		},
+		{
+			name:        "URL with /routing/v1 in the middle should error",
+			input:       "https://delegated-routing.example.net/routing/v1/something",
+			expectError: true,
+		},
+		{
+			name:     "URL with multiple trailing slashes",
+			input:    "https://delegated-routing.example.net/routing/v1///",
+			expected: "https://delegated-routing.example.net",
+		},
+		{
+			name:     "localhost URL with /routing/v1",
+			input:    "http://localhost:8080/routing/v1",
+			expected: "http://localhost:8080",
+		},
+		{
+			name:        "third-party routing API with /foobar/ path should error",
+			input:       "https://api.example.com/foobar/routing/v1",
+			expectError: true,
+		},
+		{
+			name:        "third-party routing API with /foobar/ path and trailing slash should error",
+			input:       "https://api.example.com/foobar/routing/v1/",
+			expectError: true,
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			result, err := normalizeBaseURL(c.input)
+			if c.expectError {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), "only /routing/v1 URLs are supported")
+			} else {
+				require.NoError(t, err)
+				assert.Equal(t, c.expected, result)
+			}
+
+			client, err := New(c.input)
+			if c.expectError {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), "only /routing/v1 URLs are supported")
+			} else {
+				require.NoError(t, err)
+				assert.Equal(t, c.expected, client.baseURL)
+			}
+		})
+	}
+}
+
 func makeName(t *testing.T) (crypto.PrivKey, ipns.Name) {
 	sk, _, err := crypto.GenerateEd25519Key(rand.Reader)
 	require.NoError(t, err)
@@ -707,7 +1083,7 @@ func TestClient_IPNS(t *testing.T) {
 	t.Run("Find IPNS Record returns error if server errors", func(t *testing.T) {
 		_, name := makeName(t)
 
-		deps := makeTestDeps(t, nil, nil)
+		deps := makeTestDeps(t, nil, nil, nil)
 		client := deps.client
 		router := deps.router
 
@@ -723,7 +1099,7 @@ func TestClient_IPNS(t *testing.T) {
 			sk, name := makeName(t)
 			record, _ := makeIPNSRecord(t, sk, opts...)
 
-			deps := makeTestDeps(t, nil, nil)
+			deps := makeTestDeps(t, nil, nil, nil)
 			client := deps.client
 			router := deps.router
 
@@ -739,7 +1115,7 @@ func TestClient_IPNS(t *testing.T) {
 			record, _ := makeIPNSRecord(t, sk, opts...)
 			_, name2 := makeName(t)
 
-			deps := makeTestDeps(t, nil, nil)
+			deps := makeTestDeps(t, nil, nil, nil)
 			client := deps.client
 			router := deps.router
 
@@ -754,7 +1130,7 @@ func TestClient_IPNS(t *testing.T) {
 			sk, name := makeName(t)
 			record, _ := makeIPNSRecord(t, sk, opts...)
 
-			deps := makeTestDeps(t, nil, nil)
+			deps := makeTestDeps(t, nil, nil, nil)
 			client := deps.client
 			router := deps.router
 
@@ -771,5 +1147,68 @@ func TestClient_IPNS(t *testing.T) {
 
 	t.Run("V2 IPNS Records", func(t *testing.T) {
 		runWithRecordOptions(t, ipns.WithV1Compatibility(false))
+	})
+}
+
+func TestProviderAddrs(t *testing.T) {
+	t.Run("returns static addresses from WithProviderInfo", func(t *testing.T) {
+		// When constructed with WithProviderInfo, providerAddrs must return
+		// the same addresses the client was initialized with.
+		deps := makeTestDeps(t, nil, nil, nil)
+		got := deps.client.providerAddrs()
+
+		require.Len(t, got, len(deps.addrs))
+		for i, addr := range deps.addrs {
+			require.Equal(t, addr, got[i].Multiaddr)
+		}
+	})
+
+	t.Run("returns dynamic addresses from WithProviderInfoFunc", func(t *testing.T) {
+		// When constructed with WithProviderInfoFunc, providerAddrs must call
+		// the callback and return its result instead of static addresses.
+		resolved, err := multiaddr.NewMultiaddr("/ip4/203.0.113.1/tcp/4001")
+		require.NoError(t, err)
+
+		deps := makeTestDeps(t, nil, nil, func() []multiaddr.Multiaddr {
+			return []multiaddr.Multiaddr{resolved}
+		})
+		got := deps.client.providerAddrs()
+
+		require.Len(t, got, 1)
+		require.Equal(t, resolved, got[0].Multiaddr)
+	})
+
+	t.Run("ProvideBitswap sends dynamic addresses from WithProviderInfoFunc", func(t *testing.T) {
+		// Verify that addresses from WithProviderInfoFunc propagate all the
+		// way through to the HTTP request body, not just providerAddrs().
+		synctest.Test(t, func(t *testing.T) {
+			resolved, err := multiaddr.NewMultiaddr("/ip4/203.0.113.1/tcp/4001")
+			require.NoError(t, err)
+
+			deps := makeTestDeps(t, nil, nil, func() []multiaddr.Multiaddr {
+				return []multiaddr.Multiaddr{resolved}
+			})
+
+			cids := []cid.Cid{makeCID()}
+			ttl := 5 * time.Minute
+
+			//nolint:staticcheck
+			//lint:ignore SA1019 // ignore staticcheck
+			expectedReq := &server.BitswapWriteProvideRequest{
+				Keys:        cids,
+				Timestamp:   time.Now().Truncate(time.Millisecond),
+				AdvisoryTTL: ttl,
+				ID:          deps.peerID,
+				Addrs:       []multiaddr.Multiaddr{resolved},
+			}
+
+			expectedTTL := 10 * time.Minute
+			deps.router.On("ProvideBitswap", mock.Anything, expectedReq).
+				Return(expectedTTL, nil)
+
+			advisoryTTL, err := deps.client.ProvideBitswap(context.Background(), cids, ttl)
+			require.NoError(t, err)
+			require.Equal(t, expectedTTL, advisoryTTL)
+		})
 	})
 }

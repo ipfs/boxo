@@ -7,6 +7,7 @@ import (
 
 	"github.com/gammazero/chanqueue"
 	"github.com/gammazero/deque"
+	"github.com/ipfs/boxo/retrieval"
 	"github.com/ipfs/go-cid"
 	logging "github.com/ipfs/go-log/v2"
 	peer "github.com/libp2p/go-libp2p/core/peer"
@@ -15,7 +16,6 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
-	"go.uber.org/zap/zapcore"
 )
 
 var log = logging.Logger("routing/provqrymgr")
@@ -192,7 +192,9 @@ func (pqm *ProviderQueryManager) FindProvidersAsync(sessionCtx context.Context, 
 	inProgressRequestChan := make(chan inProgressRequest)
 
 	var span trace.Span
-	sessionCtx, span = otel.Tracer("routing").Start(sessionCtx, "ProviderQueryManager.FindProvidersAsync", trace.WithAttributes(attribute.Stringer("cid", k)))
+	sessionCtx, span = otel.Tracer("routing").Start(sessionCtx, "ProviderQueryManager.FindProvidersAsync", // ProbeLab: don't delete/change name without notice
+		trace.WithAttributes(attribute.Stringer("cid", k)), // ProbeLab: don't delete/change key/value without notice
+	)
 
 	select {
 	case pqm.providerQueryMessages <- &newProvideQueryMessage{
@@ -358,6 +360,13 @@ func (pqm *ProviderQueryManager) findProviderWorker() {
 			findProviderCtx, cancel := context.WithTimeout(ctx, pqm.findProviderTimeout)
 			span := trace.SpanFromContext(findProviderCtx)
 			span.AddEvent("StartFindProvidersAsync")
+
+			// Update retrieval progress, if tracked in the existing context
+			retrievalState := retrieval.StateFromContext(ctx)
+			if retrievalState != nil {
+				retrievalState.SetPhase(retrieval.PhaseProviderDiscovery)
+			}
+
 			// We set count == 0. We will cancel the query manually once we
 			// have enough. This assumes the ContentDiscovery
 			// implementation does that, which a requirement per the
@@ -374,14 +383,27 @@ func (pqm *ProviderQueryManager) findProviderWorker() {
 						return
 					}
 
-					span.AddEvent("FoundProvider", trace.WithAttributes(attribute.Stringer("peer", p.ID)))
+					span.AddEvent("FoundProvider", trace.WithAttributes(attribute.Stringer("peer", p.ID))) // ProbeLab: don't delete/change name without notice
+					if retrievalState != nil {
+						retrievalState.ProvidersFound.Add(1)
+						retrievalState.AddFoundProvider(p.ID)
+						retrievalState.SetPhase(retrieval.PhaseConnecting)
+						retrievalState.ProvidersAttempted.Add(1)
+					}
+
 					err := pqm.dialer.Connect(findProviderCtx, p)
 					if err != nil && err != swarm.ErrDialToSelf {
 						span.RecordError(err, trace.WithAttributes(attribute.Stringer("peer", p.ID)))
 						log.Debugf("failed to connect to provider %s: %s", p.ID, err)
+						if retrievalState != nil {
+							retrievalState.AddFailedProvider(p.ID)
+						}
 						return
 					}
-					span.AddEvent("ConnectedToProvider", trace.WithAttributes(attribute.Stringer("peer", p.ID)))
+					span.AddEvent("ConnectedToProvider", trace.WithAttributes(attribute.Stringer("peer", p.ID))) // ProbeLab: don't delete/change name without notice
+					if retrievalState != nil {
+						retrievalState.ProvidersConnected.Add(1)
+					}
 					select {
 					case pqm.providerQueryMessages <- &receivedProviderMessage{
 						ctx: ctx,
@@ -489,6 +511,11 @@ func (npqm *newProvideQueryMessage) handle(pqm *ProviderQueryManager) {
 		span.AddEvent("NewQuery", trace.WithAttributes(attribute.Stringer("cid", npqm.k)))
 		ctx = trace.ContextWithSpan(ctx, span)
 
+		// Preserve retrieval.State from the original request context if present
+		if retrievalState := retrieval.StateFromContext(npqm.ctx); retrievalState != nil {
+			ctx = context.WithValue(ctx, retrieval.ContextKey, retrievalState)
+		}
+
 		// Use context derived from background here, and not the context from the
 		// request (npqm.ctx), because this inProgressRequestStatus applies to
 		// all in-progress requests for the CID (npqm.k).
@@ -517,9 +544,7 @@ func (npqm *newProvideQueryMessage) handle(pqm *ProviderQueryManager) {
 		}
 	} else {
 		trace.SpanFromContext(npqm.ctx).AddEvent("JoinQuery", trace.WithAttributes(attribute.Stringer("cid", npqm.k)))
-		if log.Level().Enabled(zapcore.DebugLevel) {
-			log.Debugf("Joined existing query for cid %s which now has %d queries in progress", npqm.k, len(requestStatus.listeners)+1)
-		}
+		log.Debugf("Joined existing query for cid %s which now has %d queries in progress", npqm.k, len(requestStatus.listeners)+1)
 	}
 	inProgressChan := make(chan peer.AddrInfo)
 	requestStatus.listeners[inProgressChan] = struct{}{}

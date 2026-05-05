@@ -5,7 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"path"
+	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	bs "github.com/ipfs/boxo/blockservice"
@@ -28,11 +30,11 @@ type fakeLogger struct {
 	lastError error
 }
 
-func (f *fakeLogger) Error(args ...interface{}) {
+func (f *fakeLogger) Error(args ...any) {
 	f.lastError = errors.New(fmt.Sprint(args...))
 }
 
-func (f *fakeLogger) Errorf(format string, args ...interface{}) {
+func (f *fakeLogger) Errorf(format string, args ...any) {
 	f.lastError = fmt.Errorf(format, args...)
 }
 
@@ -99,8 +101,7 @@ func allPins(t *testing.T, ch <-chan ipfspin.StreamedPin) (pins []ipfspin.Pinned
 }
 
 func TestPinnerBasic(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	dstore := dssync.MutexWrap(ds.NewMapDatastore())
 	bstore := blockstore.NewBlockstore(dstore)
@@ -331,8 +332,7 @@ func TestPinnerBasic(t *testing.T) {
 }
 
 func TestAddLoadPin(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	dstore := dssync.MutexWrap(ds.NewMapDatastore())
 	bstore := blockstore.NewBlockstore(dstore)
@@ -438,8 +438,7 @@ func TestIsPinnedLookup(t *testing.T) {
 	// pinned and once they have been unpinned.
 	aBranchLen := 6
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	dstore := dssync.MutexWrap(ds.NewMapDatastore())
 	bstore := blockstore.NewBlockstore(dstore)
 	bserv := bs.New(bstore, offline.Exchange(bstore))
@@ -481,8 +480,7 @@ func TestIsPinnedLookup(t *testing.T) {
 }
 
 func TestDuplicateSemantics(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	dstore := dssync.MutexWrap(ds.NewMapDatastore())
 	bstore := blockstore.NewBlockstore(dstore)
 	bserv := bs.New(bstore, offline.Exchange(bstore))
@@ -520,8 +518,7 @@ func TestDuplicateSemantics(t *testing.T) {
 }
 
 func TestFlush(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	dstore := dssync.MutexWrap(ds.NewMapDatastore())
 	bstore := blockstore.NewBlockstore(dstore)
 	bserv := bs.New(bstore, offline.Exchange(bstore))
@@ -589,8 +586,7 @@ func TestPinRecursiveFail(t *testing.T) {
 }
 
 func TestPinUpdate(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	dstore := dssync.MutexWrap(ds.NewMapDatastore())
 	bstore := blockstore.NewBlockstore(dstore)
@@ -657,8 +653,7 @@ func TestPinUpdate(t *testing.T) {
 }
 
 func TestLoadDirty(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	dstore := dssync.MutexWrap(ds.NewMapDatastore())
 	bstore := blockstore.NewBlockstore(dstore)
@@ -768,7 +763,7 @@ func TestEncodeDecodePin(t *testing.T) {
 	_, c := randNode()
 
 	pin := newPin(c, ipfspin.Recursive, "testpin")
-	pin.Metadata = make(map[string]interface{}, 2)
+	pin.Metadata = make(map[string]any, 2)
 	pin.Metadata["hello"] = "world"
 	pin.Metadata["foo"] = "bar"
 
@@ -815,7 +810,7 @@ func makeTree(ctx context.Context, aBranchLen int, dserv ipld.DAGService, p ipfs
 
 	aNodes := make([]*mdag.ProtoNode, aBranchLen)
 	aKeys = make([]cid.Cid, aBranchLen)
-	for i := 0; i < aBranchLen; i++ {
+	for i := range aBranchLen {
 		a, _ := randNode()
 		if i >= 1 {
 			if err = a.AddNodeLink("child", aNodes[i-1]); err != nil {
@@ -884,7 +879,7 @@ func makeNodes(count int, dserv ipld.DAGService) []ipld.Node {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	nodes := make([]ipld.Node, count)
-	for i := 0; i < count; i++ {
+	for i := range count {
 		n, _ := randNode()
 		err := dserv.Add(ctx, n)
 		if err != nil {
@@ -951,8 +946,7 @@ func makeStore() (ds.Datastore, ipld.DAGService) {
 // compares the load time when rebuilding indexes to loading without rebuilding
 // indexes.
 func BenchmarkLoad(b *testing.B) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := b.Context()
 
 	dstore, dserv := makeStore()
 	pinner, err := New(ctx, dstore, dserv)
@@ -1152,8 +1146,7 @@ func benchmarkPinAll(b *testing.B, count int, pinner ipfspin.Pinner, dserv ipld.
 }
 
 func BenchmarkRebuild(b *testing.B) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := b.Context()
 
 	dstore, dserv := makeStore()
 	pinIncr := 32768
@@ -1184,8 +1177,7 @@ func BenchmarkRebuild(b *testing.B) {
 }
 
 func TestCidIndex(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	dstore, dserv := makeStore()
 	pinner, err := New(ctx, dstore, dserv)
@@ -1290,8 +1282,7 @@ func TestCidIndex(t *testing.T) {
 }
 
 func TestRebuild(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	dstore, dserv := makeStore()
 	pinner, err := New(ctx, dstore, dserv)
@@ -1428,5 +1419,174 @@ func benchmarkDetails(b *testing.B, count int, details bool) {
 		for val := range pinner.RecursiveKeys(ctx, details) {
 			require.NoError(b, val.Err)
 		}
+	}
+}
+
+// panicOnQueryDatastore simulates a datastore that panics on Query
+// after being closed. cockroachdb/pebble is the real-world case: its
+// DB.NewIter panics with "pebble: closed" once the DB has been closed.
+// Used to assert that streamIndex's goroutine does not take down the
+// process when the backing datastore is torn down underneath it,
+// regardless of which datastore implementation is in use.
+type panicOnQueryDatastore struct {
+	ds.Batching
+	closed atomic.Bool
+}
+
+func (p *panicOnQueryDatastore) Query(ctx context.Context, q query.Query) (query.Results, error) {
+	if p.closed.Load() {
+		panic("datastore closed")
+	}
+	return p.Batching.Query(ctx, q)
+}
+
+func (p *panicOnQueryDatastore) close() {
+	p.closed.Store(true)
+}
+
+// TestStreamIndexRecoversFromDatastorePanic reproduces the shutdown
+// crash first observed on kubo 0.42.0-dev-f6cba67: when the daemon
+// shuts down, the datastore may close while a detached streamIndex
+// goroutine is about to call Query, and the datastore panics on use
+// after Close. The pinner does not own the datastore's lifecycle, so
+// the goroutine must convert any such panic into an error on the
+// channel instead of crashing the process.
+func TestStreamIndexRecoversFromDatastorePanic(t *testing.T) {
+	ctx := t.Context()
+
+	md := ds.NewMapDatastore()
+	wmd := dssync.MutexWrap(md)
+	inner := &batchWrap{wmd}
+	panicDS := &panicOnQueryDatastore{Batching: inner}
+
+	bstore := blockstore.NewBlockstore(panicDS)
+	bserv := bs.New(bstore, offline.Exchange(bstore))
+	dserv := mdag.NewDAGService(bserv)
+
+	p, err := New(ctx, panicDS, dserv)
+	require.NoError(t, err)
+
+	pinNodes(makeNodes(4, dserv), p, true)
+
+	// Simulate the datastore being closed from under the pinner.
+	panicDS.close()
+
+	kch := p.RecursiveKeys(ctx, false)
+	var got []ipfspin.StreamedPin
+	for sp := range kch {
+		got = append(got, sp)
+	}
+
+	require.Len(t, got, 1, "expected a single error entry, got %d", len(got))
+	require.Error(t, got[0].Err, "expected recovered panic to surface as an error on the channel")
+	require.Contains(t, got[0].Err.Error(), "pin stream interrupted", "error should name the interruption")
+	require.Contains(t, got[0].Err.Error(), "likely shutdown", "error should hint at shutdown so callers can classify it")
+}
+
+// queryRecordingDatastore records whether Query was called. Used to
+// assert that streamIndex short-circuits on a pre-cancelled ctx without
+// reaching into the datastore.
+type queryRecordingDatastore struct {
+	ds.Batching
+	queried atomic.Bool
+}
+
+func (q *queryRecordingDatastore) Query(ctx context.Context, qu query.Query) (query.Results, error) {
+	q.queried.Store(true)
+	return q.Batching.Query(ctx, qu)
+}
+
+// TestStreamIndexSkipsQueryOnCancelledContext verifies that streamIndex
+// does not issue a datastore Query when the caller's context is already
+// cancelled. This matters at shutdown: if the caller ctx is cancelled
+// before the datastore closes, we exit cleanly without racing against
+// Close.
+func TestStreamIndexSkipsQueryOnCancelledContext(t *testing.T) {
+	ctx := t.Context()
+
+	md := ds.NewMapDatastore()
+	wmd := dssync.MutexWrap(md)
+	inner := &batchWrap{wmd}
+	recDS := &queryRecordingDatastore{Batching: inner}
+
+	bstore := blockstore.NewBlockstore(recDS)
+	bserv := bs.New(bstore, offline.Exchange(bstore))
+	dserv := mdag.NewDAGService(bserv)
+
+	p, err := New(ctx, recDS, dserv)
+	require.NoError(t, err)
+	pinNodes(makeNodes(3, dserv), p, true)
+
+	// Reset the recorder so we only observe Query calls from the
+	// stream we are about to open.
+	recDS.queried.Store(false)
+
+	cancelled, cancel := context.WithCancel(ctx)
+	cancel()
+
+	kch := p.RecursiveKeys(cancelled, false)
+	var got []ipfspin.StreamedPin
+	for sp := range kch {
+		got = append(got, sp)
+	}
+
+	require.False(t, recDS.queried.Load(), "Query must not be issued on a pre-cancelled context")
+	// The channel may close with zero items (ctx.Done wins the send
+	// select) or one item carrying ctx.Canceled; both are correct. The
+	// invariant we care about is that Query was not issued.
+	for _, sp := range got {
+		require.ErrorIs(t, sp.Err, context.Canceled)
+	}
+}
+
+// TestStreamIndexDoesNotBlockWriters verifies that a slow (or blocked)
+// RecursiveKeys/DirectKeys consumer does not keep the pinner's read lock
+// held, which would stall Pin/Unpin/Update writers. This regressed the
+// kubo collab cluster when Provide.Strategy was set to pinned*, causing
+// convoys of stuck pin ls and ipfs add requests.
+//
+// Runs inside a synctest bubble so we can assert "Pin completes while a
+// RecursiveKeys consumer is parked" deterministically. Under the broken
+// code path the streamIndex goroutine would be durably blocked on send
+// while holding p.lock.RLock(), Pin would be durably blocked on Lock(),
+// and synctest would report a deadlock.
+func TestStreamIndexDoesNotBlockWriters(t *testing.T) {
+	for _, detailed := range []bool{false, true} {
+		t.Run(fmt.Sprintf("detailed=%v", detailed), func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				ctx := t.Context()
+
+				dstore, dserv := makeStore()
+				p, err := New(ctx, dstore, dserv)
+				require.NoError(t, err)
+
+				initial := makeNodes(8, dserv)
+				pinNodes(initial, p, true)
+
+				// Open a RecursiveKeys stream without consuming
+				// anything. Under the old implementation this held
+				// p.lock.RLock() for the channel's entire lifetime.
+				streamCtx, cancelStream := context.WithCancel(ctx)
+				defer cancelStream()
+				kch := p.RecursiveKeys(streamCtx, detailed)
+
+				// Wait for the streamIndex goroutine to park on its
+				// first send. With the fix it has already released
+				// p.lock.RLock() before parking.
+				synctest.Wait()
+
+				// A fresh node: Pin needs p.lock.Lock(). With the
+				// fix this returns without waiting on the parked
+				// streamIndex goroutine.
+				newNode, _ := randNode()
+				require.NoError(t, dserv.Add(ctx, newNode))
+				require.NoError(t, p.Pin(ctx, newNode, true, ""))
+
+				// Drain the stream so the goroutine exits cleanly.
+				cancelStream()
+				for range kch {
+				}
+			})
+		})
 	}
 }

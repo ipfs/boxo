@@ -27,7 +27,16 @@ func (i *handler) serveTAR(ctx context.Context, w http.ResponseWriter, r *http.R
 	}
 	defer file.Close()
 
+	// Check size limit before setting response headers so 410 responses
+	// stay clean.
+	if i.config.MaxUnixFSDAGResponseSize > 0 {
+		if sz, err := file.Size(); err == nil && i.exceedsMaxUnixFSDAGResponseSize(w, r, sz) {
+			return false
+		}
+	}
+
 	setIpfsRootsHeader(w, rq, &pathMetadata)
+
 	rootCid := pathMetadata.LastSegment.RootCid()
 
 	// Set Cache-Control and read optional Last-Modified time
@@ -72,7 +81,7 @@ func (i *handler) serveTAR(ctx context.Context, w http.ResponseWriter, r *http.R
 		// To improve UX/DX, we finish response stream with error message, allowing client to
 		// (1) detect error by having corrupted TAR
 		// (2) be able to reason what went wrong by instecting the tail of TAR stream
-		_, _ = w.Write([]byte(err.Error()))
+		_, _ = fmt.Fprint(w, err.Error())
 		return false
 	}
 

@@ -22,18 +22,18 @@ type client struct {
 
 // PutValue FIXME(brian): is this method meant to simulate putting a value into the network?
 func (c *client) PutValue(ctx context.Context, key string, val []byte, opts ...routing.Option) error {
-	log.Debugf("PutValue: %s", key)
+	log.Debugf("PutValue: %q", key) // key may contain binary data per IPNS spec
 	return c.vs.PutValue(ctx, key, val, opts...)
 }
 
 // GetValue FIXME(brian): is this method meant to simulate getting a value from the network?
 func (c *client) GetValue(ctx context.Context, key string, opts ...routing.Option) ([]byte, error) {
-	log.Debugf("GetValue: %s", key)
+	log.Debugf("GetValue: %q", key) // key may contain binary data per IPNS spec
 	return c.vs.GetValue(ctx, key, opts...)
 }
 
 func (c *client) SearchValue(ctx context.Context, key string, opts ...routing.Option) (<-chan []byte, error) {
-	log.Debugf("SearchValue: %s", key)
+	log.Debugf("SearchValue: %q", key) // key may contain binary data per IPNS spec
 	return c.vs.SearchValue(ctx, key, opts...)
 }
 

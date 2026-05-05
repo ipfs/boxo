@@ -27,7 +27,9 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"slices"
 	"sync"
+	"time"
 
 	"github.com/gammazero/deque"
 	dag "github.com/ipfs/boxo/ipld/merkledag"
@@ -85,6 +87,22 @@ type Shard struct {
 	// leaf node
 	key string
 	val *ipld.Link
+
+	// Optional metadata for the root shard node
+	mode  os.FileMode
+	mtime time.Time
+}
+
+// SetStat sets optional mode and mtime metadata on the shard.
+// These are included in the UnixFS data field when Node() is called.
+// Pass mode=0 or zero time to leave that field unchanged.
+func (ds *Shard) SetStat(mode os.FileMode, mtime time.Time) {
+	if mode != 0 {
+		ds.mode = mode
+	}
+	if !mtime.IsZero() {
+		ds.mtime = mtime
+	}
 }
 
 // NewShard creates a new, empty HAMT shard with the given size.
@@ -212,7 +230,7 @@ func (ds *Shard) Node() (ipld.Node, error) {
 		sliceIndex++
 	}
 
-	data, err := format.HAMTShardData(ds.childer.bitfield.Bytes(), uint64(ds.tableSize), HashMurmur3)
+	data, err := format.HAMTShardDataWithStat(ds.childer.bitfield.Bytes(), uint64(ds.tableSize), HashMurmur3, ds.mode, ds.mtime)
 	if err != nil {
 		return nil, err
 	}
@@ -501,7 +519,7 @@ func parallelShardWalk(ctx context.Context, root *Shard, dserv ipld.DAGService, 
 	out := make(chan *listCidsAndShards)
 	done := make(chan struct{})
 
-	for i := 0; i < concurrency; i++ {
+	for range concurrency {
 		grp.Go(func() error {
 			for feedChildren := range feed {
 				for _, nextShard := range feedChildren.shards {
@@ -779,7 +797,7 @@ const maximumHamtWidth = 1 << 10 // FIXME: Spec this and decide of a correct val
 
 func newChilder(ds ipld.DAGService, size int) (*childer, error) {
 	if size > maximumHamtWidth {
-		return nil, fmt.Errorf("hamt witdh (%d) exceed maximum allowed (%d)", size, maximumHamtWidth)
+		return nil, fmt.Errorf("hamt width (%d) exceed maximum allowed (%d)", size, maximumHamtWidth)
 	}
 	bf, err := bitfield.NewBitfield(size)
 	if err != nil {
@@ -796,8 +814,7 @@ func (s *childer) makeChilder(data []byte, links []*ipld.Link) *childer {
 	s.children = make([]*Shard, len(links))
 	s.bitfield.SetBytes(data)
 	if len(links) > 0 {
-		s.links = make([]*ipld.Link, len(links))
-		copy(s.links, links)
+		s.links = slices.Clone(links)
 	}
 
 	return s
@@ -829,10 +846,12 @@ func (s *childer) insert(key string, lnk *ipld.Link, idx int) error {
 		return err
 	}
 
-	s.children = append(s.children[:i], append([]*Shard{sd}, s.children[i:]...)...)
-	s.links = append(s.links[:i], append([]*ipld.Link{nil}, s.links[i:]...)...)
+	s.children = slices.Insert(s.children, i, sd)
+
 	// Add a `nil` placeholder in `links` so the rest of the entries keep the same
 	// index as `children`.
+	s.links = slices.Insert(s.links, i, nil)
+
 	s.bitfield.SetBit(idx)
 
 	return nil
@@ -855,11 +874,8 @@ func (s *childer) rm(childIndex int) error {
 		return err
 	}
 
-	copy(s.children[i:], s.children[i+1:])
-	s.children = s.children[:len(s.children)-1]
-
-	copy(s.links[i:], s.links[i+1:])
-	s.links = s.links[:len(s.links)-1]
+	s.children = slices.Delete(s.children, i, i+1)
+	s.links = slices.Delete(s.links, i, i+1)
 
 	s.bitfield.UnsetBit(childIndex)
 

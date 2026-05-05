@@ -14,7 +14,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/filecoin-project/go-clock"
 	ipns "github.com/ipfs/boxo/ipns"
 	"github.com/ipfs/boxo/routing/http/contentrouter"
 	"github.com/ipfs/boxo/routing/http/filters"
@@ -27,6 +26,7 @@ import (
 	logging "github.com/ipfs/go-log/v2"
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/libp2p/go-libp2p/core/routing"
 	"github.com/multiformats/go-multiaddr"
 )
 
@@ -37,6 +37,27 @@ var (
 	DefaultProtocolFilter = []string{"unknown", "transport-bitswap"} // IPIP-484
 )
 
+// normalizeBaseURL removes duplicate /routing/v1 paths from the base URL
+// to prevent URLs like /routing/v1/routing/v1/providers when baseURL ends with /routing/v1
+func normalizeBaseURL(baseURL string) (string, error) {
+	// Remove trailing slashes first
+	baseURL = strings.TrimRight(baseURL, "/")
+
+	// Remove /routing/v1 suffix if present
+	baseURL = strings.TrimSuffix(baseURL, "/routing/v1")
+
+	// After deduplication, check if there's any path remaining
+	u, err := gourl.Parse(baseURL)
+	if err != nil {
+		return "", err
+	}
+	if u.Path != "" && u.Path != "/" {
+		return "", errors.New("only /routing/v1 URLs are supported")
+	}
+
+	return baseURL, nil
+}
+
 const (
 	mediaTypeJSON       = "application/json"
 	mediaTypeNDJSON     = "application/x-ndjson"
@@ -46,12 +67,12 @@ const (
 type Client struct {
 	baseURL    string
 	httpClient httpClient
-	clock      clock.Clock
 	accepts    string
 
-	peerID   peer.ID
-	addrs    []types.Multiaddr
-	identity crypto.PrivKey
+	peerID    peer.ID
+	addrs     []types.Multiaddr
+	addrsFunc func() []types.Multiaddr
+	identity  crypto.PrivKey
 
 	// Called immediately after signing a provide request. It is used
 	// for testing, e.g., testing the server with a mangled signature.
@@ -157,11 +178,35 @@ func WithUserAgent(ua string) Option {
 	}
 }
 
+// WithProviderInfo sets the peer ID and static addresses used in provide requests.
+// Mutually exclusive with [WithProviderInfoFunc]; if both are provided,
+// [WithProviderInfoFunc] takes precedence.
 func WithProviderInfo(peerID peer.ID, addrs []multiaddr.Multiaddr) Option {
 	return func(c *Client) error {
 		c.peerID = peerID
 		for _, a := range addrs {
 			c.addrs = append(c.addrs, types.Multiaddr{Multiaddr: a})
+		}
+		return nil
+	}
+}
+
+// WithProviderInfoFunc is like [WithProviderInfo] but accepts a callback that
+// is evaluated each time a provide request is made. Use this when addresses
+// may change over the lifetime of the client (e.g., resolved from a libp2p
+// host instead of static configuration).
+// Mutually exclusive with [WithProviderInfo]; if both are provided,
+// WithProviderInfoFunc takes precedence.
+func WithProviderInfoFunc(peerID peer.ID, addrsFunc func() []multiaddr.Multiaddr) Option {
+	return func(c *Client) error {
+		c.peerID = peerID
+		c.addrsFunc = func() []types.Multiaddr {
+			addrs := addrsFunc()
+			out := make([]types.Multiaddr, len(addrs))
+			for i, a := range addrs {
+				out[i] = types.Multiaddr{Multiaddr: a}
+			}
+			return out
 		}
 		return nil
 	}
@@ -177,10 +222,14 @@ func WithStreamResultsRequired() Option {
 // New creates a content routing API client.
 // The Provider and identity parameters are option. If they are nil, the [client.ProvideBitswap] method will not function.
 func New(baseURL string, opts ...Option) (*Client, error) {
+	normalizedURL, err := normalizeBaseURL(baseURL)
+	if err != nil {
+		return nil, err
+	}
+
 	client := &Client{
-		baseURL:        baseURL,
+		baseURL:        normalizedURL,
 		httpClient:     newDefaultHTTPClient(defaultUserAgent),
-		clock:          clock.New(),
 		accepts:        strings.Join([]string{mediaTypeNDJSON, mediaTypeJSON}, ","),
 		protocolFilter: DefaultProtocolFilter, // can be customized via WithProtocolFilter
 	}
@@ -208,8 +257,11 @@ type measuringIter[T any] struct {
 }
 
 func (c *measuringIter[T]) Next() bool {
-	c.m.length++
-	return c.Iter.Next()
+	hasNext := c.Iter.Next()
+	if hasNext {
+		c.m.length++
+	}
+	return hasNext
 }
 
 func (c *measuringIter[T]) Val() T {
@@ -241,11 +293,11 @@ func (c *Client) FindProviders(ctx context.Context, key cid.Cid) (providers iter
 
 	m.host = req.Host
 
-	start := c.clock.Now()
+	start := time.Now()
 	resp, err := c.httpClient.Do(req)
 
 	m.err = err
-	m.latency = c.clock.Since(start)
+	m.latency = time.Since(start)
 
 	if err != nil {
 		m.record(ctx)
@@ -253,7 +305,10 @@ func (c *Client) FindProviders(ctx context.Context, key cid.Cid) (providers iter
 	}
 
 	m.statusCode = resp.StatusCode
+	// Per IPIP-0513: Handle 404 as empty results for backward compatibility
+	// New servers return 200 with empty results, old servers return 404
 	if resp.StatusCode == http.StatusNotFound {
+		io.Copy(io.Discard, resp.Body) // Drain body for connection reuse
 		resp.Body.Close()
 		m.record(ctx)
 		return iter.FromSlice[iter.Result[types.Record]](nil), nil
@@ -306,9 +361,16 @@ func (c *Client) FindProviders(ctx context.Context, key cid.Cid) (providers iter
 	return &measuringIter[iter.Result[types.Record]]{Iter: it, ctx: ctx, m: m}, nil
 }
 
-// Deprecated: protocol-agnostic provide is being worked on in [IPIP-378]:
+func (c *Client) providerAddrs() []types.Multiaddr {
+	if c.addrsFunc != nil {
+		return c.addrsFunc()
+	}
+	return c.addrs
+}
+
+// Deprecated: historic API from [IPIP-526], may be removed in a future version.
 //
-// [IPIP-378]: https://github.com/ipfs/specs/pull/378
+// [IPIP-526]: https://specs.ipfs.tech/ipips/ipip-0526/
 func (c *Client) ProvideBitswap(ctx context.Context, keys []cid.Cid, ttl time.Duration) (time.Duration, error) {
 	if c.identity == nil {
 		return 0, errors.New("cannot provide Bitswap records without an identity")
@@ -322,7 +384,7 @@ func (c *Client) ProvideBitswap(ctx context.Context, keys []cid.Cid, ttl time.Du
 		ks[i] = types.CID{Cid: c}
 	}
 
-	now := c.clock.Now()
+	now := time.Now()
 
 	req := types.WriteBitswapRecord{
 		Protocol: "transport-bitswap",
@@ -332,7 +394,7 @@ func (c *Client) ProvideBitswap(ctx context.Context, keys []cid.Cid, ttl time.Du
 			AdvisoryTTL: &types.Duration{Duration: ttl},
 			Timestamp:   &types.Time{Time: now},
 			ID:          &c.peerID,
-			Addrs:       c.addrs,
+			Addrs:       c.providerAddrs(),
 		},
 	}
 	err := req.Sign(c.peerID, c.identity)
@@ -424,11 +486,11 @@ func (c *Client) FindPeers(ctx context.Context, pid peer.ID) (peers iter.ResultI
 
 	m.host = req.Host
 
-	start := c.clock.Now()
+	start := time.Now()
 	resp, err := c.httpClient.Do(req)
 
 	m.err = err
-	m.latency = c.clock.Since(start)
+	m.latency = time.Since(start)
 
 	if err != nil {
 		m.record(ctx)
@@ -436,7 +498,10 @@ func (c *Client) FindPeers(ctx context.Context, pid peer.ID) (peers iter.ResultI
 	}
 
 	m.statusCode = resp.StatusCode
+	// Per IPIP-0513: Handle 404 as empty results for backward compatibility
+	// New servers return 200 with empty results, old servers return 404
 	if resp.StatusCode == http.StatusNotFound {
+		io.Copy(io.Discard, resp.Body) // Drain body for connection reuse
 		resp.Body.Close()
 		m.record(ctx)
 		return iter.FromSlice[iter.Result[*types.PeerRecord]](nil), nil
@@ -492,7 +557,20 @@ func (c *Client) FindPeers(ctx context.Context, pid peer.ID) (peers iter.ResultI
 // GetIPNS tries to retrieve the [ipns.Record] for the given [ipns.Name]. The record is
 // validated against the given name. If validation fails, an error is returned, but no
 // record.
-func (c *Client) GetIPNS(ctx context.Context, name ipns.Name) (*ipns.Record, error) {
+func (c *Client) GetIPNS(ctx context.Context, name ipns.Name) (record *ipns.Record, err error) {
+	m := newMeasurement("GetIPNS")
+	start := time.Now()
+	defer func() {
+		m.latency = time.Since(start)
+		m.err = err
+		if record != nil {
+			m.length = 1
+		} else {
+			m.length = 0
+		}
+		m.record(ctx)
+	}()
+
 	url := c.baseURL + "/routing/v1/ipns/" + name.String()
 
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
@@ -501,14 +579,33 @@ func (c *Client) GetIPNS(ctx context.Context, name ipns.Name) (*ipns.Record, err
 	}
 	httpReq.Header.Set("Accept", mediaTypeIPNSRecord)
 
+	m.host = httpReq.Host
+
 	resp, err := c.httpClient.Do(httpReq)
 	if err != nil {
 		return nil, fmt.Errorf("making HTTP req to get IPNS record: %w", err)
 	}
 	defer resp.Body.Close()
 
+	m.statusCode = resp.StatusCode
+
+	// Per IPIP-0513: Handle 404 as "no record found" for backward compatibility
+	// New servers return 200 with text/plain for no record, old servers return 404
+	if resp.StatusCode == http.StatusNotFound {
+		io.Copy(io.Discard, resp.Body) // Drain body for connection reuse
+		return nil, routing.ErrNotFound
+	}
+
 	if resp.StatusCode != http.StatusOK {
 		return nil, httpError(resp.StatusCode, resp.Body)
+	}
+
+	// Per IPIP-0513: Only Content-Type: application/vnd.ipfs.ipns-record indicates a valid record
+	// Any other content type (e.g., text/plain) means no record found
+	contentType := resp.Header.Get("Content-Type")
+	if !strings.Contains(contentType, mediaTypeIPNSRecord) {
+		io.Copy(io.Discard, resp.Body) // Drain body for connection reuse
+		return nil, routing.ErrNotFound
 	}
 
 	// Limit the reader to the maximum record size.
@@ -517,7 +614,7 @@ func (c *Client) GetIPNS(ctx context.Context, name ipns.Name) (*ipns.Record, err
 		return nil, fmt.Errorf("making HTTP req to get IPNS record: %w", err)
 	}
 
-	record, err := ipns.UnmarshalRecord(rawRecord)
+	record, err = ipns.UnmarshalRecord(rawRecord)
 	if err != nil {
 		return nil, fmt.Errorf("IPNS record from remote endpoint is not valid: %w", err)
 	}
@@ -531,7 +628,16 @@ func (c *Client) GetIPNS(ctx context.Context, name ipns.Name) (*ipns.Record, err
 }
 
 // PutIPNS attempts at putting the given [ipns.Record] for the given [ipns.Name].
-func (c *Client) PutIPNS(ctx context.Context, name ipns.Name, record *ipns.Record) error {
+func (c *Client) PutIPNS(ctx context.Context, name ipns.Name, record *ipns.Record) (err error) {
+	m := newMeasurement("PutIPNS")
+	start := time.Now()
+	defer func() {
+		m.latency = time.Since(start)
+		m.err = err
+		// Don't set m.length for PutIPNS - not meaningful
+		m.record(ctx)
+	}()
+
 	url := c.baseURL + "/routing/v1/ipns/" + name.String()
 
 	rawRecord, err := ipns.MarshalRecord(record)
@@ -545,15 +651,95 @@ func (c *Client) PutIPNS(ctx context.Context, name ipns.Name, record *ipns.Recor
 	}
 	httpReq.Header.Set("Content-Type", mediaTypeIPNSRecord)
 
+	m.host = httpReq.Host
+
 	resp, err := c.httpClient.Do(httpReq)
 	if err != nil {
 		return fmt.Errorf("making HTTP req to get IPNS record: %w", err)
 	}
 	defer resp.Body.Close()
 
+	m.statusCode = resp.StatusCode
+
 	if resp.StatusCode != http.StatusOK {
 		return httpError(resp.StatusCode, resp.Body)
 	}
 
 	return nil
+}
+
+// GetClosestPeers obtains the closest peers to the given key (CID or Peer ID).
+func (c *Client) GetClosestPeers(ctx context.Context, key cid.Cid) (peers iter.ResultIter[*types.PeerRecord], err error) {
+	m := newMeasurement("GetClosestPeers")
+
+	// Build the base URL path
+	u, err := gourl.JoinPath(c.baseURL, "routing/v1/dht/closest/peers", key.String())
+	if err != nil {
+		return nil, err
+	}
+
+	// Create the HTTP request
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Accept", c.accepts)
+
+	m.host = req.Host
+	start := time.Now()
+	resp, err := c.httpClient.Do(req)
+	m.latency = time.Since(start)
+	m.err = err
+
+	if err != nil {
+		m.record(ctx)
+		return nil, err
+	}
+
+	var skipBodyClose bool
+	defer func() {
+		if !skipBodyClose {
+			io.Copy(io.Discard, resp.Body) // Drain body for connection reuse
+			resp.Body.Close()
+		}
+	}()
+
+	m.statusCode = resp.StatusCode
+	if resp.StatusCode == http.StatusNotFound {
+		m.record(ctx)
+		return iter.FromSlice[iter.Result[*types.PeerRecord]](nil), nil
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		err := httpError(resp.StatusCode, resp.Body)
+		m.record(ctx)
+		return nil, err
+	}
+
+	respContentType := resp.Header.Get("Content-Type")
+	mediaType, _, err := mime.ParseMediaType(respContentType)
+	if err != nil {
+		m.err = err
+		m.record(ctx)
+		return nil, fmt.Errorf("parsing Content-Type: %w", err)
+	}
+
+	m.mediaType = mediaType
+
+	var it iter.ResultIter[*types.PeerRecord]
+	switch mediaType {
+	case mediaTypeJSON:
+		parsedResp := &jsontypes.PeersResponse{}
+		err = json.NewDecoder(resp.Body).Decode(parsedResp)
+		var sliceIt iter.Iter[*types.PeerRecord] = iter.FromSlice(parsedResp.Peers)
+		it = iter.ToResultIter(sliceIt)
+	case mediaTypeNDJSON:
+		skipBodyClose = true
+		it = ndjson.NewPeerRecordsIter(resp.Body)
+	default:
+		logger.Errorw("unknown media type", "MediaType", mediaType, "ContentType", respContentType)
+		return nil, errors.New("unknown content type")
+	}
+
+	return &measuringIter[iter.Result[*types.PeerRecord]]{Iter: it, ctx: ctx, m: m}, nil
 }
