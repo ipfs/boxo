@@ -2,12 +2,10 @@ name: Cross-Platform Checks
 
 # Fast cross-compile sanity checks. Catches build-tag and
 # platform-specific compile errors on a single Linux runner before the
-# heavier per-OS test jobs in `go-test.yml` start. Jobs here use
-# `continue-on-error: true` so they surface regressions in the PR check
-# list without blocking merges; the per-OS test jobs remain the
-# authoritative signal for officially supported targets. Do not add this
-# workflow to required status checks in branch protection. Add new
-# matrix entries below as new targets need coverage.
+# heavier per-OS test jobs in `go-test.yml` start. `fail-fast: false`
+# lets every matrix entry run so a single failure does not hide
+# regressions on other targets, and any failed entry fails the
+# workflow. Add new matrix entries below as new targets need coverage.
 
 on:
   pull_request:
@@ -26,7 +24,6 @@ jobs:
   cross-build:
     name: build (GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }})
     runs-on: ubuntu-latest
-    continue-on-error: true
     strategy:
       fail-fast: false
       matrix:
