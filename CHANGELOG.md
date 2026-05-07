@@ -16,6 +16,8 @@ The following emojis are used to highlight certain changes:
 
 ### Added
 
+- `retrieval`: `State.Snapshot` returns an immutable point-in-time copy, `State.Apply` mirrors a snapshot back onto a State (with monotonic phase progression), and `State.Notify` returns a size-1 coalescing channel that wakes when the State changes. Together they let consumers stream State across a process boundary; CLI tools like Kubo can use this to drive a live progress bar during commands like `cat`, `get`, or `dag export`.
+
 ### Changed
 
 - `path/resolver`: `ResolveToLastNode`, `ResolvePath`, and `ResolvePathComponents` now populate `retrieval.State` on the request context when one is attached. They advance the state to `PhasePathResolution`, record the root CID from the input path, and record the terminal CID once resolution completes. Until now only the gateway backends populated these fields, leaving non-gateway callers (CLIs, custom tools) without phase or CID diagnostics on retrieval errors. The new calls are idempotent with the existing gateway-side ones, so behavior on the gateway path is unchanged.
