@@ -101,10 +101,9 @@ type pinner struct {
 	rootsProvider  provider.MultihashProvider
 	pinnedProvider provider.MultihashProvider
 
-	// Lifecycle state. closedMu serialises the isClosed check with
-	// wg.Add so Close reliably waits for every admitted operation.
-	// done is closed by Close and unblocks streaming goroutines parked
-	// on a send.
+	// Lifecycle state. closedMu serializes the isClosed check with
+	// wg.Add so Close waits for every admitted operation. done is
+	// closed by Close to unblock stream goroutines parked on a send.
 	closedMu sync.Mutex
 	isClosed bool
 	done     chan struct{}
@@ -201,9 +200,8 @@ func New(ctx context.Context, dstore ds.Datastore, dserv ipld.DAGService, opts .
 	return p, nil
 }
 
-// begin admits a caller. It returns [ipfspinner.ErrClosed] if the
-// pinner has been closed; otherwise it increments the in-flight
-// counter so that Close waits for the caller to finish. Successful
+// begin admits a caller. Returns [ipfspinner.ErrClosed] if the pinner
+// is closed; otherwise increments the in-flight counter. Successful
 // callers MUST pair begin with a deferred p.wg.Done.
 func (p *pinner) begin() error {
 	p.closedMu.Lock()
@@ -215,10 +213,9 @@ func (p *pinner) begin() error {
 	return nil
 }
 
-// errClosedChan returns a pre-filled buffered channel carrying a single
-// [ipfspinner.StreamedPin] with err, followed by close. Buffered so
-// callers that never read the channel and never cancel their context
-// do not leak the send goroutine.
+// errClosedChan returns a closed channel carrying a single
+// [ipfspinner.StreamedPin] with err. The channel is buffered so the
+// synchronous send below does not block when no reader is present.
 func errClosedChan(err error) <-chan ipfspinner.StreamedPin {
 	out := make(chan ipfspinner.StreamedPin, 1)
 	out <- ipfspinner.StreamedPin{Err: err}
@@ -226,10 +223,8 @@ func errClosedChan(err error) <-chan ipfspinner.StreamedPin {
 	return out
 }
 
-// Close releases resources held by the pinner and blocks until every
-// admitted operation has returned. Close does not close the backing
-// datastore. After Close returns, every other method fails fast with
-// [ipfspinner.ErrClosed]. Close is idempotent.
+// Close implements [ipfspinner.Pinner.Close]. It does not close the
+// backing datastore; the caller owns that lifecycle.
 func (p *pinner) Close() error {
 	p.closedMu.Lock()
 	if p.isClosed {
@@ -248,9 +243,8 @@ func (p *pinner) Close() error {
 // This may be used to turn off autosync before doing many repeated pinning
 // operations, and then turn it on after.  Returns the previous value.
 //
-// SetAutosync is not part of the [ipfspinner.Pinner] interface and is
-// not gated by Close: it mutates an in-memory flag only, never touches
-// the datastore, and so is safe to call on a closed pinner.
+// SetAutosync is not part of the [ipfspinner.Pinner] interface. It
+// mutates an in-memory flag only and is safe to call after Close.
 func (p *pinner) SetAutosync(auto bool) bool {
 	p.lock.Lock()
 	defer p.lock.Unlock()
@@ -1037,8 +1031,8 @@ func (p *pinner) streamIndex(ctx context.Context, index dsindex.Indexer, detaile
 		defer close(out)
 
 		// send delivers sp and reports whether the consumer is still
-		// listening. A closed pinner unblocks send via p.done so that
-		// Close can wait on wg without stalling on a parked send.
+		// listening. The p.done case lets Close drain a stream whose
+		// consumer has stopped reading.
 		send := func(sp ipfspinner.StreamedPin) (ok bool) {
 			select {
 			case <-ctx.Done():
@@ -1050,14 +1044,11 @@ func (p *pinner) streamIndex(ctx context.Context, index dsindex.Indexer, detaile
 			}
 		}
 
-		// Defense in depth: if the backing datastore panics during
-		// enumeration, recover and surface the panic as an error on
-		// the output channel. Close on this pinner runs before the
-		// datastore is closed by the caller's lifecycle, so this path
-		// should no longer fire in practice. It remains here for
-		// callers that do not wire Close correctly; any datastore may
-		// panic on use after Close (pebble being the prominent case),
-		// and the pinner does not own the datastore's lifecycle.
+		// Defense in depth: surface a datastore panic as a stream
+		// error rather than crashing the process. Hosts that wire
+		// Close correctly will never trip this, but datastores like
+		// pebble panic on use-after-close and the pinner does not own
+		// the datastore lifecycle.
 		defer func() {
 			if r := recover(); r != nil {
 				send(ipfspinner.StreamedPin{Err: fmt.Errorf("pin stream interrupted by datastore panic (likely shutdown): %v", r)})
@@ -1111,15 +1102,15 @@ func (p *pinner) streamIndex(ctx context.Context, index dsindex.Indexer, detaile
 }
 
 // InternalPins returns all cids kept pinned for the internal state of the
-// pinner. dspinner does not keep internal pins, so the returned channel
-// is always empty; it carries a single [ipfspinner.ErrClosed] entry if
-// Close has been called.
+// pinner. dspinner has no internal pins, so the returned channel is
+// always empty (or carries a single [ipfspinner.ErrClosed] entry after
+// Close).
 func (p *pinner) InternalPins(ctx context.Context, detailed bool) <-chan ipfspinner.StreamedPin {
 	if err := p.begin(); err != nil {
 		return errClosedChan(err)
 	}
-	// Not tracked by p.wg: the channel is closed synchronously before
-	// we return, so there is no background work for Close to wait on.
+	// No background work: balance begin()'s wg.Add before returning the
+	// pre-closed channel.
 	defer p.wg.Done()
 
 	c := make(chan ipfspinner.StreamedPin)

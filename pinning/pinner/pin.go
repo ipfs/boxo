@@ -79,10 +79,9 @@ func StringToMode(s string) (Mode, bool) {
 // ErrNotPinned is returned when trying to unpin items that are not pinned.
 var ErrNotPinned = errors.New("not pinned or pinned indirectly")
 
-// ErrClosed is returned by [Pinner] methods after [Pinner.Close] has been
-// called. Streaming methods ([Pinner.DirectKeys], [Pinner.RecursiveKeys],
-// [Pinner.InternalPins]) surface it as the [StreamedPin.Err] of a single
-// entry on the returned channel, which is then closed.
+// ErrClosed is returned by [Pinner] methods after [Pinner.Close]. Streaming
+// methods ([Pinner.DirectKeys], [Pinner.RecursiveKeys], [Pinner.InternalPins])
+// deliver it as [StreamedPin.Err] on a single entry, then close the channel.
 var ErrClosed = errors.New("pinner closed")
 
 // A Pinner provides the necessary methods to keep track of Nodes which are
@@ -155,16 +154,15 @@ type Pinner interface {
 	// pinner
 	InternalPins(ctx context.Context, detailed bool) <-chan StreamedPin
 
-	// Close releases resources held by the pinner and blocks until every
-	// in-flight operation, including streaming goroutines from DirectKeys,
-	// RecursiveKeys, and InternalPins, has returned.
+	// Close drains all in-flight operations, including streaming
+	// goroutines from DirectKeys, RecursiveKeys, and InternalPins, and
+	// blocks until they return. After Close, every other Pinner method
+	// returns [ErrClosed].
 	//
 	// Close does not close the backing datastore; the caller owns that
 	// lifecycle and must keep the datastore open until Close returns.
 	//
-	// After Close returns, every other Pinner method fails fast with
-	// [ErrClosed]. Close is idempotent and safe to call from any
-	// goroutine.
+	// Close is idempotent and goroutine-safe.
 	Close() error
 }
 

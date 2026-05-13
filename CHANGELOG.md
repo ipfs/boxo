@@ -16,8 +16,8 @@ The following emojis are used to highlight certain changes:
 
 ### Added
 
-- 🛠 `pinning/pinner`: `Pinner` now has a `Close() error` method. Close waits for every in-flight operation, including streaming goroutines from `RecursiveKeys`, `DirectKeys`, and `InternalPins`, to return before unblocking. After Close, every other method fails fast with the new `ErrClosed` sentinel; streaming methods surface it as the `Err` field of a single entry on the returned channel. Close is idempotent and safe to call from any goroutine. Downstream implementations of `Pinner` must add a `Close` method.
-- `pinning/pinner/dspinner`: implements the new `Close`. Stream goroutines now also select on the pinner shutdown signal when they send, so Close never stalls on a parked consumer. Hosts that own the backing datastore should call `Close` on the pinner before closing the datastore to avoid the panic-on-use-after-close path in datastores such as pebble.
+- 🛠 `pinning/pinner`: added `Pinner.Close() error`. Close drains all in-flight operations, including streaming goroutines from `RecursiveKeys`, `DirectKeys`, and `InternalPins`, before returning. After Close, every other method returns the new `ErrClosed` sentinel; streaming methods deliver it as `StreamedPin.Err` on a single entry, then close the channel. Close is idempotent and goroutine-safe. **Action required:** downstream `Pinner` implementations must add `Close`. [#1150](https://github.com/ipfs/boxo/pull/1150)
+- `pinning/pinner/dspinner`: implements `Close`. Stream sends also select on the shutdown signal, so a parked consumer cannot stall Close. Hosts owning the datastore should call `Close` on the pinner before closing the datastore to avoid the use-after-close panic path in stores such as pebble. [#1150](https://github.com/ipfs/boxo/pull/1150)
 
 ### Changed
 
