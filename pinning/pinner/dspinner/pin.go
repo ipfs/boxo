@@ -102,12 +102,16 @@ type pinner struct {
 	pinnedProvider provider.MultihashProvider
 
 	// Lifecycle state. closedMu serializes the isClosed check with
-	// wg.Add so Close waits for every admitted operation. done is
-	// closed by Close to unblock stream goroutines parked on a send.
-	closedMu sync.Mutex
-	isClosed bool
-	done     chan struct{}
-	wg       sync.WaitGroup
+	// wg.Add so Close waits for every admitted operation. Close
+	// cancels stopCtx; context.AfterFunc fans that cancellation into
+	// every admitted op's derived ctx, so in-flight work returns
+	// promptly through paths that already honor ctx (datastore
+	// queries, DAG fetches, index iteration).
+	closedMu   sync.Mutex
+	isClosed   bool
+	stopCtx    context.Context
+	stopCancel context.CancelFunc
+	wg         sync.WaitGroup
 }
 
 var _ ipfspinner.Pinner = (*pinner)(nil)
@@ -174,8 +178,8 @@ func New(ctx context.Context, dstore ds.Datastore, dserv ipld.DAGService, opts .
 		nameIndex: dsindex.New(dstore, ds.NewKey(pinNameIndexPath)),
 		dserv:     dserv,
 		dstore:    dstore,
-		done:      make(chan struct{}),
 	}
+	p.stopCtx, p.stopCancel = context.WithCancel(context.Background())
 
 	for _, o := range opts {
 		o.f(p)
@@ -200,17 +204,25 @@ func New(ctx context.Context, dstore ds.Datastore, dserv ipld.DAGService, opts .
 	return p, nil
 }
 
-// begin admits a caller. Returns [ipfspinner.ErrClosed] if the pinner
-// is closed; otherwise increments the in-flight counter. Successful
-// callers MUST pair begin with a deferred p.wg.Done.
-func (p *pinner) begin() error {
+// begin admits a caller and returns a context cancelled by either
+// the parent ctx or [pinner.Close]. Successful callers MUST defer
+// the returned cleanup. Returns [ipfspinner.ErrClosed] if the pinner
+// is already closed.
+func (p *pinner) begin(parent context.Context) (context.Context, func(), error) {
 	p.closedMu.Lock()
 	defer p.closedMu.Unlock()
 	if p.isClosed {
-		return ipfspinner.ErrClosed
+		return parent, func() {}, ipfspinner.ErrClosed
 	}
 	p.wg.Add(1)
-	return nil
+	ctx, cancel := context.WithCancel(parent)
+	stop := context.AfterFunc(p.stopCtx, cancel)
+	cleanup := func() {
+		stop()
+		cancel()
+		p.wg.Done()
+	}
+	return ctx, cleanup, nil
 }
 
 // errClosedChan returns a closed channel carrying a single
@@ -232,7 +244,9 @@ func (p *pinner) Close() error {
 		return nil
 	}
 	p.isClosed = true
-	close(p.done)
+	// Fires every AfterFunc registered by begin, cancelling each
+	// admitted op's derived ctx, and closes stopCtx.Done().
+	p.stopCancel()
 	p.closedMu.Unlock()
 
 	p.wg.Wait()
@@ -255,12 +269,13 @@ func (p *pinner) SetAutosync(auto bool) bool {
 
 // Pin the given node, optionally recursive
 func (p *pinner) Pin(ctx context.Context, node ipld.Node, recurse bool, name string) error {
-	if err := p.begin(); err != nil {
+	ctx, cleanup, err := p.begin(ctx)
+	if err != nil {
 		return err
 	}
-	defer p.wg.Done()
+	defer cleanup()
 
-	err := p.dserv.Add(ctx, node)
+	err = p.dserv.Add(ctx, node)
 	if err != nil {
 		return err
 	}
@@ -496,10 +511,11 @@ func (p *pinner) removePin(ctx context.Context, pp *pin) error {
 
 // Unpin a given key
 func (p *pinner) Unpin(ctx context.Context, c cid.Cid, recursive bool) error {
-	if err := p.begin(); err != nil {
+	ctx, cleanup, err := p.begin(ctx)
+	if err != nil {
 		return err
 	}
-	defer p.wg.Done()
+	defer cleanup()
 
 	cidKey := c.KeyString()
 
@@ -546,10 +562,11 @@ func (p *pinner) Unpin(ctx context.Context, c cid.Cid, recursive bool) error {
 // IsPinned returns whether or not the given key is pinned
 // and an explanation of why its pinned
 func (p *pinner) IsPinned(ctx context.Context, c cid.Cid) (string, bool, error) {
-	if err := p.begin(); err != nil {
+	ctx, cleanup, err := p.begin(ctx)
+	if err != nil {
 		return "", false, err
 	}
-	defer p.wg.Done()
+	defer cleanup()
 
 	p.lock.RLock()
 	defer p.lock.RUnlock()
@@ -559,10 +576,11 @@ func (p *pinner) IsPinned(ctx context.Context, c cid.Cid) (string, bool, error) 
 // IsPinnedWithType returns whether or not the given cid is pinned with the
 // given pin type, as well as returning the type of pin its pinned with.
 func (p *pinner) IsPinnedWithType(ctx context.Context, c cid.Cid, mode ipfspinner.Mode) (string, bool, error) {
-	if err := p.begin(); err != nil {
+	ctx, cleanup, err := p.begin(ctx)
+	if err != nil {
 		return "", false, err
 	}
-	defer p.wg.Done()
+	defer cleanup()
 
 	p.lock.RLock()
 	defer p.lock.RUnlock()
@@ -677,10 +695,11 @@ func (p *pinner) loadPinName(ctx context.Context, pin *ipfspinner.Pinned, pinID 
 // CheckIfPinnedWithType implements the Pinner interface, checking specific pin types.
 // This method is optimized to only check the requested pin type(s).
 func (p *pinner) CheckIfPinnedWithType(ctx context.Context, mode ipfspinner.Mode, includeNames bool, cids ...cid.Cid) ([]ipfspinner.Pinned, error) {
-	if err := p.begin(); err != nil {
+	ctx, cleanup, err := p.begin(ctx)
+	if err != nil {
 		return nil, err
 	}
-	defer p.wg.Done()
+	defer cleanup()
 
 	p.lock.RLock()
 	defer p.lock.RUnlock()
@@ -1019,25 +1038,25 @@ func (p *pinner) snapshotIndex(ctx context.Context, index dsindex.Indexer) ([]in
 	return entries, err
 }
 
-func (p *pinner) streamIndex(ctx context.Context, index dsindex.Indexer, detailed bool) <-chan ipfspinner.StreamedPin {
-	if err := p.begin(); err != nil {
+func (p *pinner) streamIndex(parent context.Context, index dsindex.Indexer, detailed bool) <-chan ipfspinner.StreamedPin {
+	ctx, cleanup, err := p.begin(parent)
+	if err != nil {
 		return errClosedChan(err)
 	}
 
 	out := make(chan ipfspinner.StreamedPin)
 
 	go func() {
-		defer p.wg.Done()
+		defer cleanup()
 		defer close(out)
 
-		// send delivers sp and reports whether the consumer is still
-		// listening. The p.done case lets Close drain a stream whose
-		// consumer has stopped reading.
+		// send delivers sp and reports whether to keep going. The
+		// derived ctx is cancelled by the caller or by Close, so one
+		// ctx.Done() case covers both "consumer wandered off" and
+		// "shutting down" and the goroutine never parks.
 		send := func(sp ipfspinner.StreamedPin) (ok bool) {
 			select {
 			case <-ctx.Done():
-				return false
-			case <-p.done:
 				return false
 			case out <- sp:
 				return true
@@ -1057,6 +1076,12 @@ func (p *pinner) streamIndex(ctx context.Context, index dsindex.Indexer, detaile
 
 		entries, err := p.snapshotIndex(ctx, index)
 		if err != nil {
+			// Map a Close-driven cancel into ErrClosed so the
+			// consumer sees a meaningful error; a caller-driven
+			// cancel keeps its original ctx.Err().
+			if p.stopCtx.Err() != nil && parent.Err() == nil {
+				err = ipfspinner.ErrClosed
+			}
 			send(ipfspinner.StreamedPin{Err: err})
 			return
 		}
@@ -1106,12 +1131,13 @@ func (p *pinner) streamIndex(ctx context.Context, index dsindex.Indexer, detaile
 // always empty (or carries a single [ipfspinner.ErrClosed] entry after
 // Close).
 func (p *pinner) InternalPins(ctx context.Context, detailed bool) <-chan ipfspinner.StreamedPin {
-	if err := p.begin(); err != nil {
+	_, cleanup, err := p.begin(ctx)
+	if err != nil {
 		return errClosedChan(err)
 	}
 	// No background work: balance begin()'s wg.Add before returning the
 	// pre-closed channel.
-	defer p.wg.Done()
+	defer cleanup()
 
 	c := make(chan ipfspinner.StreamedPin)
 	close(c)
@@ -1123,10 +1149,11 @@ func (p *pinner) InternalPins(ctx context.Context, detailed bool) <-chan ipfspin
 //
 // TODO: This will not work when multiple pins are supported
 func (p *pinner) Update(ctx context.Context, from, to cid.Cid, unpin bool) error {
-	if err := p.begin(); err != nil {
+	ctx, cleanup, err := p.begin(ctx)
+	if err != nil {
 		return err
 	}
-	defer p.wg.Done()
+	defer cleanup()
 
 	p.lock.Lock()
 	defer p.lock.Unlock()
@@ -1208,15 +1235,16 @@ func (p *pinner) flushPins(ctx context.Context, force bool) error {
 
 // Flush encodes and writes pinner keysets to the datastore
 func (p *pinner) Flush(ctx context.Context) error {
-	if err := p.begin(); err != nil {
+	ctx, cleanup, err := p.begin(ctx)
+	if err != nil {
 		return err
 	}
-	defer p.wg.Done()
+	defer cleanup()
 
 	p.lock.Lock()
 	defer p.lock.Unlock()
 
-	err := p.flushDagService(ctx, true)
+	err = p.flushDagService(ctx, true)
 	if err != nil {
 		return err
 	}
@@ -1227,10 +1255,11 @@ func (p *pinner) Flush(ctx context.Context) error {
 // PinWithMode allows the user to have fine grained control over pin
 // counts
 func (p *pinner) PinWithMode(ctx context.Context, c cid.Cid, mode ipfspinner.Mode, name string) error {
-	if err := p.begin(); err != nil {
+	ctx, cleanup, err := p.begin(ctx)
+	if err != nil {
 		return err
 	}
-	defer p.wg.Done()
+	defer cleanup()
 
 	// TODO: remove his to support multiple pins per CID
 	switch mode {

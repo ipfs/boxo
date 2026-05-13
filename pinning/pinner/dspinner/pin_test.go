@@ -1672,6 +1672,10 @@ func TestCloseErrClosedAllMethods(t *testing.T) {
 // the pinner's write lock from the test to stall an in-flight Pin
 // past its begin() admission, then verify Close does not return
 // while the Pin is still running.
+// TestCloseWaitsForInFlightOperation asserts Close cannot return
+// while an admitted operation is still running. Pin is blocked on a
+// pinner lock that is not ctx-aware, so the cancellation fan-out
+// cannot unstick it; Close must still wait until Pin actually exits.
 func TestCloseWaitsForInFlightOperation(t *testing.T) {
 	ctx := t.Context()
 
@@ -1708,10 +1712,12 @@ func TestCloseWaitsForInFlightOperation(t *testing.T) {
 	}
 
 	// Releasing the RLock lets Pin acquire Lock and finish; Close
-	// then unblocks.
+	// then unblocks. Pin sees its ctx already cancelled by the time
+	// it acquires the lock (because Close fired stopCancel while Pin
+	// was waiting), so Pin returns context.Canceled.
 	p.lock.RUnlock()
 
-	require.NoError(t, <-pinReturned)
+	require.ErrorIs(t, <-pinReturned, context.Canceled)
 	require.NoError(t, <-closeReturned)
 }
 
@@ -1787,4 +1793,85 @@ func TestCloseConcurrent(t *testing.T) {
 	wg.Wait()
 
 	require.ErrorIs(t, p.Flush(ctx), ipfspin.ErrClosed)
+}
+
+// blockingDAGService blocks Add until its context is cancelled. The
+// first Add call signals via `entered` so a test goroutine can
+// synchronize with it.
+type blockingDAGService struct {
+	ipld.DAGService
+	entered chan struct{}
+}
+
+func (b *blockingDAGService) Add(ctx context.Context, n ipld.Node) error {
+	select {
+	case b.entered <- struct{}{}:
+	default:
+	}
+	<-ctx.Done()
+	return ctx.Err()
+}
+
+// TestCloseCancelsInFlightPin asserts that Close cancels the
+// contexts of admitted in-flight operations. A Pin blocked inside a
+// slow downstream call must return promptly with context.Canceled
+// once Close fires, rather than stalling Close until the call
+// finishes on its own.
+func TestCloseCancelsInFlightPin(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ctx := t.Context()
+		dstore, baseDserv := makeStore()
+		dserv := &blockingDAGService{DAGService: baseDserv, entered: make(chan struct{}, 1)}
+		p, err := New(ctx, dstore, dserv)
+		require.NoError(t, err)
+
+		n, _ := randNode()
+		pinErr := make(chan error, 1)
+		go func() {
+			pinErr <- p.Pin(ctx, n, true, "")
+		}()
+
+		// Pin is blocked inside dserv.Add; the cancel signal it
+		// observes must come from the pinner's stopCtx fan-out.
+		<-dserv.entered
+		synctest.Wait()
+
+		require.NoError(t, p.Close())
+
+		require.ErrorIs(t, <-pinErr, context.Canceled)
+	})
+}
+
+// TestCloseDuringStreamYieldsErrClosed asserts that when Close
+// interrupts a stream goroutine, any error delivered on the channel
+// surfaces as ErrClosed rather than the raw context.Canceled from the
+// derived ctx. Delivery is best-effort (the send select races between
+// ctx.Done and the consumer); the assertion is on the *type* of error
+// when one is delivered.
+func TestCloseDuringStreamYieldsErrClosed(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ctx := t.Context()
+		dstore, dserv := makeStore()
+		p, err := New(ctx, dstore, dserv)
+		require.NoError(t, err)
+
+		pinNodes(makeNodes(4, dserv), p, true)
+
+		// Caller ctx outlives Close, so any error observed is from
+		// the pinner's stopCtx, not parent cancellation.
+		streamCtx, cancel := context.WithCancel(ctx)
+		defer cancel()
+		kch := p.RecursiveKeys(streamCtx, false)
+
+		synctest.Wait()
+
+		require.NoError(t, p.Close())
+
+		for sc := range kch {
+			if sc.Err != nil {
+				require.ErrorIs(t, sc.Err, ipfspin.ErrClosed,
+					"want ErrClosed (not %v) when Close interrupts a stream", sc.Err)
+			}
+		}
+	})
 }
