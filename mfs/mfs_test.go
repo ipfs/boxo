@@ -1133,7 +1133,7 @@ func TestMfsHugeDir(t *testing.T) {
 	_, rt := setupRoot(ctx, t)
 
 	for i := range 10000 {
-		err := Mkdir(rt, fmt.Sprintf("/dir%d", i), MkdirOpts{Mkparents: false, Flush: false})
+		err := Mkdir(rt, fmt.Sprintf("/dir%d", i), MkdirOpts{})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1444,6 +1444,65 @@ func TestConcurrentWrites(t *testing.T) {
 	expected := uint64(10 * nloops)
 	if actual != expected {
 		t.Fatalf("iteration mismatch: expect %d, got %d", expected, actual)
+	}
+}
+
+// TestConcurrentFlushAndClose verifies that calling Flush and Close on the
+// same fileDescriptor from different goroutines does not panic or corrupt
+// data. This guards against the race where a FUSE daemon dispatches FLUSH
+// and RELEASE concurrently for the same file handle (e.g. when FLUSH is
+// interrupted by SIGURG and the kernel sends RELEASE while the flush
+// goroutine is still running).
+func TestConcurrentFlushAndClose(t *testing.T) {
+	ctx := t.Context()
+	ds, rt := setupRoot(ctx, t)
+	dir := rt.GetDirectory()
+
+	nd := dag.NodeWithData(ft.FilePBData(nil, 0))
+	prov := new(fakeProvider)
+
+	// Run many iterations to increase the chance of hitting the race.
+	for range 200 {
+		fi, err := NewFile("test", nd, dir, ds, prov)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		fd, err := fi.Open(Flags{Read: true, Write: true, Sync: true})
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if _, err := fd.Write([]byte("hello")); err != nil {
+			t.Fatal(err)
+		}
+
+		// Launch Flush and Close concurrently. One of them will
+		// acquire the internal mutex first; the other must wait
+		// and then observe a consistent state (either flushed or
+		// closed). Neither should panic.
+		var wg sync.WaitGroup
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			// Flush may succeed or return ErrClosed if Close wins.
+			err := fd.Flush()
+			if err != nil && !errors.Is(err, ErrClosed) {
+				t.Errorf("Flush: unexpected error: %v", err)
+			}
+		}()
+		go func() {
+			defer wg.Done()
+			if err := fd.Close(); err != nil {
+				t.Errorf("Close: %v", err)
+			}
+		}()
+		wg.Wait()
+
+		// A second Close must return ErrClosed.
+		if err := fd.Close(); !errors.Is(err, ErrClosed) {
+			t.Fatalf("expected ErrClosed on double close, got: %v", err)
+		}
 	}
 }
 
@@ -1764,10 +1823,7 @@ func FuzzMkdirAndWriteConcurrently(f *testing.F) {
 	_, root := setupRoot(context.Background(), f)
 
 	f.Fuzz(func(t *testing.T, flush bool, mkparents bool, dir string, filepath string, filecontent []byte) {
-		err := Mkdir(root, dir, MkdirOpts{
-			Mkparents: mkparents,
-			Flush:     flush,
-		})
+		err := Mkdir(root, dir, MkdirOpts{Mkparents: mkparents, Flush: flush})
 		if err != nil {
 			t.Logf("error making dir %s: %s", dir, err)
 			return
@@ -1800,7 +1856,6 @@ func FuzzMkdirAndWriteConcurrently(f *testing.F) {
 func TestRootOptionChunker(t *testing.T) {
 	ctx := t.Context()
 	ds := getDagserv(t)
-
 	// Use 512-byte chunks (non-default: default is 256KB = 262144 bytes).
 	// With default chunker, 2048 bytes would produce 1 chunk.
 	// With our custom 512-byte chunker, it must produce exactly 4 chunks.
@@ -1813,7 +1868,7 @@ func TestRootOptionChunker(t *testing.T) {
 	}
 
 	// Create root with custom chunker (512 bytes)
-	root, err := NewEmptyRoot(ctx, ds, nil, nil, MkdirOpts{}, WithChunker(chunker.SizeSplitterGen(chunkSize)))
+	root, err := NewEmptyRoot(ctx, ds, nil, nil, WithChunker(chunker.SizeSplitterGen(chunkSize)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1879,7 +1934,6 @@ func TestRootOptionChunker(t *testing.T) {
 func TestRootOptionMaxLinks(t *testing.T) {
 	ctx := t.Context()
 	ds := getDagserv(t)
-
 	// Use MaxLinks=3 (non-default: default is ~174 from helpers.DefaultLinksPerBlock).
 	// With default MaxLinks, 4 files would NOT trigger HAMT sharding.
 	// With our custom MaxLinks=3, adding 4 files MUST trigger HAMT.
@@ -1894,7 +1948,7 @@ func TestRootOptionMaxLinks(t *testing.T) {
 		t.Fatal("test uses default SizeEstimationMode; use a non-default value")
 	}
 
-	root, err := NewEmptyRoot(ctx, ds, nil, nil, MkdirOpts{SizeEstimationMode: &sizeEstimationDisabled},
+	root, err := NewEmptyRoot(ctx, ds, nil, nil,
 		WithMaxLinks(maxLinks),
 		WithSizeEstimationMode(sizeEstimationDisabled))
 	if err != nil {
@@ -1902,10 +1956,7 @@ func TestRootOptionMaxLinks(t *testing.T) {
 	}
 
 	// Create subdirectory with explicit opts to ensure MaxLinks and SizeEstimationMode propagate
-	if err := Mkdir(root, "/subdir", MkdirOpts{
-		MaxLinks:           maxLinks,
-		SizeEstimationMode: &sizeEstimationDisabled,
-	}); err != nil {
+	if err := Mkdir(root, "/subdir", MkdirOpts{Mkparents: true, Flush: true}); err != nil {
 		t.Fatal(err)
 	}
 	subdir, err := Lookup(root, "/subdir")
@@ -1973,7 +2024,6 @@ func TestRootOptionMaxLinks(t *testing.T) {
 func TestRootOptionSizeEstimationMode(t *testing.T) {
 	ctx := t.Context()
 	ds := getDagserv(t)
-
 	// Use SizeEstimationDisabled (non-default: default is SizeEstimationLinks=0).
 	// This mode ignores size-based thresholds and only considers link count.
 	// With default SizeEstimationLinks, the size threshold might prevent HAMT
@@ -1987,9 +2037,9 @@ func TestRootOptionSizeEstimationMode(t *testing.T) {
 	const maxLinks = 3
 
 	// Create root with non-default settings
-	root, err := NewEmptyRoot(ctx, ds, nil, nil, MkdirOpts{SizeEstimationMode: &mode},
-		WithSizeEstimationMode(mode),
-		WithMaxLinks(maxLinks))
+	root, err := NewEmptyRoot(ctx, ds, nil, nil,
+		WithMaxLinks(maxLinks),
+		WithSizeEstimationMode(mode))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2023,9 +2073,7 @@ func TestRootOptionSizeEstimationMode(t *testing.T) {
 
 	// Create new root from persisted node with same settings.
 	// This tests that settings propagate to directories loaded from DAG via cacheNode().
-	root2, err := NewRoot(ctx, ds, rootNode.(*dag.ProtoNode), nil, nil,
-		WithSizeEstimationMode(mode),
-		WithMaxLinks(maxLinks))
+	root2, err := NewRoot(ctx, ds, rootNode.(*dag.ProtoNode), nil, nil, WithMaxLinks(maxLinks), WithSizeEstimationMode(mode))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2094,7 +2142,6 @@ func TestRootOptionSizeEstimationMode(t *testing.T) {
 func TestChunkerInheritance(t *testing.T) {
 	ctx := t.Context()
 	ds := getDagserv(t)
-
 	// Use 256-byte chunks (non-default: default is 256KB = 262144 bytes).
 	// With default chunker, 1024 bytes would produce 1 chunk.
 	// With our custom 256-byte chunker, it must produce exactly 4 chunks.
@@ -2108,7 +2155,7 @@ func TestChunkerInheritance(t *testing.T) {
 	}
 
 	// Create root with custom chunker
-	root, err := NewEmptyRoot(ctx, ds, nil, nil, MkdirOpts{}, WithChunker(chunker.SizeSplitterGen(chunkSize)))
+	root, err := NewEmptyRoot(ctx, ds, nil, nil, WithChunker(chunker.SizeSplitterGen(chunkSize)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2179,7 +2226,6 @@ func TestChunkerInheritance(t *testing.T) {
 func TestRootOptionMaxHAMTFanout(t *testing.T) {
 	ctx := t.Context()
 	ds := getDagserv(t)
-
 	// Use custom fanout of 64 (non-default: default is 256).
 	const customFanout = 64
 
@@ -2188,7 +2234,6 @@ func TestRootOptionMaxHAMTFanout(t *testing.T) {
 	const maxLinks = 3
 
 	root, err := NewEmptyRoot(ctx, ds, nil, nil,
-		MkdirOpts{SizeEstimationMode: &sizeEstimationDisabled},
 		WithMaxLinks(maxLinks),
 		WithMaxHAMTFanout(customFanout),
 		WithSizeEstimationMode(sizeEstimationDisabled))
@@ -2197,11 +2242,7 @@ func TestRootOptionMaxHAMTFanout(t *testing.T) {
 	}
 
 	// Create subdirectory
-	if err := Mkdir(root, "/subdir", MkdirOpts{
-		MaxLinks:           maxLinks,
-		MaxHAMTFanout:      customFanout,
-		SizeEstimationMode: &sizeEstimationDisabled,
-	}); err != nil {
+	if err := Mkdir(root, "/subdir", MkdirOpts{Mkparents: true, Flush: true}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -2256,7 +2297,6 @@ func TestRootOptionMaxHAMTFanout(t *testing.T) {
 func TestRootOptionHAMTShardingSize(t *testing.T) {
 	ctx := t.Context()
 	ds := getDagserv(t)
-
 	// Use very small threshold of 100 bytes (non-default: default is 256KiB).
 	// This should trigger HAMT conversion with just a few small files.
 	const customShardingSize = 100
@@ -2265,7 +2305,6 @@ func TestRootOptionHAMTShardingSize(t *testing.T) {
 	sizeEstimationBlock := uio.SizeEstimationBlock
 
 	root, err := NewEmptyRoot(ctx, ds, nil, nil,
-		MkdirOpts{SizeEstimationMode: &sizeEstimationBlock},
 		WithHAMTShardingSize(customShardingSize),
 		WithSizeEstimationMode(sizeEstimationBlock))
 	if err != nil {
@@ -2273,9 +2312,7 @@ func TestRootOptionHAMTShardingSize(t *testing.T) {
 	}
 
 	// Create subdirectory
-	if err := Mkdir(root, "/subdir", MkdirOpts{
-		SizeEstimationMode: &sizeEstimationBlock,
-	}); err != nil {
+	if err := Mkdir(root, "/subdir", MkdirOpts{Mkparents: true, Flush: true}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -2338,14 +2375,12 @@ func TestRootOptionHAMTShardingSize(t *testing.T) {
 func TestHAMTShardingSizeInheritance(t *testing.T) {
 	ctx := t.Context()
 	ds := getDagserv(t)
-
 	// Use very small threshold
 	const customShardingSize = 150
 	sizeEstimationBlock := uio.SizeEstimationBlock
 
 	// Create root with custom settings
 	root, err := NewEmptyRoot(ctx, ds, nil, nil,
-		MkdirOpts{SizeEstimationMode: &sizeEstimationBlock},
 		WithHAMTShardingSize(customShardingSize),
 		WithSizeEstimationMode(sizeEstimationBlock))
 	if err != nil {
@@ -2378,9 +2413,7 @@ func TestHAMTShardingSizeInheritance(t *testing.T) {
 	}
 
 	// Create new root from persisted node with same settings
-	root2, err := NewRoot(ctx, ds, rootNode.(*dag.ProtoNode), nil, nil,
-		WithHAMTShardingSize(customShardingSize),
-		WithSizeEstimationMode(sizeEstimationBlock))
+	root2, err := NewRoot(ctx, ds, rootNode.(*dag.ProtoNode), nil, nil, WithHAMTShardingSize(customShardingSize), WithSizeEstimationMode(sizeEstimationBlock))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2431,13 +2464,12 @@ func TestHAMTShardingSizeInheritance(t *testing.T) {
 func TestMkdirParentsChunker(t *testing.T) {
 	ctx := t.Context()
 	ds := getDagserv(t)
-
 	// Create root with 256-byte chunker (the "default" for this test).
 	// This is what intermediate directories would incorrectly inherit
 	// if the bug exists.
 	rootChunkSize := int64(256)
-	root, err := NewEmptyRoot(ctx, ds, nil, nil, MkdirOpts{},
-		WithChunker(chunker.SizeSplitterGen(rootChunkSize)))
+
+	root, err := NewEmptyRoot(ctx, ds, nil, nil, WithChunker(chunker.SizeSplitterGen(rootChunkSize)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2446,10 +2478,7 @@ func TestMkdirParentsChunker(t *testing.T) {
 	// The bug: intermediate directory /a inherits root's 256-byte chunker
 	// instead of the 128-byte chunker specified in opts.
 	optsChunkSize := int64(128)
-	err = Mkdir(root, "/a/b/c", MkdirOpts{
-		Mkparents: true,
-		Chunker:   chunker.SizeSplitterGen(optsChunkSize),
-	})
+	err = Mkdir(root, "/a/b/c", MkdirOpts{Mkparents: true}, WithChunker(chunker.SizeSplitterGen(optsChunkSize)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2495,5 +2524,300 @@ func TestMkdirParentsChunker(t *testing.T) {
 	links := node.Links()
 	if len(links) != 4 {
 		t.Fatalf("intermediate dir should use opts.Chunker (128-byte, 4 chunks), not root's (256-byte, 2 chunks); got %d links", len(links))
+	}
+}
+
+// TestCidBuilderPreservedAfterFileMetadataChange verifies that calling
+// SetMode or SetModTime on a file does not silently reset its CidBuilder.
+func TestCidBuilderPreservedAfterFileMetadataChange(t *testing.T) {
+	ctx := t.Context()
+	ds := getDagserv(t)
+
+	// Use SHA2_512 so a silent reset to the default SHA2_256 is detectable.
+	builder := cid.V1Builder{Codec: cid.DagProtobuf, MhType: multihash.SHA2_512}
+
+	root, err := NewEmptyRoot(ctx, ds, nil, nil, WithCidBuilder(builder))
+	if err != nil {
+		t.Fatal(err)
+	}
+	rootdir := root.GetDirectory()
+
+	// Create an empty file with the same CidBuilder.
+	nd := dag.NodeWithData(ft.FilePBData(nil, 0))
+	nd.SetCidBuilder(builder)
+	if err := ds.Add(ctx, nd); err != nil {
+		t.Fatal(err)
+	}
+	if err := rootdir.AddChild("file", nd); err != nil {
+		t.Fatal(err)
+	}
+
+	fi, err := rootdir.Child("file")
+	if err != nil {
+		t.Fatal(err)
+	}
+	file := fi.(*File)
+
+	// Verify CidBuilder survives SetMode.
+	if err := file.SetMode(0o644); err != nil {
+		t.Fatal(err)
+	}
+	gotNode, err := file.GetNode()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotNode.Cid().Prefix().MhType != multihash.SHA2_512 {
+		t.Fatalf("after SetMode: expected SHA2_512 hash, got %v", gotNode.Cid().Prefix().MhType)
+	}
+
+	// Verify CidBuilder survives SetModTime.
+	if err := file.SetModTime(time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	gotNode, err = file.GetNode()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotNode.Cid().Prefix().MhType != multihash.SHA2_512 {
+		t.Fatalf("after SetModTime: expected SHA2_512 hash, got %v", gotNode.Cid().Prefix().MhType)
+	}
+}
+
+// TestCidBuilderPreservedAfterDirMetadataChange verifies that calling
+// SetMode or SetModTime on a directory does not silently reset its CidBuilder.
+func TestCidBuilderPreservedAfterDirMetadataChange(t *testing.T) {
+	ctx := t.Context()
+	ds := getDagserv(t)
+
+	builder := cid.V1Builder{Codec: cid.DagProtobuf, MhType: multihash.SHA2_512}
+
+	root, err := NewEmptyRoot(ctx, ds, nil, nil, WithCidBuilder(builder))
+	if err != nil {
+		t.Fatal(err)
+	}
+	rootdir := root.GetDirectory()
+
+	child, err := rootdir.Mkdir("subdir")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify CidBuilder survives SetMode.
+	if err := child.SetMode(0o755); err != nil {
+		t.Fatal(err)
+	}
+	nd, err := child.GetNode()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if nd.Cid().Prefix().MhType != multihash.SHA2_512 {
+		t.Fatalf("after SetMode: expected SHA2_512 hash, got %v", nd.Cid().Prefix().MhType)
+	}
+
+	// Verify CidBuilder survives SetModTime.
+	if err := child.SetModTime(time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	nd, err = child.GetNode()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if nd.Cid().Prefix().MhType != multihash.SHA2_512 {
+		t.Fatalf("after SetModTime: expected SHA2_512 hash, got %v", nd.Cid().Prefix().MhType)
+	}
+}
+
+// TestMkdirInheritsCidBuilderAndSizeEstimation verifies that Directory.Mkdir
+// (the convenience method without explicit opts) inherits CidBuilder and
+// SizeEstimationMode from its parent.
+func TestMkdirInheritsCidBuilderAndSizeEstimation(t *testing.T) {
+	ctx := t.Context()
+	ds := getDagserv(t)
+
+	builder := cid.V1Builder{Codec: cid.DagProtobuf, MhType: multihash.SHA2_512}
+	sizeMode := uio.SizeEstimationDisabled
+
+	root, err := NewEmptyRoot(ctx, ds, nil, nil,
+		WithCidBuilder(builder),
+		WithSizeEstimationMode(sizeMode))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	child, err := root.GetDirectory().Mkdir("child")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify CidBuilder inherited.
+	nd, err := child.GetNode()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if nd.Cid().Prefix().MhType != multihash.SHA2_512 {
+		t.Fatalf("child dir: expected SHA2_512 hash, got %v", nd.Cid().Prefix().MhType)
+	}
+
+	// Verify SizeEstimationMode inherited.
+	if got := child.unixfsDir.GetSizeEstimationMode(); got != uio.SizeEstimationDisabled {
+		t.Fatalf("child dir: expected SizeEstimationDisabled, got %v", got)
+	}
+}
+
+// TestOpsMkdirFallbackToRootDefaults verifies that Mkdir (the top-level
+// function in ops.go) inherits CidBuilder and SizeEstimationMode from the
+// root directory when the caller does not set them explicitly.
+func TestOpsMkdirFallbackToRootDefaults(t *testing.T) {
+	ctx := t.Context()
+	ds := getDagserv(t)
+
+	builder := cid.V1Builder{Codec: cid.DagProtobuf, MhType: multihash.SHA2_512}
+	sizeMode := uio.SizeEstimationDisabled
+
+	root, err := NewEmptyRoot(ctx, ds, nil, nil,
+		WithCidBuilder(builder),
+		WithSizeEstimationMode(sizeMode))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create nested dirs without specifying CidBuilder or SizeEstimationMode.
+	err = Mkdir(root, "/a/b/c", MkdirOpts{Mkparents: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, p := range []string{"a", "a/b", "a/b/c"} {
+		fsn, err := Lookup(root, "/"+p)
+		if err != nil {
+			t.Fatalf("lookup %s: %v", p, err)
+		}
+		dir := fsn.(*Directory)
+
+		nd, err := dir.GetNode()
+		if err != nil {
+			t.Fatalf("%s GetNode: %v", p, err)
+		}
+		if nd.Cid().Prefix().MhType != multihash.SHA2_512 {
+			t.Fatalf("/%s: expected SHA2_512 hash, got %v", p, nd.Cid().Prefix().MhType)
+		}
+		if got := dir.unixfsDir.GetSizeEstimationMode(); got != uio.SizeEstimationDisabled {
+			t.Fatalf("/%s: expected SizeEstimationDisabled, got %v", p, got)
+		}
+	}
+}
+
+// TestFlushUpAfterUnlink verifies that a file's flushUp (triggered by
+// Close) does not re-add a directory entry that was removed by Unlink.
+// This race occurs in FUSE mounts where Close (RELEASE) and Rename
+// are dispatched in separate goroutines.
+func TestFlushUpAfterUnlink(t *testing.T) {
+	ctx := context.Background()
+	dagserv := getDagserv(t)
+
+	root, err := NewEmptyRoot(ctx, dagserv, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := root.GetDirectory()
+
+	// Create a file and flush so it's committed to the DAG.
+	fileNode := dag.NodeWithData(ft.FilePBData(nil, 0))
+	if err := dir.AddChild("victim", fileNode); err != nil {
+		t.Fatal(err)
+	}
+	if err := dir.Flush(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Open the file for writing (like FUSE Open does).
+	child, err := dir.Child("victim")
+	if err != nil {
+		t.Fatal(err)
+	}
+	fi := child.(*File)
+	fd, err := fi.Open(Flags{Write: true, Sync: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Write some data so the file is dirty.
+	if _, err := fd.Write([]byte("data")); err != nil {
+		t.Fatal(err)
+	}
+
+	// Unlink the file (like FUSE Rename does: unlink source).
+	if err := dir.Unlink("victim"); err != nil {
+		t.Fatal(err)
+	}
+
+	// Now close the file descriptor. This triggers flushUp which
+	// propagates the dirty node to the parent directory via
+	// localUpdate. Without the fix, localUpdate would re-add
+	// "victim" to the directory.
+	if err := fd.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	// The directory should NOT contain "victim".
+	names, err := dir.ListNames(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if slices.Contains(names, "victim") {
+		t.Fatalf("unlinked file re-appeared in directory listing: %v", names)
+	}
+
+	// List should agree with ListNames.
+	listing, err := dir.List(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range listing {
+		if entry.Name == "victim" {
+			t.Fatalf("unlinked file re-appeared in List: %v", listing)
+		}
+	}
+}
+
+// TestSetModePreservesContent verifies that SetMode does not drop the
+// file's content links. This was a bug where setNodeData created a
+// bare ProtoNode from metadata bytes without copying the child links
+// from the old node.
+func TestSetModePreservesContent(t *testing.T) {
+	ctx := context.Background()
+	dagserv := getDagserv(t)
+
+	root, err := NewEmptyRoot(ctx, dagserv, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := root.GetDirectory()
+
+	fileNode := dag.NodeWithData(ft.FilePBData(nil, 0))
+	dir.AddChild("test", fileNode)
+	dir.Flush()
+
+	child, _ := dir.Child("test")
+	fi := child.(*File)
+
+	// Write content and flush.
+	fd, _ := fi.Open(Flags{Write: true, Sync: true})
+	fd.Write([]byte("hello world"))
+	fd.Flush()
+	fd.Close()
+
+	// Set mode (this calls setNodeData internally).
+	fi.SetMode(0o755)
+
+	// Reopen and read: content must still be present.
+	fd2, _ := fi.Open(Flags{Read: true})
+	sz, _ := fd2.Size()
+	buf := make([]byte, 100)
+	n, _ := fd2.Read(buf)
+	fd2.Close()
+
+	if sz != 11 || n != 11 || string(buf[:n]) != "hello world" {
+		t.Fatalf("content lost after SetMode: size=%d read=%d data=%q", sz, n, buf[:n])
 	}
 }

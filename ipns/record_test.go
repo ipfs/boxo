@@ -363,3 +363,269 @@ func TestUnmarshal(t *testing.T) {
 		require.Equal(t, "/ipfs/"+testCid, recPath.String())
 	})
 }
+
+func TestMetadataAPI(t *testing.T) {
+	t.Parallel()
+
+	sk, _, _ := mustKeyPair(t, ic.Ed25519)
+
+	eol := time.Now().Add(time.Hour)
+	path, err := path.Join(testPath, string([]byte{0x00}))
+	require.NoError(t, err)
+	seq := uint64(1)
+	ttl := time.Hour
+
+	t.Run("set and get all types", func(t *testing.T) {
+		rec := mustNewRecord(t, sk, path, seq, eol, ttl, WithMetadata(map[string]any{
+			"_str":   "test",
+			"_int64": int64(1212),
+			"_int":   42,
+			"_bytes": []byte{1, 2, 3, 4},
+			"_bool":  true,
+		}))
+
+		require.False(t, rec.MetadataExists("non_existent_key"))
+		require.True(t, rec.MetadataExists("_str"))
+
+		_, err := rec.Metadata("_non_existent_key")
+		require.ErrorIs(t, err, ErrMetadataNotFound)
+
+		mv, err := rec.Metadata("_str")
+		require.NoError(t, err)
+		assert.Equal(t, MetadataKindString, mv.Kind())
+		s, err := mv.AsString()
+		require.NoError(t, err)
+		assert.Equal(t, "test", s)
+
+		mv, err = rec.Metadata("_int64")
+		require.NoError(t, err)
+		assert.Equal(t, MetadataKindInt, mv.Kind())
+		i, err := mv.AsInt()
+		require.NoError(t, err)
+		assert.Equal(t, int64(1212), i)
+
+		mv, err = rec.Metadata("_int")
+		require.NoError(t, err)
+		assert.Equal(t, MetadataKindInt, mv.Kind())
+		i, err = mv.AsInt()
+		require.NoError(t, err)
+		assert.Equal(t, int64(42), i)
+
+		mv, err = rec.Metadata("_bytes")
+		require.NoError(t, err)
+		assert.Equal(t, MetadataKindBytes, mv.Kind())
+		b, err := mv.AsBytes()
+		require.NoError(t, err)
+		assert.Equal(t, []byte{1, 2, 3, 4}, b)
+
+		mv, err = rec.Metadata("_bool")
+		require.NoError(t, err)
+		assert.Equal(t, MetadataKindBool, mv.Kind())
+		bl, err := mv.AsBool()
+		require.NoError(t, err)
+		assert.Equal(t, true, bl)
+	})
+
+	t.Run("reject reserved keys on write", func(t *testing.T) {
+		for key := range reservedKeys {
+			rec, err := NewRecord(sk, path, seq, eol, ttl, WithMetadata(map[string]any{
+				key: "test",
+			}))
+			require.ErrorIs(t, err, ErrMetadataConflict)
+			require.Nil(t, rec)
+		}
+	})
+
+	t.Run("reject reserved keys on read", func(t *testing.T) {
+		rec := mustNewRecord(t, sk, path, seq, eol, ttl)
+
+		for key := range reservedKeys {
+			_, err := rec.Metadata(key)
+			require.ErrorIs(t, err, ErrMetadataConflict, "Metadata(%q) should return ErrMetadataConflict", key)
+			require.False(t, rec.MetadataExists(key), "MetadataExists(%q) should return false for reserved key", key)
+		}
+	})
+
+	t.Run("reject unsupported value types", func(t *testing.T) {
+		for _, val := range []any{float64(3.14), uint64(1), struct{}{}} {
+			rec, err := NewRecord(sk, path, seq, eol, ttl, WithMetadata(map[string]any{
+				"_bad": val,
+			}))
+			require.ErrorIs(t, err, ErrMetadataUnsupportedType, "value type %T should be rejected", val)
+			require.Nil(t, rec)
+		}
+	})
+
+	t.Run("reject nil value", func(t *testing.T) {
+		rec, err := NewRecord(sk, path, seq, eol, ttl, WithMetadata(map[string]any{
+			"_nil": nil,
+		}))
+		require.ErrorIs(t, err, ErrInvalidRecord)
+		require.Nil(t, rec)
+	})
+
+	t.Run("marshal/unmarshal roundtrip", func(t *testing.T) {
+		rec := mustNewRecord(t, sk, path, seq, eol, ttl, WithMetadata(map[string]any{
+			"_str":   "test",
+			"_int":   int64(1212),
+			"_bytes": []byte{1, 2, 3, 4},
+			"_bool":  true,
+		}))
+
+		data, err := MarshalRecord(rec)
+		require.NoError(t, err)
+
+		rec2, err := UnmarshalRecord(data)
+		require.NoError(t, err)
+
+		mv, err := rec2.Metadata("_str")
+		require.NoError(t, err)
+		s, err := mv.AsString()
+		require.NoError(t, err)
+		assert.Equal(t, "test", s)
+
+		mv, err = rec2.Metadata("_int")
+		require.NoError(t, err)
+		i, err := mv.AsInt()
+		require.NoError(t, err)
+		assert.Equal(t, int64(1212), i)
+
+		mv, err = rec2.Metadata("_bytes")
+		require.NoError(t, err)
+		b, err := mv.AsBytes()
+		require.NoError(t, err)
+		assert.Equal(t, []byte{1, 2, 3, 4}, b)
+
+		mv, err = rec2.Metadata("_bool")
+		require.NoError(t, err)
+		bl, err := mv.AsBool()
+		require.NoError(t, err)
+		assert.Equal(t, true, bl)
+
+		require.False(t, rec2.MetadataExists("non_existent_key"))
+	})
+
+	t.Run("iterate metadata entries", func(t *testing.T) {
+		rec := mustNewRecord(t, sk, path, seq, eol, ttl, WithMetadata(map[string]any{
+			"_custom_a": "alpha",
+			"_custom_b": int64(42),
+		}))
+
+		got := make(map[string]MetadataValue)
+		for k, v := range rec.MetadataEntries() {
+			got[k] = v
+		}
+		require.Len(t, got, 2)
+
+		s, err := got["_custom_a"].AsString()
+		require.NoError(t, err)
+		assert.Equal(t, "alpha", s)
+
+		i, err := got["_custom_b"].AsInt()
+		require.NoError(t, err)
+		assert.Equal(t, int64(42), i)
+	})
+
+	t.Run("iterate empty metadata", func(t *testing.T) {
+		rec := mustNewRecord(t, sk, path, seq, eol, ttl)
+
+		count := 0
+		for range rec.MetadataEntries() {
+			count++
+		}
+		assert.Equal(t, 0, count)
+	})
+
+	t.Run("reject empty key on write", func(t *testing.T) {
+		rec, err := NewRecord(sk, path, seq, eol, ttl, WithMetadata(map[string]any{
+			"": "test",
+		}))
+		require.ErrorIs(t, err, ErrMetadataEmptyKey)
+		require.Nil(t, rec)
+	})
+
+	t.Run("zero-value MetadataValue returns error", func(t *testing.T) {
+		var mv MetadataValue
+		assert.Equal(t, MetadataKindInvalid, mv.Kind())
+
+		_, err := mv.AsString()
+		require.ErrorIs(t, err, ErrMetadataValueNotSet)
+
+		_, err = mv.AsBytes()
+		require.ErrorIs(t, err, ErrMetadataValueNotSet)
+
+		_, err = mv.AsInt()
+		require.ErrorIs(t, err, ErrMetadataValueNotSet)
+
+		_, err = mv.AsBool()
+		require.ErrorIs(t, err, ErrMetadataValueNotSet)
+	})
+
+	t.Run("type mismatch returns error", func(t *testing.T) {
+		rec := mustNewRecord(t, sk, path, seq, eol, ttl, WithMetadata(map[string]any{
+			"_int_val": int64(42),
+		}))
+
+		mv, err := rec.Metadata("_int_val")
+		require.NoError(t, err)
+		assert.Equal(t, MetadataKindInt, mv.Kind())
+
+		_, err = mv.AsString()
+		require.Error(t, err)
+
+		_, err = mv.AsBool()
+		require.Error(t, err)
+	})
+
+	t.Run("nil and empty metadata map", func(t *testing.T) {
+		rec := mustNewRecord(t, sk, path, seq, eol, ttl, WithMetadata(nil))
+		count := 0
+		for range rec.MetadataEntries() {
+			count++
+		}
+		assert.Equal(t, 0, count)
+
+		rec = mustNewRecord(t, sk, path, seq, eol, ttl, WithMetadata(map[string]any{}))
+		count = 0
+		for range rec.MetadataEntries() {
+			count++
+		}
+		assert.Equal(t, 0, count)
+	})
+
+	t.Run("metadata keys sorted with standard keys in CBOR", func(t *testing.T) {
+		rec := mustNewRecord(t, sk, path, seq, eol, ttl, WithMetadata(map[string]any{
+			"_z":   "last",
+			"_a":   "first",
+			"_mid": "middle",
+		}))
+
+		data, err := MarshalRecord(rec)
+		require.NoError(t, err)
+
+		rec2, err := UnmarshalRecord(data)
+		require.NoError(t, err)
+
+		// Walk the CBOR map and collect all keys in order
+		var keys []string
+		mi := rec2.node.MapIterator()
+		for !mi.Done() {
+			k, _, err := mi.Next()
+			require.NoError(t, err)
+			s, err := k.AsString()
+			require.NoError(t, err)
+			keys = append(keys, s)
+		}
+
+		// DAG-CBOR: sorted by length, then lexicographic
+		expected := []string{
+			"_a", "_z", // len 2
+			"TTL", "_mid", // len 3 (T < _)
+			"Value",        // len 5
+			"Sequence",     // len 8
+			"Validity",     // len 8
+			"ValidityType", // len 12
+		}
+		require.Equal(t, expected, keys)
+	})
+}

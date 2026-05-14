@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"fmt"
 	"runtime"
 	"slices"
 	"strconv"
@@ -321,4 +322,221 @@ func TestNewPrioritizedProvider(t *testing.T) {
 			require.Equal(t, tc.expected, received)
 		})
 	}
+}
+
+// TestPrioritizedProvider_StreamErrorContinues verifies that a failure
+// in one stream does not prevent subsequent streams from running.
+// e.g. MFS flush failure should not block pinned content from being provided.
+func TestPrioritizedProvider_StreamErrorContinues(t *testing.T) {
+	cids := makeCIDs(3)
+
+	failingStream := func(_ context.Context) (<-chan cid.Cid, error) {
+		return nil, fmt.Errorf("stream init failed")
+	}
+	goodStream := newMockKeyChanFunc(cids)
+
+	// failing stream first, good stream second
+	stream := NewPrioritizedProvider(failingStream, goodStream)
+	ch, err := stream(t.Context())
+	require.NoError(t, err)
+
+	var received []cid.Cid
+	for c := range ch {
+		received = append(received, c)
+	}
+	// good stream should still produce its CIDs despite the first stream failing
+	require.Equal(t, cids, received)
+}
+
+// TestPrioritizedProvider_ContextCancellation verifies that context
+// cancellation stops the provider cleanly without hanging.
+func TestPrioritizedProvider_ContextCancellation(t *testing.T) {
+	// slow stream that blocks until context is cancelled
+	slowStream := func(ctx context.Context) (<-chan cid.Cid, error) {
+		ch := make(chan cid.Cid)
+		go func() {
+			defer close(ch)
+			<-ctx.Done()
+		}()
+		return ch, nil
+	}
+
+	ctx, cancel := context.WithCancel(t.Context())
+	stream := NewPrioritizedProvider(slowStream)
+	ch, err := stream(ctx)
+	require.NoError(t, err)
+
+	cancel()
+	// channel should close promptly after cancellation
+	for range ch {
+		t.Fatal("should not receive CIDs after cancellation")
+	}
+}
+
+// TestPrioritizedProvider_ThreeStreams verifies correct ordering and
+// dedup across three streams (the common case: MFS + pinned + direct).
+func TestPrioritizedProvider_ThreeStreams(t *testing.T) {
+	cids := makeCIDs(9)
+	s1 := newMockKeyChanFunc(cids[:3])                          // highest priority
+	s2 := newMockKeyChanFunc(append(cids[1:4:4], cids[4:6]...)) // overlaps with s1
+	s3 := newMockKeyChanFunc(cids[6:])                          // lowest priority
+
+	stream := NewPrioritizedProvider(s1, s2, s3)
+	ch, err := stream(t.Context())
+	require.NoError(t, err)
+
+	var received []cid.Cid
+	for c := range ch {
+		received = append(received, c)
+	}
+	// s1: 0,1,2 (all new)
+	// s2: 1,2 skipped (seen in s1), 3,4,5 new
+	// s3: 6,7,8 (all new, last stream so no dedup tracking)
+	require.Equal(t, []cid.Cid{
+		cids[0], cids[1], cids[2], // s1
+		cids[3], cids[4], cids[5], // s2 (deduped 1,2)
+		cids[6], cids[7], cids[8], // s3
+	}, received)
+}
+
+// TestPrioritizedProvider_AllStreamsFail verifies that when every
+// stream fails, the output channel closes cleanly with no CIDs.
+func TestPrioritizedProvider_AllStreamsFail(t *testing.T) {
+	fail := func(_ context.Context) (<-chan cid.Cid, error) {
+		return nil, fmt.Errorf("fail")
+	}
+	stream := NewPrioritizedProvider(fail, fail, fail)
+	ch, err := stream(t.Context())
+	require.NoError(t, err)
+
+	var received []cid.Cid
+	for c := range ch {
+		received = append(received, c)
+	}
+	require.Empty(t, received)
+}
+
+// TestPrioritizedProvider_ErrorContinues verifies that a failing stream
+// does not prevent subsequent streams from being processed. This is a
+// regression test for a bug where the goroutine returned on error
+// instead of continuing to the next stream.
+func TestPrioritizedProvider_ErrorContinues(t *testing.T) {
+	cids := makeCIDs(3)
+	fail := func(_ context.Context) (<-chan cid.Cid, error) {
+		return nil, fmt.Errorf("stream error")
+	}
+	good := newMockKeyChanFunc(cids)
+
+	stream := NewPrioritizedProvider(fail, good)
+	ch, err := stream(t.Context())
+	require.NoError(t, err)
+
+	var received []cid.Cid
+	for c := range ch {
+		received = append(received, c)
+	}
+	require.Equal(t, cids, received,
+		"CIDs from the good stream must still be emitted after a prior stream fails")
+}
+
+// TestNewConcatProvider verifies that ConcatProvider concatenates
+// streams in order without deduplication. Unlike PrioritizedProvider,
+// duplicate CIDs across streams are NOT filtered.
+func TestNewConcatProvider(t *testing.T) {
+	cids := makeCIDs(6)
+
+	t.Run("concatenates in order", func(t *testing.T) {
+		s1 := newMockKeyChanFunc(cids[:3])
+		s2 := newMockKeyChanFunc(cids[3:])
+
+		stream := NewConcatProvider(s1, s2)
+		ch, err := stream(t.Context())
+		require.NoError(t, err)
+
+		var received []cid.Cid
+		for c := range ch {
+			received = append(received, c)
+		}
+		require.Equal(t, cids, received)
+	})
+
+	t.Run("duplicates are NOT filtered", func(t *testing.T) {
+		// same CIDs in both streams -- ConcatProvider passes them all through
+		s1 := newMockKeyChanFunc(cids[:3])
+		s2 := newMockKeyChanFunc(cids[:3])
+
+		stream := NewConcatProvider(s1, s2)
+		ch, err := stream(t.Context())
+		require.NoError(t, err)
+
+		var received []cid.Cid
+		for c := range ch {
+			received = append(received, c)
+		}
+		expected := append(cids[:3:3], cids[:3]...)
+		require.Equal(t, expected, received)
+	})
+
+	t.Run("stream error skips to next", func(t *testing.T) {
+		failing := func(_ context.Context) (<-chan cid.Cid, error) {
+			return nil, fmt.Errorf("init failed")
+		}
+		good := newMockKeyChanFunc(cids[:3])
+
+		stream := NewConcatProvider(failing, good)
+		ch, err := stream(t.Context())
+		require.NoError(t, err)
+
+		var received []cid.Cid
+		for c := range ch {
+			received = append(received, c)
+		}
+		require.Equal(t, cids[:3], received)
+	})
+
+	t.Run("single stream", func(t *testing.T) {
+		stream := NewConcatProvider(newMockKeyChanFunc(cids))
+		ch, err := stream(t.Context())
+		require.NoError(t, err)
+
+		var received []cid.Cid
+		for c := range ch {
+			received = append(received, c)
+		}
+		require.Equal(t, cids, received)
+	})
+
+	t.Run("empty streams", func(t *testing.T) {
+		empty := newMockKeyChanFunc(nil)
+		stream := NewConcatProvider(empty, newMockKeyChanFunc(cids[:2]))
+		ch, err := stream(t.Context())
+		require.NoError(t, err)
+
+		var received []cid.Cid
+		for c := range ch {
+			received = append(received, c)
+		}
+		require.Equal(t, cids[:2], received)
+	})
+
+	t.Run("context cancellation stops cleanly", func(t *testing.T) {
+		slowStream := func(ctx context.Context) (<-chan cid.Cid, error) {
+			ch := make(chan cid.Cid)
+			go func() {
+				defer close(ch)
+				<-ctx.Done()
+			}()
+			return ch, nil
+		}
+
+		ctx, cancel := context.WithCancel(t.Context())
+		stream := NewConcatProvider(slowStream)
+		ch, err := stream(ctx)
+		require.NoError(t, err)
+
+		cancel()
+		for range ch {
+			t.Fatal("should not receive CIDs after cancellation")
+		}
+	})
 }

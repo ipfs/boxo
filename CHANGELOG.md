@@ -16,14 +16,59 @@ The following emojis are used to highlight certain changes:
 
 ### Added
 
-- `routing/http/client`: `WithProviderInfoFunc` option resolves provider addresses at provide-time instead of client construction time. This only impacts legacy HTTP-only custom routing setups that depend on [IPIP-526](https://github.com/ipfs/specs/pull/526) and were sending unresolved `0.0.0.0` addresses in provider records instead of actual interface addresses. [#1115](https://github.com/ipfs/boxo/pull/1115)
-- `chunker`: added `Register` function to allow custom chunkers to be registered for use with `FromString`.
+- 🛠 `pinning/pinner`: added `Pinner.Close() error`. Close cancels every in-flight operation's context, including streaming goroutines from `RecursiveKeys`, `DirectKeys`, and `InternalPins`, and waits for them to return. A scalar method that observes the cancellation may return `context.Canceled`; a stream interrupted by Close may surface `ErrClosed` on the channel before it closes. After Close returns, every other method returns the new `ErrClosed` sentinel; streaming methods deliver it as `StreamedPin.Err` on a single entry, then close the channel. Close is idempotent and goroutine-safe. **Action required:** downstream `Pinner` implementations must add `Close`. [#1150](https://github.com/ipfs/boxo/pull/1150)
+- `pinning/pinner/dspinner`: implements `Close`. Close cancels the contexts of in-flight operations, so snapshot iteration in `RecursiveKeys`/`DirectKeys` and DAG fetches in `Pin` bail out promptly instead of draining to completion. Close returns as soon as those operations honor their ctx. Hosts owning the datastore should call `Close` on the pinner before closing the datastore to avoid the use-after-close panic path in stores such as pebble. [#1150](https://github.com/ipfs/boxo/pull/1150)
 
 ### Changed
 
 - 🛠 `files`: `File` interface no longer embeds `io.Seeker`. Implementations that support seeking (e.g. `ReaderFile` wrapping a seekable reader, `Symlink`, UnixFS files) still have a `Seek` method, but callers must type-assert to `io.Seeker` instead of assuming all files are seekable. This fixes interface-sniffing bugs where non-seekable readers (HTTP multipart streams, `WebFile`) falsely advertised seek support and caused runtime errors in downstream consumers like `go-car`. [#1128](https://github.com/ipfs/boxo/pull/1128)
+
+### Removed
+
+### Fixed
+
+- `files`: now builds under `GOOS=js GOARCH=wasm` and `GOOS=wasip1 GOARCH=wasm`. [#935](https://github.com/ipfs/boxo/pull/935)
+
+### Security
+
+
+## [v0.39.0]
+
+### Added
+
+- `gateway`: `Config.MaxDeserializedResponseSize` allows setting a maximum file/directory size for deserialized gateway responses. Content exceeding this limit returns `410 Gone`, directing users to run their own IPFS node. Trustless response formats (`application/vnd.ipld.raw`, `application/vnd.ipld.car`) are not affected. The size is read from the UnixFS root block, so no extra block fetches are needed for the check. [#1138](https://github.com/ipfs/boxo/pull/1138)
+- `gateway`: `Config.MaxUnixFSDAGResponseSize` allows setting a maximum content size applied to all response formats (deserialized, raw blocks, CAR, TAR). Content exceeding this limit returns `410 Gone`. For most handlers the check reuses size information already available in the request path; for CAR responses a lightweight `Head` call is made only when the limit is configured. [#1138](https://github.com/ipfs/boxo/pull/1138)
+
+### Changed
+
+- `bitswap/server`: the default peer comparator now schedules peers fairly. A peer that has never been served, or has waited longer than 10s, outranks non-starved peers. Pending counts cap at 16 for ordering purposes, so peers with small wantlists no longer wait behind peers with large ones. The final tiebreak uses a per-process salted hash of peer.ID, so no peer can craft an ID that permanently outranks everyone. Engines built with `WithTaskComparator` keep their existing behavior. [#1141](https://github.com/ipfs/boxo/issues/1141)
+- upgrade to `go-libp2p-kad-dht` [v0.39.1](https://github.com/libp2p/go-libp2p-kad-dht/releases/tag/v0.39.1)
+
+### Fixed
+
+- `bitswap/network/bsnet`: `SendMessage` and `handleNewStream` now close streams in a background goroutine. Previously, `stream.Close` could hold the caller for up to `DefaultNegotiationTimeout` (10s) while `lazyClientConn.Close` waited for the remote peer to complete the multistream handshake. This saturated the bitswap `TaskWorkerCount` pool when peers were unresponsive and stopped bitswap from serving blocks to other peers. As a side effect, `SendMessage` no longer returns errors from `stream.Close`; close failures are logged at Debug. [#1142](https://github.com/ipfs/boxo/issues/1142)
+- `bitswap/server`: a peer with a single pending want no longer waits behind peers with large wantlists. [#1141](https://github.com/ipfs/boxo/issues/1141)
+- `pinner/dspinner`: `RecursiveKeys` and `DirectKeys` now snapshot the pin index under the read lock and release it before emitting pins, so a slow consumer (e.g. the reprovider draining the channel at DHT speed under `Provide.Strategy=pinned*`) can no longer starve `Pin`/`Unpin`/`Flush` writers. [#1140](https://github.com/ipfs/boxo/pull/1140)
+
+
+## [v0.38.0]
+
+### Added
+
+- `ipns`: `NewRecord` accepts `WithMetadata(map[string]any)` option for storing custom scalar key-value pairs (string, `[]byte`, int64, int, bool) in the signed DAG-CBOR data of IPNS records. Metadata can be read back via `Record.Metadata` (returns typed `MetadataValue` with `Kind()` discriminator) and iterated with `Record.MetadataEntries`. Reserved IPNS field names, empty keys, and unsupported value types are rejected. [#1085](https://github.com/ipfs/boxo/pull/1085)
+- `dag/walker`: new package for memory-efficient DAG traversal with deduplication. `VisitedTracker` interface with `BloomTracker` (scalable bloom filter chain, ~4 bytes/CID vs ~75 bytes for a map) and `MapTracker` (exact, for tests). `WalkDAG` provides iterative DFS traversal with integrated dedup, supporting dag-pb, dag-cbor, raw, and other registered codecs. ~2x faster than the legacy go-ipld-prime selector-based traversal. `WalkEntityRoots` emits only entity roots (files, directories, HAMT shards) instead of every block, skipping internal file chunks. [#1124](https://github.com/ipfs/boxo/pull/1124)
+- `pinner`: `NewUniquePinnedProvider` and `NewPinnedEntityRootsProvider` log and skip corrupted pin entries instead of aborting the provide cycle, allowing remaining pins to still be provided. [#1124](https://github.com/ipfs/boxo/pull/1124)
+- `routing/http/client`: `WithProviderInfoFunc` option resolves provider addresses at provide-time instead of client construction time. This only impacts legacy HTTP-only custom routing setups that depend on [IPIP-526](https://github.com/ipfs/specs/pull/526) and were sending unresolved `0.0.0.0` addresses in provider records instead of actual interface addresses. [#1115](https://github.com/ipfs/boxo/pull/1115)
+- `chunker`: added `Register` function to allow custom chunkers to be registered for use with `FromString`.
+- `mfs`: added `Directory.Mode()` and `Directory.ModTime()` getters to match the existing `File.Mode()` and `File.ModTime()` API. [#1131](https://github.com/ipfs/boxo/pull/1131)
+
+### Changed
+
+- `provider`: `NewPrioritizedProvider` now continues to the next stream when one fails instead of stopping all streams. `NewConcatProvider` added for pre-deduplicated streams. [#1124](https://github.com/ipfs/boxo/pull/1124)
 - `chunker`: `FromString` now rejects malformed `size-` strings with extra parameters (e.g. `size-123-extra` was previously silently accepted).
+- `gateway`: compliance with gateway-conformance [v0.13](https://github.com/ipfs/gateway-conformance/releases/tag/v0.13)
 - upgrade to `go-libp2p` [v0.48.0](https://github.com/libp2p/go-libp2p/releases/tag/v0.48.0)
+- 🛠 `mfs`: replaced `RootOption` with a unified `Option` functional options pattern (e.g. `WithCidBuilder`, `WithChunker`, `WithMaxLinks`). `NewRoot`, `NewEmptyRoot`, `MkdirWithOpts`, and `NewEmptyDirectory` now accept `...Option`. `Mkdir` takes a `MkdirOpts` struct (narrowed to `Mkparents` and `Flush` flags) followed by `...Option` for directory configuration. [#1125](https://github.com/ipfs/boxo/pull/1125)
 
 ### Removed
 
@@ -35,8 +80,10 @@ The following emojis are used to highlight certain changes:
 
 - `bitswap/server`: incoming identity CIDs in wantlist messages are now silently ignored instead of killing the connection to the remote peer. Some IPFS implementations naively send identity CIDs, and disconnecting them for it caused unnecessary churn. [#1117](https://github.com/ipfs/boxo/pull/1117)
 - `bitswap/network`: `ExtractHTTPAddress` now infers default ports for portless HTTP multiaddrs (e.g. `/dns/host/https` without `/tcp/443`). [#1123](https://github.com/ipfs/boxo/pull/1123)
-
-### Security
+- `mfs`: `FileDescriptor` operations are serialized with a mutex, preventing data races on the underlying `DagModifier` when FUSE mounts or Kubo RPC commands dispatch concurrent Read, Write, Seek, Truncate, Flush, or Close calls. `Flush` after `Close` returns `ErrClosed`. [#1131](https://github.com/ipfs/boxo/pull/1131) [#1133](https://github.com/ipfs/boxo/pull/1133)
+- `mfs`: preserve `CidBuilder` and `SizeEstimationMode` across `setNodeData()`, `Mkdir()` and `NewRoot()`. [#1125](https://github.com/ipfs/boxo/pull/1125)
+- `mfs`: closing a file descriptor after its directory entry was removed (e.g. FUSE RELEASE racing with RENAME) no longer re-adds the stale entry to the parent directory. [#1134](https://github.com/ipfs/boxo/pull/1134)
+- `mfs`: `SetMode` and `SetModTime` no longer drop file content links when updating UnixFS metadata. [#1134](https://github.com/ipfs/boxo/pull/1134)
 
 
 ## [v0.37.0]
