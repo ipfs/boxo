@@ -17,6 +17,7 @@ The following emojis are used to highlight certain changes:
 ### Added
 
 ### Changed
+- upgrade to `go-libp2p-kad-dht` [v0.39.2](https://github.com/libp2p/go-libp2p-kad-dht/releases/tag/v0.39.2)
 
 ### Removed
 
