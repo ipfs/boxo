@@ -456,7 +456,6 @@ func loadTerminalEntity(ctx context.Context, c cid.Cid, blk blocks.Block, lsys *
 			}
 		}
 
-		f := files.NewBytesFile(blockData)
 		size := int64(len(blockData))
 		from := int64(0)
 		if params.Range != nil && params.Range.From != 0 {
@@ -469,17 +468,13 @@ func loadTerminalEntity(ctx context.Context, c cid.Cid, blk blocks.Block, lsys *
 				if from < 0 {
 					return nil, fmt.Errorf("invalid car backend range: negative start bigger than the file size")
 				}
-			}
-			s, ok := f.(io.Seeker)
-			if !ok {
-				return nil, fmt.Errorf("file does not support seeking")
-			}
-			if _, err := s.Seek(from, io.SeekStart); err != nil {
-				return nil, err
+			} else if from > size {
+				// preserve previous bytes.Reader.Seek behavior of yielding an empty body
+				from = size
 			}
 		}
 
-		return NewGetResponseFromReader(f, size), nil
+		return NewGetResponseFromReader(files.NewBytesFile(blockData[from:]), size), nil
 	}
 
 	blockData, pbn, ufsFieldData, fieldNum, err := loadUnixFSBase(ctx, c, blk, lsys)
