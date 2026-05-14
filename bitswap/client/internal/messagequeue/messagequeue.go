@@ -594,7 +594,7 @@ func (mq *MessageQueue) sendMessage() {
 		mq.simulateDontHaveWithTimeout(wantlist)
 
 		// If the message was too big and only a subset of wants could be sent,
-		// send more if the the workcount is above the cutoff. Otherwise,
+		// send more if the workcount is above the cutoff. Otherwise,
 		// schedule sending the rest of the wants in the next iteration of the
 		// event loop.
 		pendingWork := mq.pendingWorkCount()
