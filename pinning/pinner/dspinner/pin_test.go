@@ -1667,58 +1667,58 @@ func TestCloseErrClosedAllMethods(t *testing.T) {
 	assertStreamedErrClosed(t, "InternalPins", p.InternalPins(ctx, false))
 }
 
-// TestCloseWaitsForInFlightOperation asserts Close blocks until an
-// operation admitted before Close was called has finished. We hold
-// the pinner's write lock from the test to stall an in-flight Pin
-// past its begin() admission, then verify Close does not return
-// while the Pin is still running.
 // TestCloseWaitsForInFlightOperation asserts Close cannot return
-// while an admitted operation is still running. Pin is blocked on a
-// pinner lock that is not ctx-aware, so the cancellation fan-out
-// cannot unstick it; Close must still wait until Pin actually exits.
+// while an admitted operation is still running, even when the
+// operation is parked in a non-ctx-aware blocker that the pinner's
+// stopCtx fan-out cannot interrupt. Pin sits inside a ctx-ignoring
+// DAG service; Close must wait on wg until Pin actually exits.
+//
+// Runs inside a synctest bubble so the "Pin is parked", "Close is
+// parked on wg.Wait", and "Pin exits after release" handoffs are
+// deterministic instead of timed.
 func TestCloseWaitsForInFlightOperation(t *testing.T) {
-	ctx := t.Context()
+	synctest.Test(t, func(t *testing.T) {
+		ctx := t.Context()
 
-	dstore, dserv := makeStore()
-	p, err := New(ctx, dstore, dserv)
-	require.NoError(t, err)
+		dstore, baseDserv := makeStore()
+		dserv := &ctxIgnoringDAGService{
+			DAGService: baseDserv,
+			entered:    make(chan struct{}, 1),
+			release:    make(chan struct{}),
+		}
+		p, err := New(ctx, dstore, dserv)
+		require.NoError(t, err)
 
-	n, _ := randNode()
-	require.NoError(t, dserv.Add(ctx, n))
+		n, _ := randNode()
+		pinReturned := make(chan error, 1)
+		go func() {
+			pinReturned <- p.Pin(ctx, n, true, "")
+		}()
+		// Wait for Pin to park in dserv.Add.
+		<-dserv.entered
+		synctest.Wait()
 
-	// Acquire the index read lock so Pin's internal Lock() call
-	// blocks after begin() has already incremented wg.
-	p.lock.RLock()
+		closeReturned := make(chan error, 1)
+		go func() {
+			closeReturned <- p.Close()
+		}()
+		// Close fires stopCancel (Pin is in a non-ctx-aware blocker
+		// and ignores it) and parks on wg.Wait.
+		synctest.Wait()
 
-	pinStarted := make(chan struct{})
-	pinReturned := make(chan error, 1)
-	go func() {
-		close(pinStarted)
-		pinReturned <- p.Pin(ctx, n, true, "")
-	}()
-	<-pinStarted
-	// Give Pin time to pass begin() and block on p.lock.Lock().
-	time.Sleep(20 * time.Millisecond)
+		select {
+		case <-closeReturned:
+			t.Fatal("Close returned while Pin was still in flight")
+		default:
+		}
 
-	closeReturned := make(chan error, 1)
-	go func() {
-		closeReturned <- p.Close()
-	}()
+		// Let Pin out of dserv.Add. Its ctx is already cancelled, so
+		// the next ctx-aware step in Pin returns context.Canceled.
+		close(dserv.release)
 
-	select {
-	case <-closeReturned:
-		t.Fatal("Close returned while Pin was still in flight")
-	case <-time.After(50 * time.Millisecond):
-	}
-
-	// Releasing the RLock lets Pin acquire Lock and finish; Close
-	// then unblocks. Pin sees its ctx already cancelled by the time
-	// it acquires the lock (because Close fired stopCancel while Pin
-	// was waiting), so Pin returns context.Canceled.
-	p.lock.RUnlock()
-
-	require.ErrorIs(t, <-pinReturned, context.Canceled)
-	require.NoError(t, <-closeReturned)
+		require.ErrorIs(t, <-pinReturned, context.Canceled)
+		require.NoError(t, <-closeReturned)
+	})
 }
 
 // TestCloseUnblocksParkedStream asserts Close unblocks a streamIndex
@@ -1810,6 +1810,24 @@ func (b *blockingDAGService) Add(ctx context.Context, n ipld.Node) error {
 	}
 	<-ctx.Done()
 	return ctx.Err()
+}
+
+// ctxIgnoringDAGService blocks Add on release and never observes
+// ctx, modeling an in-flight downstream call that the pinner's
+// stopCtx fan-out cannot interrupt.
+type ctxIgnoringDAGService struct {
+	ipld.DAGService
+	entered chan struct{}
+	release chan struct{}
+}
+
+func (s *ctxIgnoringDAGService) Add(_ context.Context, n ipld.Node) error {
+	select {
+	case s.entered <- struct{}{}:
+	default:
+	}
+	<-s.release
+	return s.DAGService.Add(context.Background(), n)
 }
 
 // TestCloseCancelsInFlightPin asserts that Close cancels the
