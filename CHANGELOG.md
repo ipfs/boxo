@@ -21,6 +21,24 @@ The following emojis are used to highlight certain changes:
 
 ### Changed
 
+- 🛠 `files`: the `File` interface no longer embeds `io.Seeker`. Seekability is now explicit in the type system instead of implied by an always-present `Seek` method that returned `ErrNotSupported` at runtime for non-seekable inputs. Callers that need to seek type-assert to `io.Seeker`; the assertion is an honest capability check rather than a guess. Seekable implementations (`ReaderFile` wrapping a seekable reader, `Symlink`, UnixFS files returned from the gateway and importer) still satisfy the assertion. Non-seekable implementations (HTTP multipart streams, `WebFile`) now fail the assertion at compile-aware sites instead of producing runtime errors deep in third-party code. The previous behavior forced downstream workarounds: e.g. [ipfs/kubo#11253](https://github.com/ipfs/kubo/pull/11253) had to wrap `files.File` in a plain `io.Reader`/`io.Closer` to strip `Seek` and force `go-car`'s forward-only fallback, because `go-car`'s `NewBlockReader` trusted the interface and called `Seek`, which failed with "operation not supported" on CARv2 imports over the HTTP API. With this change the trap stops existing.
+
+    **Action required.** Replace direct `Seek` calls on `files.File` with a type assertion:
+
+    ```go
+    // before
+    n, err := f.Seek(offset, io.SeekStart)
+
+    // after
+    seeker, ok := f.(io.Seeker)
+    if !ok {
+        return fmt.Errorf("file does not support seeking")
+    }
+    n, err := seeker.Seek(offset, io.SeekStart)
+    ```
+
+    See [ipfs/kubo#11254](https://github.com/ipfs/kubo/pull/11254) for a worked example of the call-site update. [#1128](https://github.com/ipfs/boxo/pull/1128)
+
 ### Removed
 
 ### Fixed

@@ -6,7 +6,7 @@
 // The package defines a hierarchy of interfaces:
 //
 //   - [Node]: Base interface for all file-like objects (mode, modification time, size)
-//   - [File]: A regular file with [io.Reader] and [io.Seeker]
+//   - [File]: A regular file with [io.Reader] (some implementations also support [io.Seeker])
 //   - [Directory]: Contains entries traversable via [DirIterator]
 //   - [FileInfo]: Extends [Node] with local filesystem information
 //
