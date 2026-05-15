@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"path"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"testing/synctest"
@@ -1589,4 +1590,306 @@ func TestStreamIndexDoesNotBlockWriters(t *testing.T) {
 			})
 		})
 	}
+}
+
+// TestCloseIdempotent asserts Close can be called repeatedly and from
+// multiple goroutines without error or panic.
+func TestCloseIdempotent(t *testing.T) {
+	ctx := t.Context()
+
+	dstore, dserv := makeStore()
+	p, err := New(ctx, dstore, dserv)
+	require.NoError(t, err)
+
+	require.NoError(t, p.Close())
+	require.NoError(t, p.Close())
+
+	var wg sync.WaitGroup
+	for i := 0; i < 8; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			require.NoError(t, p.Close())
+		}()
+	}
+	wg.Wait()
+}
+
+// TestCloseErrClosedAllMethods asserts every public Pinner method
+// returns ErrClosed after Close has returned. Streaming methods
+// surface ErrClosed as StreamedPin.Err on the first (and only)
+// channel entry.
+func TestCloseErrClosedAllMethods(t *testing.T) {
+	ctx := t.Context()
+
+	dstore, dserv := makeStore()
+	p, err := New(ctx, dstore, dserv)
+	require.NoError(t, err)
+
+	// Seed one pin so the index is not empty; Close still succeeds
+	// but we want post-close streaming methods to emit ErrClosed
+	// rather than an empty stream, which would be indistinguishable
+	// from "no pins".
+	n, k := randNode()
+	require.NoError(t, dserv.Add(ctx, n))
+	require.NoError(t, p.Pin(ctx, n, true, ""))
+
+	require.NoError(t, p.Close())
+
+	// Scalar methods.
+	require.ErrorIs(t, p.Pin(ctx, n, true, ""), ipfspin.ErrClosed)
+	require.ErrorIs(t, p.Unpin(ctx, k, true), ipfspin.ErrClosed)
+	require.ErrorIs(t, p.Update(ctx, k, k, true), ipfspin.ErrClosed)
+	require.ErrorIs(t, p.Flush(ctx), ipfspin.ErrClosed)
+	require.ErrorIs(t, p.PinWithMode(ctx, k, ipfspin.Recursive, ""), ipfspin.ErrClosed)
+
+	_, _, err = p.IsPinned(ctx, k)
+	require.ErrorIs(t, err, ipfspin.ErrClosed)
+	_, _, err = p.IsPinnedWithType(ctx, k, ipfspin.Recursive)
+	require.ErrorIs(t, err, ipfspin.ErrClosed)
+
+	_, err = p.CheckIfPinned(ctx, k)
+	require.ErrorIs(t, err, ipfspin.ErrClosed)
+	_, err = p.CheckIfPinnedWithType(ctx, ipfspin.Recursive, false, k)
+	require.ErrorIs(t, err, ipfspin.ErrClosed)
+
+	// Streaming methods.
+	assertStreamedErrClosed := func(t *testing.T, name string, ch <-chan ipfspin.StreamedPin) {
+		t.Helper()
+		got, ok := <-ch
+		require.True(t, ok, "%s: expected one entry before close, channel already closed", name)
+		require.ErrorIs(t, got.Err, ipfspin.ErrClosed, "%s: want ErrClosed on first entry", name)
+		_, ok = <-ch
+		require.False(t, ok, "%s: channel must be closed after ErrClosed entry", name)
+	}
+	assertStreamedErrClosed(t, "RecursiveKeys", p.RecursiveKeys(ctx, false))
+	assertStreamedErrClosed(t, "DirectKeys", p.DirectKeys(ctx, false))
+	assertStreamedErrClosed(t, "InternalPins", p.InternalPins(ctx, false))
+}
+
+// TestCloseWaitsForInFlightOperation asserts Close cannot return
+// while an admitted operation is still running, even when the
+// operation is parked in a non-ctx-aware blocker that the pinner's
+// stopCtx fan-out cannot interrupt. Pin sits inside a ctx-ignoring
+// DAG service; Close must wait on wg until Pin actually exits.
+//
+// Runs inside a synctest bubble so the "Pin is parked", "Close is
+// parked on wg.Wait", and "Pin exits after release" handoffs are
+// deterministic instead of timed.
+func TestCloseWaitsForInFlightOperation(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ctx := t.Context()
+
+		dstore, baseDserv := makeStore()
+		dserv := &ctxIgnoringDAGService{
+			DAGService: baseDserv,
+			entered:    make(chan struct{}, 1),
+			release:    make(chan struct{}),
+		}
+		p, err := New(ctx, dstore, dserv)
+		require.NoError(t, err)
+
+		n, _ := randNode()
+		pinReturned := make(chan error, 1)
+		go func() {
+			pinReturned <- p.Pin(ctx, n, true, "")
+		}()
+		// Wait for Pin to park in dserv.Add.
+		<-dserv.entered
+		synctest.Wait()
+
+		closeReturned := make(chan error, 1)
+		go func() {
+			closeReturned <- p.Close()
+		}()
+		// Close fires stopCancel (Pin is in a non-ctx-aware blocker
+		// and ignores it) and parks on wg.Wait.
+		synctest.Wait()
+
+		select {
+		case <-closeReturned:
+			t.Fatal("Close returned while Pin was still in flight")
+		default:
+		}
+
+		// Let Pin out of dserv.Add. Its ctx is already cancelled, so
+		// the next ctx-aware step in Pin returns context.Canceled.
+		close(dserv.release)
+
+		require.ErrorIs(t, <-pinReturned, context.Canceled)
+		require.NoError(t, <-closeReturned)
+	})
+}
+
+// TestCloseUnblocksParkedStream asserts Close unblocks a streamIndex
+// goroutine that is parked on a send because no consumer is reading.
+// Without the p.done signal in send(), Close would stall on wg.Wait
+// for the lifetime of the caller's context.
+func TestCloseUnblocksParkedStream(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ctx := t.Context()
+
+		dstore, dserv := makeStore()
+		p, err := New(ctx, dstore, dserv)
+		require.NoError(t, err)
+
+		// Seed a few pins so streamIndex has entries to emit (and
+		// will therefore park on the first send against an absent
+		// consumer).
+		pinNodes(makeNodes(4, dserv), p, true)
+
+		streamCtx, cancel := context.WithCancel(ctx)
+		defer cancel()
+		kch := p.RecursiveKeys(streamCtx, false)
+
+		// Wait for the streamIndex goroutine to park on send.
+		synctest.Wait()
+
+		require.NoError(t, p.Close())
+
+		// Channel must close after the goroutine exits.
+		for range kch {
+		}
+	})
+}
+
+// TestCloseConcurrent hammers Pin, RecursiveKeys, and Close from many
+// goroutines. Run with -race to catch lifecycle races. Every admitted
+// operation completes and every post-close caller sees ErrClosed.
+func TestCloseConcurrent(t *testing.T) {
+	ctx := t.Context()
+
+	dstore, dserv := makeStore()
+	p, err := New(ctx, dstore, dserv)
+	require.NoError(t, err)
+
+	nodes := makeNodes(4, dserv)
+
+	var wg sync.WaitGroup
+	for i := 0; i < 32; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			_ = p.Pin(ctx, nodes[i%len(nodes)], true, "")
+		}(i)
+	}
+	for i := 0; i < 32; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			streamCtx, cancel := context.WithCancel(ctx)
+			defer cancel()
+			for range p.RecursiveKeys(streamCtx, false) {
+			}
+		}()
+	}
+	for i := 0; i < 4; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_ = p.Close()
+		}()
+	}
+	wg.Wait()
+
+	require.ErrorIs(t, p.Flush(ctx), ipfspin.ErrClosed)
+}
+
+// blockingDAGService blocks Add until its context is cancelled. The
+// first Add call signals via `entered` so a test goroutine can
+// synchronize with it.
+type blockingDAGService struct {
+	ipld.DAGService
+	entered chan struct{}
+}
+
+func (b *blockingDAGService) Add(ctx context.Context, n ipld.Node) error {
+	select {
+	case b.entered <- struct{}{}:
+	default:
+	}
+	<-ctx.Done()
+	return ctx.Err()
+}
+
+// ctxIgnoringDAGService blocks Add on release and never observes
+// ctx, modeling an in-flight downstream call that the pinner's
+// stopCtx fan-out cannot interrupt.
+type ctxIgnoringDAGService struct {
+	ipld.DAGService
+	entered chan struct{}
+	release chan struct{}
+}
+
+func (s *ctxIgnoringDAGService) Add(_ context.Context, n ipld.Node) error {
+	select {
+	case s.entered <- struct{}{}:
+	default:
+	}
+	<-s.release
+	return s.DAGService.Add(context.Background(), n)
+}
+
+// TestCloseCancelsInFlightPin asserts that Close cancels the
+// contexts of admitted in-flight operations. A Pin blocked inside a
+// slow downstream call must return promptly with context.Canceled
+// once Close fires, rather than stalling Close until the call
+// finishes on its own.
+func TestCloseCancelsInFlightPin(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ctx := t.Context()
+		dstore, baseDserv := makeStore()
+		dserv := &blockingDAGService{DAGService: baseDserv, entered: make(chan struct{}, 1)}
+		p, err := New(ctx, dstore, dserv)
+		require.NoError(t, err)
+
+		n, _ := randNode()
+		pinErr := make(chan error, 1)
+		go func() {
+			pinErr <- p.Pin(ctx, n, true, "")
+		}()
+
+		// Pin is blocked inside dserv.Add; the cancel signal it
+		// observes must come from the pinner's stopCtx fan-out.
+		<-dserv.entered
+		synctest.Wait()
+
+		require.NoError(t, p.Close())
+
+		require.ErrorIs(t, <-pinErr, context.Canceled)
+	})
+}
+
+// TestCloseDuringStreamYieldsErrClosed asserts that when Close
+// interrupts a stream goroutine, any error delivered on the channel
+// surfaces as ErrClosed rather than the raw context.Canceled from the
+// derived ctx. Delivery is best-effort (the send select races between
+// ctx.Done and the consumer); the assertion is on the *type* of error
+// when one is delivered.
+func TestCloseDuringStreamYieldsErrClosed(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ctx := t.Context()
+		dstore, dserv := makeStore()
+		p, err := New(ctx, dstore, dserv)
+		require.NoError(t, err)
+
+		pinNodes(makeNodes(4, dserv), p, true)
+
+		// Caller ctx outlives Close, so any error observed is from
+		// the pinner's stopCtx, not parent cancellation.
+		streamCtx, cancel := context.WithCancel(ctx)
+		defer cancel()
+		kch := p.RecursiveKeys(streamCtx, false)
+
+		synctest.Wait()
+
+		require.NoError(t, p.Close())
+
+		for sc := range kch {
+			if sc.Err != nil {
+				require.ErrorIs(t, sc.Err, ipfspin.ErrClosed,
+					"want ErrClosed (not %v) when Close interrupts a stream", sc.Err)
+			}
+		}
+	})
 }

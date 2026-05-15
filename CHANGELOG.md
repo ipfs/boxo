@@ -17,8 +17,29 @@ The following emojis are used to highlight certain changes:
 ### Added
 
 - `retrieval`: `State.Snapshot` returns an immutable point-in-time copy, `State.Apply` mirrors a snapshot back onto a State (with monotonic phase progression), and `State.Notify` returns a size-1 coalescing channel that wakes when the State changes. Together they let consumers stream State across a process boundary; CLI tools like Kubo can use this to drive a live progress bar during commands like `cat`, `get`, or `dag export`.
+- 🛠 `pinning/pinner`: added `Pinner.Close() error`. Close cancels every in-flight operation's context, including streaming goroutines from `RecursiveKeys`, `DirectKeys`, and `InternalPins`, and waits for them to return. A scalar method that observes the cancellation may return `context.Canceled`; a stream interrupted by Close may surface `ErrClosed` on the channel before it closes. After Close returns, every other method returns the new `ErrClosed` sentinel; streaming methods deliver it as `StreamedPin.Err` on a single entry, then close the channel. Close is idempotent and goroutine-safe. **Action required:** downstream `Pinner` implementations must add `Close`. [#1150](https://github.com/ipfs/boxo/pull/1150)
+- `pinning/pinner/dspinner`: implements `Close`. Close cancels the contexts of in-flight operations, so snapshot iteration in `RecursiveKeys`/`DirectKeys` and DAG fetches in `Pin` bail out promptly instead of draining to completion. Close returns as soon as those operations honor their ctx. Hosts owning the datastore should call `Close` on the pinner before closing the datastore to avoid the use-after-close panic path in stores such as pebble. [#1150](https://github.com/ipfs/boxo/pull/1150)
 
 ### Changed
+- upgrade to `go-libp2p-kad-dht` [v0.39.2](https://github.com/libp2p/go-libp2p-kad-dht/releases/tag/v0.39.2)
+
+- 🛠 `files`: the `File` interface no longer embeds `io.Seeker`. Seekability is now explicit in the type system instead of implied by an always-present `Seek` method that returned `ErrNotSupported` at runtime for non-seekable inputs. Callers that need to seek type-assert to `io.Seeker`; the assertion is an honest capability check rather than a guess. Seekable implementations (`ReaderFile` wrapping a seekable reader, `Symlink`, UnixFS files returned from the gateway and importer) still satisfy the assertion. Non-seekable implementations (HTTP multipart streams, `WebFile`) now fail the assertion at compile-aware sites instead of producing runtime errors deep in third-party code. The previous behavior forced downstream workarounds: e.g. [ipfs/kubo#11253](https://github.com/ipfs/kubo/pull/11253) had to wrap `files.File` in a plain `io.Reader`/`io.Closer` to strip `Seek` and force `go-car`'s forward-only fallback, because `go-car`'s `NewBlockReader` trusted the interface and called `Seek`, which failed with "operation not supported" on CARv2 imports over the HTTP API. With this change the trap stops existing.
+
+    **Action required.** Replace direct `Seek` calls on `files.File` with a type assertion:
+
+    ```go
+    // before
+    n, err := f.Seek(offset, io.SeekStart)
+
+    // after
+    seeker, ok := f.(io.Seeker)
+    if !ok {
+        return fmt.Errorf("file does not support seeking")
+    }
+    n, err := seeker.Seek(offset, io.SeekStart)
+    ```
+
+    See [ipfs/kubo#11254](https://github.com/ipfs/kubo/pull/11254) for a worked example of the call-site update. [#1128](https://github.com/ipfs/boxo/pull/1128)
 
 - `path/resolver`: `ResolveToLastNode`, `ResolvePath`, and `ResolvePathComponents` now populate `retrieval.State` on the request context when one is attached. They advance the state to `PhasePathResolution`, record the root CID from the input path, and record the terminal CID once resolution completes. Until now only the gateway backends populated these fields, leaving non-gateway callers (CLIs, custom tools) without phase or CID diagnostics on retrieval errors. The new calls are idempotent with the existing gateway-side ones, so behavior on the gateway path is unchanged.
 
