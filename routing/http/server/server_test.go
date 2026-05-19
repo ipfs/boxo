@@ -46,7 +46,7 @@ func TestHeaders(t *testing.T) {
 	cb, err := cid.Decode(c)
 	require.NoError(t, err)
 
-	router.On("FindProviders", mock.Anything, cb, DefaultRecordsLimit).
+	router.On("FindProviders", mock.Anything, cb, 0).
 		Return(results, nil)
 
 	resp, err := http.Get(serverAddr + "/routing/v1/providers/" + c)
@@ -147,11 +147,9 @@ func TestProviders(t *testing.T) {
 		server := httptest.NewServer(Handler(router))
 		t.Cleanup(server.Close)
 		serverAddr := "http://" + server.Listener.Addr().String()
-		limit := DefaultRecordsLimit
-		if expectedStream {
-			limit = DefaultStreamingRecordsLimit
-		}
-		router.On("FindProviders", mock.Anything, cid, limit).Return(results, nil)
+		// The server enforces records limits itself, after filtering, and
+		// always passes 0 (unbounded) to the delegate router.
+		router.On("FindProviders", mock.Anything, cid, 0).Return(results, nil)
 
 		urlStr := fmt.Sprintf("%s/routing/v1/providers/%s", serverAddr, cidStr)
 		urlStr = filters.AddFiltersToURL(urlStr, strings.Split(filterProtocols, ","), strings.Split(filterAddrs, ","))
@@ -246,7 +244,7 @@ func TestProviders(t *testing.T) {
 		server := httptest.NewServer(Handler(router))
 		t.Cleanup(server.Close)
 		serverAddr := "http://" + server.Listener.Addr().String()
-		router.On("FindProviders", mock.Anything, cid, DefaultRecordsLimit).Return(nil, routing.ErrNotFound)
+		router.On("FindProviders", mock.Anything, cid, 0).Return(nil, routing.ErrNotFound)
 
 		req, err := http.NewRequest(http.MethodGet, serverAddr+"/routing/v1/providers/"+cidStr, nil)
 		require.NoError(t, err)
@@ -260,6 +258,125 @@ func TestProviders(t *testing.T) {
 		body, err := io.ReadAll(resp.Body)
 		require.NoError(t, err)
 		require.Equal(t, `{"Providers":[]}`, string(body))
+	})
+}
+
+func TestProvidersRecordsLimit(t *testing.T) {
+	t.Parallel()
+
+	cidStr := "bafkreifjjcie6lypi6ny7amxnfftagclbuxndqonfipmb64f2km2devei4"
+	c, err := cid.Decode(cidStr)
+	require.NoError(t, err)
+
+	quicAddr, err := multiaddr.NewMultiaddr("/ip4/127.0.0.1/udp/4001/quic-v1")
+	require.NoError(t, err)
+	tcpAddr, err := multiaddr.NewMultiaddr("/ip4/127.0.0.1/tcp/4001")
+	require.NoError(t, err)
+
+	// makeRecords returns n provider records. The first tcpOnly of them
+	// carry only a TCP address; the rest carry a QUIC address. With
+	// filter-addrs=quic-v1, only the QUIC records survive filtering.
+	makeRecords := func(t *testing.T, n, tcpOnly int) []iter.Result[types.Record] {
+		recs := make([]iter.Result[types.Record], 0, n)
+		for i := 0; i < n; i++ {
+			_, pid := makeEd25519PeerID(t)
+			addr := quicAddr
+			if i < tcpOnly {
+				addr = tcpAddr
+			}
+			recs = append(recs, iter.Result[types.Record]{
+				Val: &types.PeerRecord{
+					Schema: types.SchemaPeer,
+					ID:     &pid,
+					Addrs:  []types.Multiaddr{{Multiaddr: addr}},
+				},
+			})
+		}
+		return recs
+	}
+
+	const (
+		jsonLimit   = 5
+		streamLimit = 12
+		supplied    = 30 // exceeds both caps so the cap is the binding limit
+	)
+
+	newServerAddr := func(router *mockContentRouter) string {
+		server := httptest.NewServer(Handler(router,
+			WithRecordsLimit(jsonLimit),
+			WithStreamingRecordsLimit(streamLimit),
+		))
+		t.Cleanup(server.Close)
+		return "http://" + server.Listener.Addr().String()
+	}
+
+	t.Run("JSON response is capped at WithRecordsLimit", func(t *testing.T) {
+		t.Parallel()
+		router := &mockContentRouter{}
+		// The delegate must be asked for 0 (unbounded); the server caps.
+		router.On("FindProviders", mock.Anything, c, 0).
+			Return(iter.FromSlice(makeRecords(t, supplied, 0)), nil)
+		addr := newServerAddr(router)
+
+		req, err := http.NewRequest(http.MethodGet, addr+"/routing/v1/providers/"+cidStr, nil)
+		require.NoError(t, err)
+		req.Header.Set("Accept", mediaTypeJSON)
+		resp, err := http.DefaultClient.Do(req)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+
+		require.Equal(t, http.StatusOK, resp.StatusCode)
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.Equal(t, jsonLimit, strings.Count(string(body), `"Schema":"peer"`))
+		router.AssertExpectations(t)
+	})
+
+	t.Run("NDJSON stream is capped at WithStreamingRecordsLimit", func(t *testing.T) {
+		t.Parallel()
+		router := &mockContentRouter{}
+		router.On("FindProviders", mock.Anything, c, 0).
+			Return(iter.FromSlice(makeRecords(t, supplied, 0)), nil)
+		addr := newServerAddr(router)
+
+		req, err := http.NewRequest(http.MethodGet, addr+"/routing/v1/providers/"+cidStr, nil)
+		require.NoError(t, err)
+		req.Header.Set("Accept", mediaTypeNDJSON)
+		resp, err := http.DefaultClient.Do(req)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+
+		require.Equal(t, http.StatusOK, resp.StatusCode)
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.Equal(t, streamLimit, strings.Count(string(body), `"Schema":"peer"`))
+		router.AssertExpectations(t)
+	})
+
+	t.Run("limit counts records that survive filtering", func(t *testing.T) {
+		t.Parallel()
+		router := &mockContentRouter{}
+		// First 10 records are TCP-only and dropped by filter-addrs; the
+		// remaining 20 carry QUIC and survive. Capping before the filter
+		// would yield fewer than jsonLimit, so an exact jsonLimit count
+		// proves the cap is applied after filtering.
+		router.On("FindProviders", mock.Anything, c, 0).
+			Return(iter.FromSlice(makeRecords(t, supplied, 10)), nil)
+		addr := newServerAddr(router)
+
+		urlStr := filters.AddFiltersToURL(addr+"/routing/v1/providers/"+cidStr, nil, []string{"quic-v1"})
+		req, err := http.NewRequest(http.MethodGet, urlStr, nil)
+		require.NoError(t, err)
+		req.Header.Set("Accept", mediaTypeJSON)
+		resp, err := http.DefaultClient.Do(req)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+
+		require.Equal(t, http.StatusOK, resp.StatusCode)
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.Equal(t, jsonLimit, strings.Count(string(body), `"Schema":"peer"`))
+		router.AssertExpectations(t)
 	})
 }
 
@@ -296,7 +413,7 @@ func TestPeers(t *testing.T) {
 		results := iter.FromSlice([]iter.Result[*types.PeerRecord]{})
 
 		router := &mockContentRouter{}
-		router.On("FindPeers", mock.Anything, pid, DefaultRecordsLimit).Return(results, nil)
+		router.On("FindPeers", mock.Anything, pid, 0).Return(results, nil)
 
 		resp := makeRequest(t, router, mediaTypeJSON, peer.ToCid(pid).String(), "", "")
 		// Per IPIP-0513: Return 200 for empty results
@@ -321,7 +438,7 @@ func TestPeers(t *testing.T) {
 		results := iter.FromSlice([]iter.Result[*types.PeerRecord]{})
 
 		router := &mockContentRouter{}
-		router.On("FindPeers", mock.Anything, pid, DefaultRecordsLimit).Return(results, nil)
+		router.On("FindPeers", mock.Anything, pid, 0).Return(results, nil)
 
 		// Simulate request with Accept header that includes wildcard match
 		resp := makeRequest(t, router, "text/html,*/*", peer.ToCid(pid).String(), "", "")
@@ -343,7 +460,7 @@ func TestPeers(t *testing.T) {
 		results := iter.FromSlice([]iter.Result[*types.PeerRecord]{})
 
 		router := &mockContentRouter{}
-		router.On("FindPeers", mock.Anything, pid, DefaultRecordsLimit).Return(results, nil)
+		router.On("FindPeers", mock.Anything, pid, 0).Return(results, nil)
 
 		// Simulate request without Accept header
 		resp := makeRequest(t, router, "", peer.ToCid(pid).String(), "", "")
@@ -364,7 +481,7 @@ func TestPeers(t *testing.T) {
 		_, pid := makeEd25519PeerID(t)
 
 		router := &mockContentRouter{}
-		router.On("FindPeers", mock.Anything, pid, DefaultRecordsLimit).Return(nil, routing.ErrNotFound)
+		router.On("FindPeers", mock.Anything, pid, 0).Return(nil, routing.ErrNotFound)
 
 		// Simulate request without Accept header
 		resp := makeRequest(t, router, "", peer.ToCid(pid).String(), "", "")
@@ -399,7 +516,7 @@ func TestPeers(t *testing.T) {
 		})
 
 		router := &mockContentRouter{}
-		router.On("FindPeers", mock.Anything, pid, DefaultRecordsLimit).Return(results, nil)
+		router.On("FindPeers", mock.Anything, pid, 0).Return(results, nil)
 
 		libp2pKeyCID := peer.ToCid(pid).String()
 		resp := makeRequest(t, router, mediaTypeJSON, libp2pKeyCID, "", "")
@@ -451,7 +568,7 @@ func TestPeers(t *testing.T) {
 		})
 
 		router := &mockContentRouter{}
-		router.On("FindPeers", mock.Anything, pid, DefaultRecordsLimit).Return(results, nil)
+		router.On("FindPeers", mock.Anything, pid, 0).Return(results, nil)
 
 		libp2pKeyCID := peer.ToCid(pid).String()
 		resp := makeRequest(t, router, mediaTypeJSON, libp2pKeyCID, "tcp", "")
@@ -503,7 +620,7 @@ func TestPeers(t *testing.T) {
 		})
 
 		router := &mockContentRouter{}
-		router.On("FindPeers", mock.Anything, pid, DefaultRecordsLimit).Return(results, nil)
+		router.On("FindPeers", mock.Anything, pid, 0).Return(results, nil)
 
 		libp2pKeyCID := peer.ToCid(pid).String()
 		resp := makeRequest(t, router, mediaTypeJSON, libp2pKeyCID, "", "transport-bitswap")
@@ -529,7 +646,7 @@ func TestPeers(t *testing.T) {
 		results := iter.FromSlice([]iter.Result[*types.PeerRecord]{})
 
 		router := &mockContentRouter{}
-		router.On("FindPeers", mock.Anything, pid, DefaultStreamingRecordsLimit).Return(results, nil)
+		router.On("FindPeers", mock.Anything, pid, 0).Return(results, nil)
 
 		resp := makeRequest(t, router, mediaTypeNDJSON, peer.ToCid(pid).String(), "", "")
 		// Per IPIP-0513: Return 200 for empty results
@@ -567,7 +684,7 @@ func TestPeers(t *testing.T) {
 		})
 
 		router := &mockContentRouter{}
-		router.On("FindPeers", mock.Anything, pid, DefaultStreamingRecordsLimit).Return(results, nil)
+		router.On("FindPeers", mock.Anything, pid, 0).Return(results, nil)
 
 		libp2pKeyCID := peer.ToCid(pid).String()
 		resp := makeRequest(t, router, mediaTypeNDJSON, libp2pKeyCID, "", "")
@@ -630,7 +747,7 @@ func TestPeers(t *testing.T) {
 			t.Parallel()
 
 			router := &mockContentRouter{}
-			router.On("FindPeers", mock.Anything, pid, DefaultStreamingRecordsLimit).Return(iter.FromSlice(results), nil)
+			router.On("FindPeers", mock.Anything, pid, 0).Return(iter.FromSlice(results), nil)
 
 			resp := makeRequest(t, router, mediaTypeNDJSON, peerIDStr, "", "")
 			require.Equal(t, http.StatusOK, resp.StatusCode)
@@ -650,7 +767,7 @@ func TestPeers(t *testing.T) {
 			t.Parallel()
 
 			router := &mockContentRouter{}
-			router.On("FindPeers", mock.Anything, pid, DefaultRecordsLimit).Return(iter.FromSlice(results), nil)
+			router.On("FindPeers", mock.Anything, pid, 0).Return(iter.FromSlice(results), nil)
 
 			resp := makeRequest(t, router, mediaTypeJSON, peerIDStr, "", "")
 			require.Equal(t, http.StatusOK, resp.StatusCode)
