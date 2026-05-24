@@ -49,6 +49,7 @@ The following emojis are used to highlight certain changes:
 
 - `files`: now builds under `GOOS=js GOARCH=wasm` and `GOOS=wasip1 GOARCH=wasm`. [#935](https://github.com/ipfs/boxo/pull/935)
 - `routing/http/server`: filtered `/routing/v1/providers` and `/routing/v1/peers` requests no longer return fewer records than the configured limit. Before, the limit was applied before `filter-addrs`/`filter-protocols` ran, so records dropped by the filters shrank the response. The limit is now applied after filtering.
+- `routing/http/types/iter`: `Filter.Next` now iterates instead of recursing on rejected values. Combined with the change above (the server pulls unbounded results from the delegate and filters them), a request that drops most records no longer grows the goroutine stack proportionally to the rejected count.
 
 ### Security
 
