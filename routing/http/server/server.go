@@ -318,11 +318,12 @@ func (s *server) findProviders(w http.ResponseWriter, httpReq *http.Request) {
 }
 
 func (s *server) findProvidersJSON(w http.ResponseWriter, provIter iter.ResultIter[types.Record], recordsLimit int, filterAddrs, filterProtocols []string) {
-	defer provIter.Close()
-
 	filteredIter := filters.ApplyFiltersToIter(provIter, filterAddrs, filterProtocols)
 	var limitedIter iter.ResultIter[types.Record] = iter.Limit(filteredIter, recordsLimit)
 	providers, err := iter.ReadAllResults(limitedIter)
+	// Close eagerly so the upstream router request is canceled before we
+	// spend time marshaling and writing the response.
+	limitedIter.Close()
 	if err != nil {
 		writeErr(w, "FindProviders", http.StatusInternalServerError, fmt.Errorf("delegate error: %w", err))
 		return
@@ -458,12 +459,13 @@ func (s *server) provide(w http.ResponseWriter, httpReq *http.Request) {
 }
 
 func (s *server) findPeersJSON(w http.ResponseWriter, peersIter iter.ResultIter[*types.PeerRecord], recordsLimit int, filterAddrs, filterProtocols []string) {
-	defer peersIter.Close()
-
 	filteredIter := filters.ApplyFiltersToPeerRecordIter(peersIter, filterAddrs, filterProtocols)
 	var limitedIter iter.ResultIter[*types.PeerRecord] = iter.Limit(filteredIter, recordsLimit)
 
 	peers, err := iter.ReadAllResults(limitedIter)
+	// Close eagerly so the upstream router request is canceled before we
+	// spend time marshaling and writing the response.
+	limitedIter.Close()
 	if err != nil {
 		writeErr(w, "FindPeers", http.StatusInternalServerError, fmt.Errorf("delegate error: %w", err))
 		return
