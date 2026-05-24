@@ -380,6 +380,123 @@ func TestProvidersRecordsLimit(t *testing.T) {
 	})
 }
 
+func TestPeersRecordsLimit(t *testing.T) {
+	t.Parallel()
+
+	_, pid := makeEd25519PeerID(t)
+	peerCID := peer.ToCid(pid).String()
+
+	quicAddr, err := multiaddr.NewMultiaddr("/ip4/127.0.0.1/udp/4001/quic-v1")
+	require.NoError(t, err)
+	tcpAddr, err := multiaddr.NewMultiaddr("/ip4/127.0.0.1/tcp/4001")
+	require.NoError(t, err)
+
+	// makeRecords returns n peer records pointing at pid. The first tcpOnly
+	// of them carry only a TCP address; the rest carry a QUIC address. With
+	// filter-addrs=quic-v1, only the QUIC records survive filtering.
+	makeRecords := func(n, tcpOnly int) []iter.Result[*types.PeerRecord] {
+		recs := make([]iter.Result[*types.PeerRecord], 0, n)
+		for i := 0; i < n; i++ {
+			addr := quicAddr
+			if i < tcpOnly {
+				addr = tcpAddr
+			}
+			recs = append(recs, iter.Result[*types.PeerRecord]{
+				Val: &types.PeerRecord{
+					Schema: types.SchemaPeer,
+					ID:     &pid,
+					Addrs:  []types.Multiaddr{{Multiaddr: addr}},
+				},
+			})
+		}
+		return recs
+	}
+
+	const (
+		jsonLimit   = 5
+		streamLimit = 12
+		supplied    = 30 // exceeds both caps so the cap is the binding limit
+	)
+
+	newServerAddr := func(router *mockContentRouter) string {
+		server := httptest.NewServer(Handler(router,
+			WithRecordsLimit(jsonLimit),
+			WithStreamingRecordsLimit(streamLimit),
+		))
+		t.Cleanup(server.Close)
+		return "http://" + server.Listener.Addr().String()
+	}
+
+	t.Run("JSON response is capped at WithRecordsLimit", func(t *testing.T) {
+		t.Parallel()
+		router := &mockContentRouter{}
+		// The delegate must be asked for 0 (unbounded); the server caps.
+		router.On("FindPeers", mock.Anything, pid, 0).
+			Return(iter.FromSlice(makeRecords(supplied, 0)), nil)
+		addr := newServerAddr(router)
+
+		req, err := http.NewRequest(http.MethodGet, addr+"/routing/v1/peers/"+peerCID, nil)
+		require.NoError(t, err)
+		req.Header.Set("Accept", mediaTypeJSON)
+		resp, err := http.DefaultClient.Do(req)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+
+		require.Equal(t, http.StatusOK, resp.StatusCode)
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.Equal(t, jsonLimit, strings.Count(string(body), `"Schema":"peer"`))
+		router.AssertExpectations(t)
+	})
+
+	t.Run("NDJSON stream is capped at WithStreamingRecordsLimit", func(t *testing.T) {
+		t.Parallel()
+		router := &mockContentRouter{}
+		router.On("FindPeers", mock.Anything, pid, 0).
+			Return(iter.FromSlice(makeRecords(supplied, 0)), nil)
+		addr := newServerAddr(router)
+
+		req, err := http.NewRequest(http.MethodGet, addr+"/routing/v1/peers/"+peerCID, nil)
+		require.NoError(t, err)
+		req.Header.Set("Accept", mediaTypeNDJSON)
+		resp, err := http.DefaultClient.Do(req)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+
+		require.Equal(t, http.StatusOK, resp.StatusCode)
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.Equal(t, streamLimit, strings.Count(string(body), `"Schema":"peer"`))
+		router.AssertExpectations(t)
+	})
+
+	t.Run("limit counts records that survive filtering", func(t *testing.T) {
+		t.Parallel()
+		router := &mockContentRouter{}
+		// First 10 records are TCP-only and dropped by filter-addrs; the
+		// remaining 20 carry QUIC and survive. Capping before the filter
+		// would yield fewer than jsonLimit, so an exact jsonLimit count
+		// proves the cap is applied after filtering.
+		router.On("FindPeers", mock.Anything, pid, 0).
+			Return(iter.FromSlice(makeRecords(supplied, 10)), nil)
+		addr := newServerAddr(router)
+
+		urlStr := filters.AddFiltersToURL(addr+"/routing/v1/peers/"+peerCID, nil, []string{"quic-v1"})
+		req, err := http.NewRequest(http.MethodGet, urlStr, nil)
+		require.NoError(t, err)
+		req.Header.Set("Accept", mediaTypeJSON)
+		resp, err := http.DefaultClient.Do(req)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+
+		require.Equal(t, http.StatusOK, resp.StatusCode)
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.Equal(t, jsonLimit, strings.Count(string(body), `"Schema":"peer"`))
+		router.AssertExpectations(t)
+	})
+}
+
 func TestPeers(t *testing.T) {
 	makeRequest := func(t *testing.T, router *mockContentRouter, contentType, arg, filterAddrs, filterProtocols string) *http.Response {
 		server := httptest.NewServer(Handler(router))
