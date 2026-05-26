@@ -16,9 +16,11 @@ The following emojis are used to highlight certain changes:
 
 ### Added
 
+- `retrieval`: added `State.Snapshot`, `State.Apply`, and `State.Notify` so consumers can stream `State` across a process boundary, e.g. to drive a live progress bar in Kubo's `cat`, `get`, or `dag export`. [#1153](https://github.com/ipfs/boxo/pull/1153)
 - 🛠 `pinning/pinner`: added `Pinner.Close() error`. Close cancels every in-flight operation's context, including streaming goroutines from `RecursiveKeys`, `DirectKeys`, and `InternalPins`, and waits for them to return. A scalar method that observes the cancellation may return `context.Canceled`; a stream interrupted by Close may surface `ErrClosed` on the channel before it closes. After Close returns, every other method returns the new `ErrClosed` sentinel; streaming methods deliver it as `StreamedPin.Err` on a single entry, then close the channel. Close is idempotent and goroutine-safe. **Action required:** downstream `Pinner` implementations must add `Close`. [#1150](https://github.com/ipfs/boxo/pull/1150)
 - `pinning/pinner/dspinner`: implements `Close`. Close cancels the contexts of in-flight operations, so snapshot iteration in `RecursiveKeys`/`DirectKeys` and DAG fetches in `Pin` bail out promptly instead of draining to completion. Close returns as soon as those operations honor their ctx. Hosts owning the datastore should call `Close` on the pinner before closing the datastore to avoid the use-after-close panic path in stores such as pebble. [#1150](https://github.com/ipfs/boxo/pull/1150)
-- `routing/http/types/iter`: added `Limit`, an iterator that caps another iterator at a fixed number of values.
+- `routing/http/types/iter`: added `Limit`, an iterator that caps another iterator at a fixed number of values. [#1157](https://github.com/ipfs/boxo/pull/1157)
+- `routing/providerquerymanager`: new `WithFindPeerFallback` option. When set, a one-shot `FindPeer` fallback runs if the first dial to a provider fails; the manager retries the dial with the fresh `AddrInfo`, but only if `FindPeer` surfaced at least one address that wasn't already in the routing-record set just tried. Rescues providers whose routing-record snapshot is thin or stale but whose actual addresses are still reachable, without wasting a retry on a duplicate address set. Disabled by default; pass `WithFindPeerFallback(myDHT)` to enable.
 
 ### Changed
 - upgrade to `go-libp2p-kad-dht` [v0.39.2](https://github.com/libp2p/go-libp2p-kad-dht/releases/tag/v0.39.2)
@@ -41,15 +43,16 @@ The following emojis are used to highlight certain changes:
 
     See [ipfs/kubo#11254](https://github.com/ipfs/kubo/pull/11254) for a worked example of the call-site update. [#1128](https://github.com/ipfs/boxo/pull/1128)
 
-- ✨ `routing/http/server`: the Delegated Routing server now calls `DelegatedRouter.FindProviders`/`FindPeers` with a limit of `0` (unbounded) and applies the configured records limit itself, after filtering. This is what lets a filtered request still return a full page of results. The server reads the result iterator lazily and closes it once it has enough records, so delegates should return results lazily and stop work when the iterator is closed. A delegate that used the limit to end its walk early will now end it on `Close` instead.
+- ✨ `routing/http/server`: the Delegated Routing server now passes `limit=0` (unbounded) to `DelegatedRouter.FindProviders`/`FindPeers` and applies the configured records limit itself, after filtering. Filtered requests now return a full page of results instead of fewer than requested. The server reads the delegate's iterator lazily and closes it once it has enough records. **Action required:** delegate implementations should return results lazily and stop work on `Close`. A delegate that previously used the `limit` argument to end its walk early should now end the walk on `Close` instead. [#1157](https://github.com/ipfs/boxo/pull/1157)
+- `path/resolver`: `ResolveToLastNode`, `ResolvePath`, and `ResolvePathComponents` now populate `retrieval.State` on the request context when one is attached. They advance the state to `PhasePathResolution`, record the root CID from the input path, and record the terminal CID once resolution completes. Until now only the gateway backends populated these fields, leaving non-gateway callers (CLIs, custom tools) without phase or CID diagnostics on retrieval errors. The new calls are idempotent with the existing gateway-side ones, so behavior on the gateway path is unchanged.
 
 ### Removed
 
 ### Fixed
 
 - `files`: now builds under `GOOS=js GOARCH=wasm` and `GOOS=wasip1 GOARCH=wasm`. [#935](https://github.com/ipfs/boxo/pull/935)
-- `routing/http/server`: filtered `/routing/v1/providers` and `/routing/v1/peers` requests no longer return fewer records than the configured limit. Before, the limit was applied before `filter-addrs`/`filter-protocols` ran, so records dropped by the filters shrank the response. The limit is now applied after filtering.
-- `routing/http/types/iter`: `Filter.Next` now iterates instead of recursing on rejected values. Combined with the change above (the server pulls unbounded results from the delegate and filters them), a request that drops most records no longer grows the goroutine stack proportionally to the rejected count.
+- `routing/http/server`: filtered `/routing/v1/providers` and `/routing/v1/peers` requests now return up to the configured records limit. Previously the limit was applied before `filter-addrs`/`filter-protocols` ran, so records dropped by the filters shrank the response below the limit. The limit now applies after filtering. [#1157](https://github.com/ipfs/boxo/pull/1157)
+- `routing/http/types/iter`: `Filter.Next` now iterates instead of recursing on rejected values, so the goroutine stack stays flat even when a long run of records is filtered out. This matters now that the server pulls unbounded results from the delegate. [#1157](https://github.com/ipfs/boxo/pull/1157)
 
 ### Security
 

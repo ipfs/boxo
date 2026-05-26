@@ -13,6 +13,7 @@ import (
 	dagmock "github.com/ipfs/boxo/ipld/merkledag/test"
 	"github.com/ipfs/boxo/path"
 	"github.com/ipfs/boxo/path/resolver"
+	"github.com/ipfs/boxo/retrieval"
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-unixfsnode"
@@ -264,4 +265,76 @@ func TestResolveToLastNode_MixedSegmentTypes(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 0, len(remainder))
 	require.True(t, cid.Equals(a.Cid()))
+}
+
+// TestRetrievalStatePropagation verifies that the resolver advances
+// retrieval.State into PhasePathResolution and records both the root and
+// terminal CIDs when a State is attached to the request context. This is what
+// lets non-gateway callers (like kubo's CLI) get phase + CID diagnostics for
+// free, without each call site having to hand-set them.
+func TestRetrievalStatePropagation(t *testing.T) {
+	bsrv := dagmock.Bserv()
+
+	root := randNode()
+	mid := randNode()
+	leaf := randNode()
+	require.NoError(t, mid.AddNodeLink("grandchild", leaf))
+	require.NoError(t, root.AddNodeLink("child", mid))
+	for _, n := range []*merkledag.ProtoNode{root, mid, leaf} {
+		require.NoError(t, bsrv.AddBlock(t.Context(), n))
+	}
+
+	fetcherFactory := bsfetcher.NewFetcherConfig(bsrv)
+	fetcherFactory.NodeReifier = unixfsnode.Reify
+	fetcherFactory.PrototypeChooser = dagpb.AddSupportToChooser(func(lnk ipld.Link, lnkCtx ipld.LinkContext) (ipld.NodePrototype, error) {
+		if tlnkNd, ok := lnkCtx.LinkNode.(schema.TypedLinkNode); ok {
+			return tlnkNd.LinkTargetNodePrototype(), nil
+		}
+		return basicnode.Prototype.Any, nil
+	})
+	r := resolver.NewBasicResolver(fetcherFactory)
+
+	p, err := path.Join(path.FromCid(root.Cid()), "child", "grandchild")
+	require.NoError(t, err)
+	imPath, err := path.NewImmutablePath(p)
+	require.NoError(t, err)
+
+	t.Run("ResolveToLastNode populates state", func(t *testing.T) {
+		ctx, rs := retrieval.ContextWithState(t.Context())
+		require.Equal(t, retrieval.PhaseInitializing, rs.GetPhase())
+
+		_, _, err := r.ResolveToLastNode(ctx, imPath)
+		require.NoError(t, err)
+
+		require.GreaterOrEqual(t, int(rs.GetPhase()), int(retrieval.PhasePathResolution))
+		require.True(t, rs.GetRootCID().Equals(root.Cid()), "root CID should match path root")
+		require.True(t, rs.GetTerminalCID().Equals(leaf.Cid()), "terminal CID should match resolved leaf")
+	})
+
+	t.Run("ResolvePath populates state", func(t *testing.T) {
+		ctx, rs := retrieval.ContextWithState(t.Context())
+
+		_, _, err := r.ResolvePath(ctx, imPath)
+		require.NoError(t, err)
+
+		require.GreaterOrEqual(t, int(rs.GetPhase()), int(retrieval.PhasePathResolution))
+		require.True(t, rs.GetRootCID().Equals(root.Cid()))
+		require.True(t, rs.GetTerminalCID().Equals(leaf.Cid()))
+	})
+
+	t.Run("CID-only path sets terminal to root", func(t *testing.T) {
+		ctx, rs := retrieval.ContextWithState(t.Context())
+
+		_, _, err := r.ResolveToLastNode(ctx, path.FromCid(root.Cid()))
+		require.NoError(t, err)
+
+		require.True(t, rs.GetRootCID().Equals(root.Cid()))
+		require.True(t, rs.GetTerminalCID().Equals(root.Cid()),
+			"for /ipfs/<cid> with no path, root and terminal should match")
+	})
+
+	t.Run("no state on context is a no-op", func(t *testing.T) {
+		_, _, err := r.ResolveToLastNode(t.Context(), imPath)
+		require.NoError(t, err)
+	})
 }

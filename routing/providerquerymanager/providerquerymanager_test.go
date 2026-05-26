@@ -11,6 +11,7 @@ import (
 	cid "github.com/ipfs/go-cid"
 	"github.com/ipfs/go-test/random"
 	"github.com/libp2p/go-libp2p/core/peer"
+	ma "github.com/multiformats/go-multiaddr"
 )
 
 type fakeProviderDialer struct {
@@ -457,5 +458,235 @@ func TestIgnorePeers(t *testing.T) {
 	}
 	if total != 1 {
 		t.Fatal("did not ignore 4 of the peers")
+	}
+}
+
+// callCountingDialer fails the first Connect call for each target peer and
+// succeeds on subsequent ones. Used to exercise the WithFindPeerFallback retry.
+type callCountingDialer struct {
+	mu        sync.Mutex
+	callsByID map[peer.ID]int
+}
+
+func (d *callCountingDialer) Connect(_ context.Context, p peer.AddrInfo) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if d.callsByID == nil {
+		d.callsByID = map[peer.ID]int{}
+	}
+	d.callsByID[p.ID]++
+	if d.callsByID[p.ID] == 1 {
+		return errors.New("first attempt fails")
+	}
+	return nil
+}
+
+func (d *callCountingDialer) callCount(id peer.ID) int {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.callsByID[id]
+}
+
+// fakePeerRouter satisfies ProviderQueryPeerRouter for tests. If findErr is
+// non-nil it is returned and findResult is ignored; otherwise findResult is
+// returned (use Addrs: nil to simulate "router knows the peer but has no
+// addresses").
+type fakePeerRouter struct {
+	mu         sync.Mutex
+	findResult peer.AddrInfo
+	findErr    error
+	calls      int
+}
+
+func (r *fakePeerRouter) FindPeer(_ context.Context, _ peer.ID) (peer.AddrInfo, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.calls++
+	if r.findErr != nil {
+		return peer.AddrInfo{}, r.findErr
+	}
+	return r.findResult, nil
+}
+
+func (r *fakePeerRouter) callCount() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.calls
+}
+
+// fakeProviderDiscoveryWithAddrs surfaces every peer in peersFound with the
+// given addrs attached. Lets tests control what AddrInfo the manager hands
+// the dialer on the initial attempt, which matters for the
+// has-new-addresses check in WithFindPeerFallback.
+type fakeProviderDiscoveryWithAddrs struct {
+	peersFound []peer.ID
+	addrs      []ma.Multiaddr
+}
+
+func (f *fakeProviderDiscoveryWithAddrs) FindProvidersAsync(ctx context.Context, _ cid.Cid, _ int) <-chan peer.AddrInfo {
+	out := make(chan peer.AddrInfo)
+	go func() {
+		defer close(out)
+		for _, p := range f.peersFound {
+			select {
+			case <-ctx.Done():
+				return
+			case out <- peer.AddrInfo{ID: p, Addrs: append([]ma.Multiaddr(nil), f.addrs...)}:
+			}
+		}
+	}()
+	return out
+}
+
+func collect(ch <-chan peer.AddrInfo) []peer.AddrInfo {
+	var out []peer.AddrInfo
+	for ai := range ch {
+		out = append(out, ai)
+	}
+	return out
+}
+
+func TestFindPeerFallbackRescuesFailedDial(t *testing.T) {
+	peers := random.Peers(1)
+	p := peers[0]
+	freshAddr := ma.StringCast("/ip4/198.51.100.7/tcp/4001")
+
+	dialer := &callCountingDialer{}
+	discovery := &fakeProviderDiscovery{peersFound: peers}
+	router := &fakePeerRouter{
+		findResult: peer.AddrInfo{ID: p, Addrs: []ma.Multiaddr{freshAddr}},
+	}
+
+	pqm := mustNotErr(New(dialer, discovery, WithFindPeerFallback(router)))
+	defer pqm.Close()
+
+	sessionCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	received := collect(pqm.FindProvidersAsync(sessionCtx, random.Cids(1)[0], 0))
+
+	if len(received) != 1 {
+		t.Fatalf("expected 1 provider after retry, got %d", len(received))
+	}
+	if c := dialer.callCount(p); c != 2 {
+		t.Errorf("expected 2 Connect calls for %s (initial + retry), got %d", p, c)
+	}
+	if c := router.callCount(); c != 1 {
+		t.Errorf("expected exactly 1 FindPeer call, got %d", c)
+	}
+}
+
+func TestFindPeerFallbackSkippedWhenNoAddrs(t *testing.T) {
+	peers := random.Peers(1)
+	p := peers[0]
+
+	dialer := &callCountingDialer{}
+	discovery := &fakeProviderDiscovery{peersFound: peers}
+	router := &fakePeerRouter{
+		findResult: peer.AddrInfo{ID: p, Addrs: nil},
+	}
+
+	pqm := mustNotErr(New(dialer, discovery, WithFindPeerFallback(router)))
+	defer pqm.Close()
+
+	sessionCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	received := collect(pqm.FindProvidersAsync(sessionCtx, random.Cids(1)[0], 0))
+
+	if len(received) != 0 {
+		t.Fatalf("expected 0 providers, got %d", len(received))
+	}
+	if c := dialer.callCount(p); c != 1 {
+		t.Errorf("expected exactly 1 Connect call (no retry), got %d", c)
+	}
+	if c := router.callCount(); c != 1 {
+		t.Errorf("expected exactly 1 FindPeer call, got %d", c)
+	}
+}
+
+func TestFindPeerFallbackSkippedWhenErrors(t *testing.T) {
+	peers := random.Peers(1)
+	p := peers[0]
+
+	dialer := &callCountingDialer{}
+	discovery := &fakeProviderDiscovery{peersFound: peers}
+	router := &fakePeerRouter{findErr: errors.New("routing: not found")}
+
+	pqm := mustNotErr(New(dialer, discovery, WithFindPeerFallback(router)))
+	defer pqm.Close()
+
+	sessionCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	received := collect(pqm.FindProvidersAsync(sessionCtx, random.Cids(1)[0], 0))
+
+	if len(received) != 0 {
+		t.Fatalf("expected 0 providers, got %d", len(received))
+	}
+	if c := dialer.callCount(p); c != 1 {
+		t.Errorf("expected exactly 1 Connect call (no retry), got %d", c)
+	}
+}
+
+// TestFindPeerFallbackSkippedWhenNoNewAddrs verifies the
+// hasNewAddrs gate: if FindPeer returns only addresses that were already in
+// the routing-record AddrInfo just tried, we don't retry (it would just
+// dial the same broken set again).
+func TestFindPeerFallbackSkippedWhenNoNewAddrs(t *testing.T) {
+	peers := random.Peers(1)
+	p := peers[0]
+	knownAddr := ma.StringCast("/ip4/198.51.100.7/tcp/4001")
+
+	dialer := &callCountingDialer{}
+	// Provider record already carries knownAddr.
+	discovery := &fakeProviderDiscoveryWithAddrs{
+		peersFound: peers,
+		addrs:      []ma.Multiaddr{knownAddr},
+	}
+	// FindPeer returns the same addr (plus nothing new). Retry must be skipped.
+	router := &fakePeerRouter{
+		findResult: peer.AddrInfo{ID: p, Addrs: []ma.Multiaddr{knownAddr}},
+	}
+
+	pqm := mustNotErr(New(dialer, discovery, WithFindPeerFallback(router)))
+	defer pqm.Close()
+
+	sessionCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	received := collect(pqm.FindProvidersAsync(sessionCtx, random.Cids(1)[0], 0))
+
+	if len(received) != 0 {
+		t.Fatalf("expected 0 providers (retry skipped, dial stays failed), got %d", len(received))
+	}
+	if c := dialer.callCount(p); c != 1 {
+		t.Errorf("expected exactly 1 Connect call (no retry on duplicate addrs), got %d", c)
+	}
+	if c := router.callCount(); c != 1 {
+		t.Errorf("expected exactly 1 FindPeer call, got %d", c)
+	}
+}
+
+func TestHasNewAddrs(t *testing.T) {
+	a := ma.StringCast("/ip4/198.51.100.1/tcp/4001")
+	b := ma.StringCast("/ip4/198.51.100.2/tcp/4001")
+	c := ma.StringCast("/ip4/198.51.100.3/tcp/4001")
+
+	cases := []struct {
+		name      string
+		candidate []ma.Multiaddr
+		existing  []ma.Multiaddr
+		want      bool
+	}{
+		{name: "empty candidate", candidate: nil, existing: []ma.Multiaddr{a}, want: false},
+		{name: "empty existing", candidate: []ma.Multiaddr{a}, existing: nil, want: true},
+		{name: "candidate is subset", candidate: []ma.Multiaddr{a}, existing: []ma.Multiaddr{a, b}, want: false},
+		{name: "identical sets", candidate: []ma.Multiaddr{a, b}, existing: []ma.Multiaddr{a, b}, want: false},
+		{name: "one new addr", candidate: []ma.Multiaddr{a, c}, existing: []ma.Multiaddr{a, b}, want: true},
+		{name: "all new addrs", candidate: []ma.Multiaddr{c}, existing: []ma.Multiaddr{a, b}, want: true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := hasNewAddrs(tc.candidate, tc.existing); got != tc.want {
+				t.Errorf("hasNewAddrs() = %v, want %v", got, tc.want)
+			}
+		})
 	}
 }
