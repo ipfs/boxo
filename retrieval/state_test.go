@@ -709,15 +709,13 @@ func TestStateNotifyAndSnapshot(t *testing.T) {
 		const writers = 8
 		const writes = 25
 		var wg sync.WaitGroup
-		wg.Add(writers)
-		for w := 0; w < writers; w++ {
-			go func() {
-				defer wg.Done()
-				for i := 0; i < writes; i++ {
+		for range writers {
+			wg.Go(func() {
+				for range writes {
 					p, _ := test.RandPeerID()
 					rs.AddFoundProvider(p)
 				}
-			}()
+			})
 		}
 
 		// Drain wake-ups while writers are running. We don't expect to see
