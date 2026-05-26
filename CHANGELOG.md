@@ -16,6 +16,7 @@ The following emojis are used to highlight certain changes:
 
 ### Added
 
+- `retrieval`: added `State.Snapshot`, `State.Apply`, and `State.Notify` so consumers can stream `State` across a process boundary, e.g. to drive a live progress bar in Kubo's `cat`, `get`, or `dag export`. [#1153](https://github.com/ipfs/boxo/pull/1153)
 - 🛠 `pinning/pinner`: added `Pinner.Close() error`. Close cancels every in-flight operation's context, including streaming goroutines from `RecursiveKeys`, `DirectKeys`, and `InternalPins`, and waits for them to return. A scalar method that observes the cancellation may return `context.Canceled`; a stream interrupted by Close may surface `ErrClosed` on the channel before it closes. After Close returns, every other method returns the new `ErrClosed` sentinel; streaming methods deliver it as `StreamedPin.Err` on a single entry, then close the channel. Close is idempotent and goroutine-safe. **Action required:** downstream `Pinner` implementations must add `Close`. [#1150](https://github.com/ipfs/boxo/pull/1150)
 - `pinning/pinner/dspinner`: implements `Close`. Close cancels the contexts of in-flight operations, so snapshot iteration in `RecursiveKeys`/`DirectKeys` and DAG fetches in `Pin` bail out promptly instead of draining to completion. Close returns as soon as those operations honor their ctx. Hosts owning the datastore should call `Close` on the pinner before closing the datastore to avoid the use-after-close panic path in stores such as pebble. [#1150](https://github.com/ipfs/boxo/pull/1150)
 - `routing/providerquerymanager`: new `WithFindPeerFallback` option. When set, a one-shot `FindPeer` fallback runs if the first dial to a provider fails; the manager retries the dial with the fresh `AddrInfo`, but only if `FindPeer` surfaced at least one address that wasn't already in the routing-record set just tried. Rescues providers whose routing-record snapshot is thin or stale but whose actual addresses are still reachable, without wasting a retry on a duplicate address set. Disabled by default; pass `WithFindPeerFallback(myDHT)` to enable.
@@ -40,6 +41,8 @@ The following emojis are used to highlight certain changes:
     ```
 
     See [ipfs/kubo#11254](https://github.com/ipfs/kubo/pull/11254) for a worked example of the call-site update. [#1128](https://github.com/ipfs/boxo/pull/1128)
+
+- `path/resolver`: `ResolveToLastNode`, `ResolvePath`, and `ResolvePathComponents` now populate `retrieval.State` on the request context when one is attached. They advance the state to `PhasePathResolution`, record the root CID from the input path, and record the terminal CID once resolution completes. Until now only the gateway backends populated these fields, leaving non-gateway callers (CLIs, custom tools) without phase or CID diagnostics on retrieval errors. The new calls are idempotent with the existing gateway-side ones, so behavior on the gateway path is unchanged.
 
 ### Removed
 

@@ -2,9 +2,11 @@ package retrieval
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/test"
@@ -591,4 +593,176 @@ func TestErrorWithState(t *testing.T) {
 		assert.Equal(t, int32(2), state.ProvidersFound.Load())
 		assert.Len(t, state.GetFailedProviders(), 1)
 	})
+}
+
+// TestStateNotifyAndSnapshot covers the pub/sub additions used by external
+// progress UIs that observe a [State] across a process boundary.
+func TestStateNotifyAndSnapshot(t *testing.T) {
+	t.Run("Snapshot returns an immutable copy", func(t *testing.T) {
+		rs := NewState()
+		rs.SetPhase(PhaseProviderDiscovery)
+		rs.ProvidersFound.Store(3)
+		p1, _ := test.RandPeerID()
+		p2, _ := test.RandPeerID()
+		rs.AddFoundProvider(p1)
+		rs.AddFoundProvider(p2)
+
+		snap := rs.Snapshot()
+		require.Equal(t, PhaseProviderDiscovery, snap.Phase)
+		require.Equal(t, int32(3), snap.ProvidersFound)
+		require.Len(t, snap.FoundProviders, 2)
+
+		// Mutating the snapshot must not affect the live State.
+		snap.FoundProviders[0] = peer.ID("tampered")
+		require.NotEqual(t, "tampered", string(rs.GetFoundProviders()[0]))
+	})
+
+	t.Run("Notify wakes on phase advance and coalesces", func(t *testing.T) {
+		rs := NewState()
+		ch := rs.Notify()
+
+		// First write fills the buffer (size 1).
+		rs.SetPhase(PhasePathResolution)
+		// Second write before drain is coalesced.
+		rs.SetPhase(PhaseProviderDiscovery)
+
+		select {
+		case <-ch:
+			// got the (single) wake-up
+		default:
+			t.Fatal("expected a notification after SetPhase")
+		}
+
+		// Channel must be empty now: the second SetPhase was coalesced.
+		select {
+		case <-ch:
+			t.Fatal("notification channel should have been drained")
+		default:
+		}
+
+		// Subsequent writes wake again.
+		p, _ := test.RandPeerID()
+		rs.AddFoundProvider(p)
+		select {
+		case <-ch:
+		default:
+			t.Fatal("expected a notification after AddFoundProvider")
+		}
+	})
+
+	t.Run("monotonic SetPhase to the current phase does not signal", func(t *testing.T) {
+		rs := NewState()
+		rs.SetPhase(PhaseProviderDiscovery)
+		<-rs.Notify() // drain the initial advance
+
+		// SetPhase at or below current must not signal.
+		rs.SetPhase(PhasePathResolution)
+		rs.SetPhase(PhaseProviderDiscovery)
+		select {
+		case <-rs.Notify():
+			t.Fatal("non-advancing SetPhase must not wake subscribers")
+		default:
+		}
+	})
+
+	t.Run("Apply restores remote snapshot into a local State", func(t *testing.T) {
+		// Build a "remote" state with some content.
+		remote := NewState()
+		remote.SetPhase(PhaseConnecting)
+		remote.ProvidersFound.Store(4)
+		remote.ProvidersAttempted.Store(2)
+		remote.ProvidersConnected.Store(1)
+		p, _ := test.RandPeerID()
+		remote.AddFoundProvider(p)
+
+		// Receiver: apply the snapshot to a fresh State.
+		local := NewState()
+		ch := local.Notify()
+		local.Apply(remote.Snapshot())
+
+		require.Equal(t, PhaseConnecting, local.GetPhase())
+		require.Equal(t, int32(4), local.ProvidersFound.Load())
+		require.Equal(t, int32(1), local.ProvidersConnected.Load())
+		require.Len(t, local.GetFoundProviders(), 1)
+
+		select {
+		case <-ch:
+		default:
+			t.Fatal("Apply should signal subscribers")
+		}
+	})
+
+	t.Run("Apply preserves monotonic phase", func(t *testing.T) {
+		local := NewState()
+		local.SetPhase(PhaseConnecting)
+
+		stale := Snapshot{Phase: PhasePathResolution}
+		local.Apply(stale)
+		require.Equal(t, PhaseConnecting, local.GetPhase(),
+			"Apply with an earlier phase must not move local phase backwards")
+	})
+
+	t.Run("concurrent writers and one subscriber", func(t *testing.T) {
+		rs := NewState()
+		ch := rs.Notify()
+
+		const writers = 8
+		const writes = 25
+		var wg sync.WaitGroup
+		for range writers {
+			wg.Go(func() {
+				for range writes {
+					p, _ := test.RandPeerID()
+					rs.AddFoundProvider(p)
+				}
+			})
+		}
+
+		// Drain wake-ups while writers are running. We don't expect to see
+		// every individual write (coalesced), only that we never deadlock
+		// and we eventually observe at least one wake-up.
+		got := 0
+		done := make(chan struct{})
+		go func() {
+			for range ch {
+				got++
+				if got == 1 {
+					close(done)
+				}
+			}
+		}()
+
+		select {
+		case <-done:
+		case <-time.After(2 * time.Second):
+			t.Fatal("no wake-up received under concurrent writers")
+		}
+		wg.Wait()
+	})
+}
+
+// TestSnapshotJSONRoundTrip confirms a Snapshot survives a JSON
+// marshal/unmarshal/Apply round-trip. RetrievalPhase is encoded as
+// its underlying int (RetrievalPhase is `type RetrievalPhase int`);
+// the wire format uses Go's default field naming.
+func TestSnapshotJSONRoundTrip(t *testing.T) {
+	rs := NewState()
+	rs.SetPhase(PhaseConnecting)
+	rs.ProvidersFound.Store(7)
+
+	data, err := json.Marshal(rs.Snapshot())
+	require.NoError(t, err)
+	require.Contains(t, string(data), `"Phase":3`,
+		"Phase encodes as the underlying int (PhaseConnecting == 3)")
+	require.Contains(t, string(data), `"ProvidersFound":7`)
+
+	var snap Snapshot
+	require.NoError(t, json.Unmarshal(data, &snap))
+	require.Equal(t, PhaseConnecting, snap.Phase)
+	require.Equal(t, int32(7), snap.ProvidersFound)
+
+	other := NewState()
+	other.Apply(snap)
+	require.Equal(t, PhaseConnecting, other.GetPhase())
+	require.Equal(t, int32(7), other.ProvidersFound.Load())
 }
