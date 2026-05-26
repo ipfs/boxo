@@ -198,7 +198,7 @@ func (s *streamMessageSender) multiAttempt(ctx context.Context, fn func() error)
 
 		// Attempt failed
 
-		// If the sender has been closed or the context cancelled, just bail out
+		// If the sender has been closed or the context canceled, just bail out
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
