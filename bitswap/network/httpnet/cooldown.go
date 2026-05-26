@@ -75,6 +75,16 @@ func (ct *cooldownTracker) remove(host string) {
 	ct.urlsLock.Unlock()
 }
 
+// onCooldown reports whether host has an active cooldown right now.
+// Callers (e.g. the pinger) use this to honour Retry-After by skipping
+// probes inside the window the gateway asked us to wait.
+func (ct *cooldownTracker) onCooldown(host string) bool {
+	ct.urlsLock.RLock()
+	defer ct.urlsLock.RUnlock()
+	dl, ok := ct.urls[host]
+	return ok && time.Now().Before(dl)
+}
+
 func (ct *cooldownTracker) fillSenderURLs(urls []network.ParsedURL) []*senderURL {
 	now := time.Now()
 	surls := make([]*senderURL, len(urls))

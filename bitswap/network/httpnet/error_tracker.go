@@ -3,46 +3,65 @@ package httpnet
 import (
 	"errors"
 	"sync"
-
-	"github.com/libp2p/go-libp2p/core/peer"
 )
 
-var errThresholdCrossed = errors.New("the peer crossed the error threshold")
+var errThresholdCrossed = errors.New("the host crossed the error threshold")
 
+// errorTracker counts client errors (e.g. 404) per HTTP endpoint.
+//
+// Counts are keyed on endpointKey, not on peer.ID. Multiple peer IDs
+// that resolve to the same gateway contribute to one shared counter,
+// so a misbehaving host trips the breaker once for all peers using it
+// rather than after every peer drained its own quota.
 type errorTracker struct {
-	ht *Network
-
-	mux    sync.RWMutex
-	errors map[peer.ID]int
+	mu     sync.Mutex
+	counts map[string]int
 }
 
-func newErrorTracker(ht *Network) *errorTracker {
-	return &errorTracker{
-		ht:     ht,
-		errors: make(map[peer.ID]int),
-	}
+func newErrorTracker() *errorTracker {
+	return &errorTracker{counts: make(map[string]int)}
 }
 
-func (et *errorTracker) stopTracking(p peer.ID) {
-	et.mux.Lock()
-	delete(et.errors, p)
-	et.mux.Unlock()
-}
-
-// logErrors adds n to the current error count for p. If the total count is above the threshold, then an error is returned. If n is 0, the the total count is reset to 0.
-func (et *errorTracker) logErrors(p peer.ID, n int, threshold int) error {
-	et.mux.Lock()
-	defer et.mux.Unlock()
-
-	if n == 0 { // reset error count
-		delete(et.errors, p)
+// logErrors attributes n client errors to every host backing urls.
+// When n is zero, the counters for those hosts reset (a successful
+// SendMsg signals the hosts are healthy).
+//
+// Returns errThresholdCrossed when any host's count exceeds threshold.
+// The caller decides what to do with that signal; today it disconnects
+// the peer that triggered the check. Other peers using the same host
+// are caught lazily on their next SendMsg.
+func (et *errorTracker) logErrors(urls []*senderURL, n, threshold int) error {
+	if len(urls) == 0 {
 		return nil
 	}
-	count := et.errors[p]
-	total := count + n
-	et.errors[p] = total
-	if total > threshold {
+	et.mu.Lock()
+	defer et.mu.Unlock()
+
+	if n == 0 {
+		for _, u := range urls {
+			delete(et.counts, endpointKey(u.URL.Scheme, u.URL.Host, u.SNI))
+		}
+		return nil
+	}
+
+	var tripped bool
+	for _, u := range urls {
+		key := endpointKey(u.URL.Scheme, u.URL.Host, u.SNI)
+		et.counts[key] += n
+		if et.counts[key] > threshold {
+			tripped = true
+		}
+	}
+	if tripped {
 		return errThresholdCrossed
 	}
 	return nil
+}
+
+// reset drops the count for key. Called when no peer is using the host
+// so a future reconnect starts fresh.
+func (et *errorTracker) reset(key string) {
+	et.mu.Lock()
+	delete(et.counts, key)
+	et.mu.Unlock()
 }
