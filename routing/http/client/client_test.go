@@ -403,11 +403,9 @@ func TestClient_FindProviders(t *testing.T) {
 			cid := makeCID()
 
 			routerResultIter := iter.FromSlice(c.routerResult)
-			if c.expStreamingResponse {
-				router.On("FindProviders", mock.Anything, cid, 0).Return(routerResultIter, c.routerErr)
-			} else {
-				router.On("FindProviders", mock.Anything, cid, 20).Return(routerResultIter, c.routerErr)
-			}
+			// The server always passes 0 (unbounded) to the delegate; it
+			// enforces records limits itself, after filtering.
+			router.On("FindProviders", mock.Anything, cid, 0).Return(routerResultIter, c.routerErr)
 
 			resultIter, err := client.FindProviders(ctx, cid)
 			c.expErrContains.errContains(t, err)
@@ -701,11 +699,9 @@ func TestClient_FindPeers(t *testing.T) {
 			}
 
 			routerResultIter := iter.FromSlice(c.routerResult)
-			if c.expStreamingResponse {
-				router.On("FindPeers", mock.Anything, pid, 0).Return(routerResultIter, c.routerErr)
-			} else {
-				router.On("FindPeers", mock.Anything, pid, 20).Return(routerResultIter, c.routerErr)
-			}
+			// The server always passes 0 (unbounded) to the delegate; it
+			// enforces records limits itself, after filtering.
+			router.On("FindPeers", mock.Anything, pid, 0).Return(routerResultIter, c.routerErr)
 
 			resultIter, err := client.FindPeers(ctx, pid)
 			c.expErrContains.errContains(t, err)

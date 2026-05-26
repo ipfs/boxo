@@ -69,6 +69,11 @@ type FindProvidersAsyncResponse struct {
 type DelegatedRouter interface {
 	// FindProviders searches for peers who are able to provide the given [cid.Cid].
 	// Limit indicates the maximum amount of results to return; 0 means unbounded.
+	//
+	// The HTTP server in this package always calls FindProviders with a
+	// limit of 0 and caps the response itself, after filtering. It consumes
+	// the iterator lazily and Closes it once enough records are collected,
+	// so implementations should return results lazily and stop work on Close.
 	FindProviders(ctx context.Context, cid cid.Cid, limit int) (iter.ResultIter[types.Record], error)
 
 	// Deprecated: historic API from [IPIP-526], may be removed in a future version.
@@ -78,6 +83,9 @@ type DelegatedRouter interface {
 
 	// FindPeers searches for peers who have the provided [peer.ID].
 	// Limit indicates the maximum amount of results to return; 0 means unbounded.
+	//
+	// As with FindProviders, the HTTP server always calls FindPeers with a
+	// limit of 0 and caps the response itself, after filtering.
 	FindPeers(ctx context.Context, pid peer.ID, limit int) (iter.ResultIter[*types.PeerRecord], error)
 
 	// GetIPNS searches for an [ipns.Record] for the given [ipns.Name].
@@ -124,18 +132,20 @@ func WithStreamingResultsDisabled() Option {
 	}
 }
 
-// WithRecordsLimit sets a limit that will be passed to [ContentRouter.FindProviders]
-// and [ContentRouter.FindPeers] for non-streaming requests (application/json).
-// Default is [DefaultRecordsLimit].
+// WithRecordsLimit caps the number of records returned for non-streaming
+// requests (application/json). The server applies the cap after filtering,
+// so filtered-out records do not shrink the response. The delegate
+// [ContentRouter] is always called with a limit of 0 (unbounded).
+// A limit of 0 disables the cap. Default is [DefaultRecordsLimit].
 func WithRecordsLimit(limit int) Option {
 	return func(s *server) {
 		s.recordsLimit = limit
 	}
 }
 
-// WithStreamingRecordsLimit sets a limit that will be passed to [ContentRouter.FindProviders]
-// and [ContentRouter.FindPeers] for streaming requests (application/x-ndjson).
-// Default is [DefaultStreamingRecordsLimit].
+// WithStreamingRecordsLimit caps the number of records returned for
+// streaming requests (application/x-ndjson). See [WithRecordsLimit] for
+// how the cap is applied. Default is [DefaultStreamingRecordsLimit].
 func WithStreamingRecordsLimit(limit int) Option {
 	return func(s *server) {
 		s.streamingRecordsLimit = limit
@@ -272,7 +282,7 @@ func (s *server) findProviders(w http.ResponseWriter, httpReq *http.Request) {
 	}
 
 	var (
-		handlerFunc  func(w http.ResponseWriter, provIter iter.ResultIter[types.Record], filterAddrs, filterProtocols []string)
+		handlerFunc  func(w http.ResponseWriter, provIter iter.ResultIter[types.Record], recordsLimit int, filterAddrs, filterProtocols []string)
 		recordsLimit int
 	)
 
@@ -287,7 +297,13 @@ func (s *server) findProviders(w http.ResponseWriter, httpReq *http.Request) {
 	ctx, cancel := context.WithTimeout(httpReq.Context(), s.routingTimeout)
 	defer cancel()
 
-	provIter, err := s.svc.FindProviders(ctx, cid, recordsLimit)
+	// Pass 0 (unbounded) to the delegate and enforce recordsLimit here,
+	// after filtering. Passing recordsLimit would let the delegate stop
+	// early, before filters run, so records dropped by filters would
+	// shrink the response below recordsLimit. The delegate returns
+	// results lazily; the limiting iterator closes it once the cap is
+	// reached.
+	provIter, err := s.svc.FindProviders(ctx, cid, 0)
 	if err != nil {
 		if errors.Is(err, routing.ErrNotFound) {
 			// handlerFunc takes care of setting the 404 and necessary headers
@@ -298,14 +314,16 @@ func (s *server) findProviders(w http.ResponseWriter, httpReq *http.Request) {
 		}
 	}
 
-	handlerFunc(w, provIter, filterAddrs, filterProtocols)
+	handlerFunc(w, provIter, recordsLimit, filterAddrs, filterProtocols)
 }
 
-func (s *server) findProvidersJSON(w http.ResponseWriter, provIter iter.ResultIter[types.Record], filterAddrs, filterProtocols []string) {
-	defer provIter.Close()
-
+func (s *server) findProvidersJSON(w http.ResponseWriter, provIter iter.ResultIter[types.Record], recordsLimit int, filterAddrs, filterProtocols []string) {
 	filteredIter := filters.ApplyFiltersToIter(provIter, filterAddrs, filterProtocols)
-	providers, err := iter.ReadAllResults(filteredIter)
+	var limitedIter iter.ResultIter[types.Record] = iter.Limit(filteredIter, recordsLimit)
+	providers, err := iter.ReadAllResults(limitedIter)
+	// Close eagerly so the upstream router request is canceled before we
+	// spend time marshaling and writing the response.
+	limitedIter.Close()
 	if err != nil {
 		writeErr(w, "FindProviders", http.StatusInternalServerError, fmt.Errorf("delegate error: %w", err))
 		return
@@ -321,10 +339,10 @@ func (s *server) findProvidersJSON(w http.ResponseWriter, provIter iter.ResultIt
 	})
 }
 
-func (s *server) findProvidersNDJSON(w http.ResponseWriter, provIter iter.ResultIter[types.Record], filterAddrs, filterProtocols []string) {
+func (s *server) findProvidersNDJSON(w http.ResponseWriter, provIter iter.ResultIter[types.Record], recordsLimit int, filterAddrs, filterProtocols []string) {
 	filteredIter := filters.ApplyFiltersToIter(provIter, filterAddrs, filterProtocols)
-
-	writeResultsIterNDJSON(w, filteredIter)
+	var limitedIter iter.ResultIter[types.Record] = iter.Limit(filteredIter, recordsLimit)
+	writeResultsIterNDJSON(w, limitedIter)
 }
 
 func (s *server) findPeers(w http.ResponseWriter, r *http.Request) {
@@ -346,7 +364,7 @@ func (s *server) findPeers(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var (
-		handlerFunc  func(w http.ResponseWriter, provIter iter.ResultIter[*types.PeerRecord], filterAddrs, filterProtocols []string)
+		handlerFunc  func(w http.ResponseWriter, provIter iter.ResultIter[*types.PeerRecord], recordsLimit int, filterAddrs, filterProtocols []string)
 		recordsLimit int
 	)
 
@@ -362,7 +380,9 @@ func (s *server) findPeers(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), s.routingTimeout)
 	defer cancel()
 
-	provIter, err := s.svc.FindPeers(ctx, pid, recordsLimit)
+	// Pass 0 (unbounded) to the delegate and enforce recordsLimit here,
+	// after filtering. See findProviders for the rationale.
+	provIter, err := s.svc.FindPeers(ctx, pid, 0)
 	if err != nil {
 		if errors.Is(err, routing.ErrNotFound) {
 			// handlerFunc takes care of setting the 404 and necessary headers
@@ -373,7 +393,7 @@ func (s *server) findPeers(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	handlerFunc(w, provIter, filterAddrs, filterProtocols)
+	handlerFunc(w, provIter, recordsLimit, filterAddrs, filterProtocols)
 }
 
 func (s *server) provide(w http.ResponseWriter, httpReq *http.Request) {
@@ -438,12 +458,14 @@ func (s *server) provide(w http.ResponseWriter, httpReq *http.Request) {
 	writeJSONResult(w, "Provide", resp)
 }
 
-func (s *server) findPeersJSON(w http.ResponseWriter, peersIter iter.ResultIter[*types.PeerRecord], filterAddrs, filterProtocols []string) {
-	defer peersIter.Close()
+func (s *server) findPeersJSON(w http.ResponseWriter, peersIter iter.ResultIter[*types.PeerRecord], recordsLimit int, filterAddrs, filterProtocols []string) {
+	filteredIter := filters.ApplyFiltersToPeerRecordIter(peersIter, filterAddrs, filterProtocols)
+	var limitedIter iter.ResultIter[*types.PeerRecord] = iter.Limit(filteredIter, recordsLimit)
 
-	peersIter = filters.ApplyFiltersToPeerRecordIter(peersIter, filterAddrs, filterProtocols)
-
-	peers, err := iter.ReadAllResults(peersIter)
+	peers, err := iter.ReadAllResults(limitedIter)
+	// Close eagerly so the upstream router request is canceled before we
+	// spend time marshaling and writing the response.
+	limitedIter.Close()
 	if err != nil {
 		writeErr(w, "FindPeers", http.StatusInternalServerError, fmt.Errorf("delegate error: %w", err))
 		return
@@ -459,7 +481,7 @@ func (s *server) findPeersJSON(w http.ResponseWriter, peersIter iter.ResultIter[
 	})
 }
 
-func (s *server) findPeersNDJSON(w http.ResponseWriter, peersIter iter.ResultIter[*types.PeerRecord], filterAddrs, filterProtocols []string) {
+func (s *server) findPeersNDJSON(w http.ResponseWriter, peersIter iter.ResultIter[*types.PeerRecord], recordsLimit int, filterAddrs, filterProtocols []string) {
 	// Convert PeerRecord to Record so that we can reuse the filtering logic from findProviders
 	mappedIter := iter.Map(peersIter, func(v iter.Result[*types.PeerRecord]) iter.Result[types.Record] {
 		if v.Err != nil || v.Val == nil {
@@ -471,7 +493,8 @@ func (s *server) findPeersNDJSON(w http.ResponseWriter, peersIter iter.ResultIte
 	})
 
 	filteredIter := filters.ApplyFiltersToIter(mappedIter, filterAddrs, filterProtocols)
-	writeResultsIterNDJSON(w, filteredIter)
+	var limitedIter iter.ResultIter[types.Record] = iter.Limit(filteredIter, recordsLimit)
+	writeResultsIterNDJSON(w, limitedIter)
 }
 
 func (s *server) GetIPNS(w http.ResponseWriter, r *http.Request) {
