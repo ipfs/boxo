@@ -563,12 +563,12 @@ func (e *Engine) taskWorker(ctx context.Context) {
 			return
 		case e.outbox <- oneTimeUse:
 		}
-		// receiver is ready for an outoing envelope. let's prepare one. first,
+		// receiver is ready for an outgoing envelope. let's prepare one. first,
 		// we must acquire a task from the PQ...
 		envelope, err := e.nextEnvelope(ctx)
 		if err != nil {
 			close(oneTimeUse)
-			return // ctx cancelled
+			return // ctx canceled
 		}
 		oneTimeUse <- envelope // buffered. won't block
 		close(oneTimeUse)
