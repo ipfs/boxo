@@ -24,6 +24,8 @@ The following emojis are used to highlight certain changes:
 
 ### Security
 
+- `tracing`: bumped OpenTelemetry OTLP exporters to [v1.43.0](https://github.com/open-telemetry/opentelemetry-go/releases/tag/v1.43.0), which caps the HTTP exporter's response body at 4 MiB. A hostile or man-in-the-middle collector could otherwise exhaust its memory ([CVE-2026-39882](https://github.com/open-telemetry/opentelemetry-go/security/advisories/GHSA-w8rr-5gcm-pp58)). The gRPC exporter is unaffected.
+
 
 ## [v0.40.0]
 
