@@ -75,7 +75,7 @@ Below are links of related/adjacent work that has informed some of the decisions
   - [ ] Go to Kubo dir and run `go get github.com/ipfs/boxo@<commit_hash>` using the commit hash of the `release-vX.Y.Z` branch
   - [ ] Run `make mod_tidy` in repo root (to apply `go mod tidy` to code, tests, and examples)
   - [ ] Commit the changes and open a draft PR in Kubo
-  - [ ] Name the PR "Upgrade to Boxo vX.Y.Z"
+  - [ ] Name the PR "chore: upgrade to boxo vX.Y.Z"
   - [ ] Paste a link to the Kubo PR in the Boxo PR, so reviewers can verify the Kubo test run
   - [ ] Verify the CI passes
 - [ ] Add a commit in `release-vX.Y.Z` bumping the version in `version.json` to `vX.Y.Z`
