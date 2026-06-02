@@ -518,6 +518,50 @@ func TestMessageSendErrorDoesNotMarkUnresponsive(t *testing.T) {
 	}
 }
 
+// TestMessageSendErrorMarksUnresponsive checks that a peer whose sends keep
+// failing is eventually marked unresponsive once multiAttempt() exhausts all
+// retries, emitting a PeerDisconnected. This is the complement of
+// TestMessageSendErrorDoesNotMarkUnresponsive: a single recoverable error must
+// not mark the peer, but a persistently failing one must.
+func TestMessageSendErrorMarksUnresponsive(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	p1 := tnet.RandIdentityOrFatal(t)
+	r1 := newReceiver()
+	p2 := tnet.RandIdentityOrFatal(t)
+	r2 := newReceiver()
+
+	eh, bsnet1, _, _, msg := prepareNetwork(t, ctx, p1, r1, p2, r2)
+
+	ms, err := bsnet1.NewMessageSender(ctx, p2.ID(), &network.MessageSenderOpts{
+		MaxRetries:       3,
+		SendTimeout:      100 * time.Millisecond,
+		SendErrorBackoff: 10 * time.Millisecond,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ms.Reset()
+
+	// Keep failing every send so all retries are exhausted.
+	eh.setError(errMockNetErr)
+
+	// SendMsg must fail once retries are exhausted.
+	if err = ms.SendMsg(ctx, msg); err == nil {
+		t.Fatal("expected SendMsg to fail after exhausting retries")
+	}
+
+	// The exhausted retries must have marked the peer unresponsive, which
+	// emits a PeerDisconnected, dropping it from the receiver's set.
+	require.Eventually(t, func() bool {
+		r1.mu.Lock()
+		defer r1.mu.Unlock()
+		_, ok := r1.peers[p2.ID()]
+		return !ok
+	}, time.Second, 20*time.Millisecond, "unresponsive peer was not disconnected after exhausting retries")
+}
+
 func TestMessageSendTimeout(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
