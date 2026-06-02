@@ -22,6 +22,8 @@ The following emojis are used to highlight certain changes:
 
 ### Fixed
 
+- `bitswap/network/bsnet`: stop marking a peer unresponsive on a single failed send attempt. `send()` is retried by `multiAttempt()`, which already marks the peer once all retries are exhausted; marking on the first failure could permanently sideline a peer that had just reconnected (the disconnect notification being suppressed), hanging fetches from it until it fully disconnected. [#1164](https://github.com/ipfs/boxo/pull/1164)
+
 ### Security
 
 - `tracing`: bumped OpenTelemetry OTLP exporters to [v1.43.0](https://github.com/open-telemetry/opentelemetry-go/releases/tag/v1.43.0), which caps the HTTP exporter's response body at 4 MiB. A hostile or man-in-the-middle collector could otherwise exhaust its memory ([CVE-2026-39882](https://github.com/open-telemetry/opentelemetry-go/security/advisories/GHSA-w8rr-5gcm-pp58)). The gRPC exporter is unaffected.
