@@ -449,6 +449,75 @@ func TestMessageResendAfterError(t *testing.T) {
 	}
 }
 
+// TestMessageSendErrorDoesNotMarkUnresponsive checks that a single recoverable
+// send error does not mark the peer unresponsive. send() is retried by
+// multiAttempt(), which only marks the peer once all retries are exhausted;
+// marking on the first failure could permanently sideline a peer whose
+// connection is in fact still live (e.g. right after a reconnect, where the
+// disconnect notification is suppressed), with no recovery path.
+// Regression test for https://github.com/ipfs/boxo/issues/1163.
+func TestMessageSendErrorDoesNotMarkUnresponsive(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	p1 := tnet.RandIdentityOrFatal(t)
+	r1 := newReceiver()
+	p2 := tnet.RandIdentityOrFatal(t)
+	r2 := newReceiver()
+
+	eh, bsnet1, _, _, msg := prepareNetwork(t, ctx, p1, r1, p2, r2)
+
+	testSendErrorBackoff := 100 * time.Millisecond
+	ms, err := bsnet1.NewMessageSender(ctx, p2.ID(), &network.MessageSenderOpts{
+		MaxRetries:       3,
+		SendTimeout:      100 * time.Millisecond,
+		SendErrorBackoff: testSendErrorBackoff,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ms.Reset()
+
+	// Fail the next send, then stop failing so the retry succeeds.
+	eh.setError(errMockNetErr)
+	go func() {
+		time.Sleep(testSendErrorBackoff / 2)
+		eh.setError(nil)
+	}()
+
+	if err = ms.SendMsg(ctx, msg); err != nil {
+		t.Fatal(err)
+	}
+
+	select {
+	case <-ctx.Done():
+		t.Fatal("did not receive message sent")
+	case <-r2.messageReceived:
+	}
+
+	// The single, recovered send error must not have marked the peer
+	// unresponsive. Marking it would emit a PeerDisconnected with no
+	// recovery (the peer stays connected, so no further event arrives),
+	// leaving the peer dropped from the receiver's set. Wait for the
+	// connection state to settle, then assert the peer is still connected.
+	require.Eventually(t, func() bool {
+		r1.mu.Lock()
+		defer r1.mu.Unlock()
+		_, ok := r1.peers[p2.ID()]
+		return ok
+	}, time.Second, 20*time.Millisecond, "peer was marked unresponsive after a single recoverable send error")
+
+	// Give a late erroneous PeerDisconnected a chance to land, and confirm
+	// the peer remains connected.
+	time.Sleep(300 * time.Millisecond)
+	r1.mu.Lock()
+	_, stillConnected := r1.peers[p2.ID()]
+	r1.mu.Unlock()
+	if !stillConnected {
+		t.Fatal("peer was marked unresponsive after a single recoverable send error")
+	}
+}
+
 func TestMessageSendTimeout(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
