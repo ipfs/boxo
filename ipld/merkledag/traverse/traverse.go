@@ -6,8 +6,27 @@ import (
 	"errors"
 
 	"github.com/gammazero/deque"
+	cid "github.com/ipfs/go-cid"
 	ipld "github.com/ipfs/go-ipld-format"
 )
+
+// Visited tracks which CIDs a traversal has already seen, so it can skip
+// duplicate subtrees when Options.SkipDuplicates is set.
+//
+// *github.com/ipfs/go-cid.Set already implements this interface. For very large
+// DAGs you can plug in your own version (say, one backed by disk or a Bloom
+// filter) to keep memory in check, or pass a set you already have so there is
+// only one copy.
+//
+// Traverse calls Visit from a single goroutine, so your implementation does not
+// need to be safe for concurrent use; the built-in *go-cid.Set is not. If you
+// share one Visited between traversals that run at the same time, add your own
+// locking.
+type Visited interface {
+	// Visit records c and returns true the first time c is seen, or false if c
+	// was already in the set.
+	Visit(c cid.Cid) bool
+}
 
 // Order is an identifier for traversal algorithm orders
 type Order int
@@ -30,6 +49,16 @@ type Options struct {
 	ErrFunc ErrFunc         // see ErrFunc. Optional
 
 	SkipDuplicates bool // whether to skip duplicate nodes
+
+	// Visited is the set used to skip duplicate nodes when SkipDuplicates is set.
+	// If nil, an in-memory go-cid Set is used. It is ignored when SkipDuplicates
+	// is false. A bounded or disk-backed set keeps memory low on very large DAGs.
+	//
+	// You can also pass a set that already holds some CIDs to skip them up front.
+	// The root is special here: BFS checks it against the set, so a pre-seeded
+	// root CID skips the whole walk, while the depth-first orders never skip the
+	// root.
+	Visited Visited
 }
 
 // State is a current traversal state
@@ -39,17 +68,16 @@ type State struct {
 }
 
 type traversal struct {
-	opts Options
-	seen map[string]struct{}
+	opts    Options
+	visited Visited
 }
 
 func (t *traversal) shouldSkip(n ipld.Node) (bool, error) {
 	if t.opts.SkipDuplicates {
-		k := n.Cid()
-		if _, found := t.seen[k.KeyString()]; found {
+		// Visit reports false when the CID was already recorded.
+		if !t.visited.Visit(n.Cid()) {
 			return true, nil
 		}
-		t.seen[k.KeyString()] = struct{}{}
 	}
 
 	return false, nil
@@ -106,7 +134,12 @@ type ErrFunc func(err error) error
 func Traverse(root ipld.Node, o Options) error {
 	t := traversal{
 		opts: o,
-		seen: map[string]struct{}{},
+	}
+	if o.SkipDuplicates {
+		t.visited = o.Visited
+		if t.visited == nil {
+			t.visited = cid.NewSet()
+		}
 	}
 
 	state := State{

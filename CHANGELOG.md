@@ -16,6 +16,8 @@ The following emojis are used to highlight certain changes:
 
 ### Added
 
+- `ipld/merkledag/traverse`: added the `Visited` interface and `Options.Visited` field, so callers can plug in their own set for skipping duplicates when `SkipDuplicates` is on. `*go-cid.Set` already works as one; a bounded or disk-backed set keeps memory low on very large DAGs.
+
 ### Changed
 
 ### Removed
