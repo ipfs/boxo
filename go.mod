@@ -35,7 +35,7 @@ require (
 	github.com/ipld/go-codec-dagpb v1.7.0
 	github.com/ipld/go-ipld-prime v0.23.0
 	github.com/libp2p/go-buffer-pool v0.1.0
-	github.com/libp2p/go-doh-resolver v0.5.0
+	github.com/libp2p/go-doh-resolver v0.5.1-0.20260603151746-4e7758ec9748
 	github.com/libp2p/go-libp2p v0.48.0
 	github.com/libp2p/go-libp2p-kad-dht v0.40.0
 	github.com/libp2p/go-libp2p-record v0.3.1
@@ -46,7 +46,7 @@ require (
 	github.com/mr-tron/base58 v1.3.0
 	github.com/multiformats/go-base32 v0.1.0
 	github.com/multiformats/go-multiaddr v0.16.1
-	github.com/multiformats/go-multiaddr-dns v0.5.0
+	github.com/multiformats/go-multiaddr-dns v0.5.1-0.20260603161026-e8eb3c2de127
 	github.com/multiformats/go-multibase v0.3.0
 	github.com/multiformats/go-multicodec v0.10.0
 	github.com/multiformats/go-multihash v0.2.3

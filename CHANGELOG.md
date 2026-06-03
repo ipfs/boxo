@@ -16,7 +16,11 @@ The following emojis are used to highlight certain changes:
 
 ### Added
 
+- `namesys`: DNS resolution can report the TXT record TTL. `WithDNSResolver` uses it automatically when the resolver implements [`madns.TXTWithTTLResolver`](https://github.com/multiformats/go-multiaddr-dns/pull/75), and `NewDNSResolverWithTTL`, `WithDNSResolverWithTTL`, and `LookupTXTWithTTLFunc` take a TTL-aware lookup directly. A gateway can then set `Cache-Control: max-age` for DNSLink (`/ipns/<dnslink-host>`) responses from the real DNS TTL instead of a static value. `NewDNSResolver` and `LookupTXTFunc` keep their signatures and report an unknown TTL (0). [#329](https://github.com/ipfs/boxo/issues/329)
+
 ### Changed
+
+- `namesys`: a resolved name's TTL is the shortest across all of its hops, so a DNSLink or recursive IPNS name is not cached past its earliest-expiring link. Hops with an unknown TTL (0) are ignored, leaving single-hop and current DNSLink results unaffected. [#329](https://github.com/ipfs/boxo/issues/329)
 
 ### Removed
 
