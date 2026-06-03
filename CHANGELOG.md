@@ -22,6 +22,8 @@ The following emojis are used to highlight certain changes:
 
 ### Fixed
 
+- `routing/http/server`: `GET /routing/v1/ipns/{name}` no longer advertises a cache window that outlives the record. `max-age` is capped to the record's remaining validity and `stale-while-revalidate`/`stale-if-error` cover only the validity left after it, so `max-age`+stale never crosses the record's EOL. An already-expired record is returned with `Cache-Control: no-store`. Previously the stale window could extend past EOL, letting caches serve an expired record that then fails validation.
+
 ### Security
 
 - `tracing`: bumped OpenTelemetry OTLP exporters to [v1.43.0](https://github.com/open-telemetry/opentelemetry-go/releases/tag/v1.43.0), which caps the HTTP exporter's response body at 4 MiB. A hostile or man-in-the-middle collector could otherwise exhaust its memory ([CVE-2026-39882](https://github.com/open-telemetry/opentelemetry-go/security/advisories/GHSA-w8rr-5gcm-pp58)). The gRPC exporter is unaffected.

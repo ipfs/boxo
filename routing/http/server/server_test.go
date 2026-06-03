@@ -1333,6 +1333,54 @@ func TestIPNS(t *testing.T) {
 			require.Equal(t, body, rawRecord1)
 		})
 
+		t.Run("GET /routing/v1/ipns/{cid-peer-id} caps Cache-Control to remaining validity", func(t *testing.T) {
+			t.Parallel()
+
+			// TTL is longer than the remaining validity, so neither max-age nor
+			// the stale window may let a cache serve the record past its EOL.
+			eol := time.Now().Add(30 * time.Second)
+			_, rawRecord := makeIPNSRecord(t, cid1, eol, time.Hour, sk, opts...)
+			rec, err := ipns.UnmarshalRecord(rawRecord)
+			require.NoError(t, err)
+
+			router := &mockContentRouter{}
+			router.On("GetIPNS", mock.Anything, name1).Return(rec, nil)
+
+			resp := makeRequest(t, router, "/routing/v1/ipns/"+name1.String(), mediaTypeIPNSRecord)
+			require.Equal(t, http.StatusOK, resp.StatusCode)
+
+			re := regexp.MustCompile(`(?:^|,\s*)(max-age|stale-while-revalidate|stale-if-error)=(\d+)`)
+			matches := re.FindAllStringSubmatch(resp.Header.Get("Cache-Control"), -1)
+			require.Len(t, matches, 3)
+			maxAge := stringToDuration(matches[0][2])
+			staleWhileRevalidate := stringToDuration(matches[1][2])
+			staleIfError := stringToDuration(matches[2][2])
+
+			// max-age must not exceed the remaining validity
+			require.LessOrEqual(t, maxAge, 30*time.Second)
+			// the full stale window must end at EOL, not after it (allow drift)
+			require.WithinDuration(t, eol, time.Now().Add(maxAge+staleWhileRevalidate), 1*time.Minute)
+			require.WithinDuration(t, eol, time.Now().Add(maxAge+staleIfError), 1*time.Minute)
+		})
+
+		t.Run("GET /routing/v1/ipns/{cid-peer-id} is not cacheable when expired", func(t *testing.T) {
+			t.Parallel()
+
+			// An expired record must not be cached by anyone: serving it later
+			// hands the client a record that fails validation.
+			eol := time.Now().Add(-time.Hour)
+			_, rawRecord := makeIPNSRecord(t, cid1, eol, time.Hour, sk, opts...)
+			rec, err := ipns.UnmarshalRecord(rawRecord)
+			require.NoError(t, err)
+
+			router := &mockContentRouter{}
+			router.On("GetIPNS", mock.Anything, name1).Return(rec, nil)
+
+			resp := makeRequest(t, router, "/routing/v1/ipns/"+name1.String(), mediaTypeIPNSRecord)
+			require.Equal(t, http.StatusOK, resp.StatusCode)
+			require.Equal(t, "no-store", resp.Header.Get("Cache-Control"))
+		})
+
 		t.Run("GET /routing/v1/ipns/{cid-peer-id} returns 200 (Accept header missing)", func(t *testing.T) {
 			t.Parallel()
 
