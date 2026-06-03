@@ -131,18 +131,15 @@ func emitResult(ctx context.Context, outCh chan<- AsyncResult, r AsyncResult) {
 	}
 }
 
-// minNonZeroTTL returns the shorter of two TTLs, treating 0 as unknown and
-// ignoring it. If both are unknown, it returns 0. The builtin min won't do
-// here: it would pick the 0.
+// minNonZeroTTL returns the shorter of two TTLs, treating a non-positive value
+// as unknown and ignoring it. If both are unknown it returns 0, and a negative
+// input is never returned.
 func minNonZeroTTL(a, b time.Duration) time.Duration {
-	switch {
-	case a <= 0:
-		return b
-	case b <= 0:
-		return a
-	default:
-		return min(a, b)
+	ttl := min(a, b)
+	if ttl <= 0 {
+		ttl = max(0, a, b)
 	}
+	return ttl
 }
 
 func joinPaths(resolvedBase, unresolvedPath path.Path) (path.Path, error) {

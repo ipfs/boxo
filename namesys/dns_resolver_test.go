@@ -237,11 +237,14 @@ func TestMinNonZeroTTL(t *testing.T) {
 	for _, tc := range []struct {
 		a, b, want time.Duration
 	}{
-		{0, 0, 0},                                           // both unknown -> unknown
-		{0, 5 * time.Second, 5 * time.Second},               // one unknown -> the other
-		{5 * time.Second, 0, 5 * time.Second},               // one unknown -> the other
-		{3 * time.Second, 5 * time.Second, 3 * time.Second}, // both known -> min
-		{5 * time.Second, 3 * time.Second, 3 * time.Second}, // both known -> min
+		{0, 0, 0},                                            // both unknown -> unknown
+		{0, 5 * time.Second, 5 * time.Second},                // one unknown -> the other
+		{5 * time.Second, 0, 5 * time.Second},                // one unknown -> the other
+		{3 * time.Second, 5 * time.Second, 3 * time.Second},  // both known -> min
+		{5 * time.Second, 3 * time.Second, 3 * time.Second},  // both known -> min
+		{-1 * time.Second, 5 * time.Second, 5 * time.Second}, // negative ignored -> the other
+		{-3 * time.Second, -5 * time.Second, 0},              // both negative -> never negative
+		{-1 * time.Second, 0, 0},                             // negative and unknown -> never negative
 	} {
 		if got := minNonZeroTTL(tc.a, tc.b); got != tc.want {
 			t.Fatalf("minNonZeroTTL(%s, %s) = %s; want %s", tc.a, tc.b, got, tc.want)
