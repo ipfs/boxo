@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	ipnstest "github.com/ipfs/boxo/internal/ipnstest"
 	"github.com/ipfs/boxo/ipns"
 	ipns_pb "github.com/ipfs/boxo/ipns/pb"
 	"github.com/ipfs/boxo/path"
@@ -1433,9 +1434,10 @@ func TestIPNS(t *testing.T) {
 			t.Parallel()
 
 			// A record may report a negative TTL; max-age must never go negative.
+			// Built at the wire level so the record carries a genuinely negative
+			// TTL that ipns.NewRecord would otherwise floor.
 			eol := time.Now().Add(time.Hour)
-			_, rawRecord := makeIPNSRecord(t, cid1, eol, -time.Minute, sk, opts...)
-			rec, err := ipns.UnmarshalRecord(rawRecord)
+			rec, err := ipnstest.RawRecordWithTTL(path.FromCid(cid1), eol, -time.Minute)
 			require.NoError(t, err)
 
 			router := &mockContentRouter{}

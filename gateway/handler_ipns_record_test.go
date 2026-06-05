@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	ipnstest "github.com/ipfs/boxo/internal/ipnstest"
 	"github.com/ipfs/boxo/ipns"
 	"github.com/ipfs/boxo/path"
 	ci "github.com/libp2p/go-libp2p/core/crypto"
@@ -53,7 +54,10 @@ func TestIPNSRecordMaxAge(t *testing.T) {
 
 	t.Run("negative ttl is floored to max-age=0", func(t *testing.T) {
 		t.Parallel()
-		rec := makeRecord(t, -time.Minute, time.Now().Add(time.Hour))
+		// Built at the wire level so the record carries a genuinely negative TTL
+		// that ipns.NewRecord would otherwise floor.
+		rec, err := ipnstest.RawRecordWithTTL(value, time.Now().Add(time.Hour), -time.Minute)
+		require.NoError(t, err)
 		maxAge, ok := ipnsRecordMaxAge(rec)
 		require.True(t, ok)
 		require.Equal(t, 0, maxAge)

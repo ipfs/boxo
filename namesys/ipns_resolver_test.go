@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	ipnstest "github.com/ipfs/boxo/internal/ipnstest"
 	ipns "github.com/ipfs/boxo/ipns"
 	"github.com/ipfs/boxo/path"
 	"github.com/ipfs/boxo/routing/offline"
@@ -166,7 +167,11 @@ func TestCalculateBestTTL(t *testing.T) {
 
 	t.Run("negative record ttl is floored to zero with valid EOL", func(t *testing.T) {
 		t.Parallel()
-		got, err := calculateBestTTL(makeRecord(t, -time.Minute, time.Now().Add(time.Hour)))
+		// Built at the wire level so the record carries a genuinely negative TTL
+		// that ipns.NewRecord would otherwise floor.
+		rec, err := ipnstest.RawRecordWithTTL(value, time.Now().Add(time.Hour), -time.Minute)
+		require.NoError(t, err)
+		got, err := calculateBestTTL(rec)
 		require.NoError(t, err)
 		require.Equal(t, time.Duration(0), got)
 	})
