@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	lru "github.com/hashicorp/golang-lru/v2"
 	"github.com/ipfs/boxo/ipns"
 	"github.com/ipfs/boxo/path"
 	offroute "github.com/ipfs/boxo/routing/offline"
@@ -179,5 +180,43 @@ func TestPublishWithTTL(t *testing.T) {
 		require.True(t, ok)
 		require.Equal(t, ttl, entry.ttl)
 		require.LessOrEqual(t, time.Until(entry.cacheEOL), cacheTTL)
+	})
+}
+
+func TestCacheGetClampsTTLToCacheEOL(t *testing.T) {
+	t.Parallel()
+
+	cache, err := lru.New[string, cacheEntry](8)
+	require.NoError(t, err)
+	ns := &namesys{cache: cache}
+
+	p, err := path.NewPath("/ipfs/QmUNLLsPACCz1vLxQVkXqqLX5R1X345qqfHbsf67hvA3Nn")
+	require.NoError(t, err)
+
+	t.Run("late hit clamps ttl to remaining cache lifetime", func(t *testing.T) {
+		// Original TTL is an hour, but the cache entry is about to expire: the
+		// returned TTL must not outlive the (EOL-bounded) cache lifetime.
+		ns.cache.Add("/ipns/late", cacheEntry{
+			val:      p,
+			ttl:      time.Hour,
+			cacheEOL: time.Now().Add(2 * time.Second),
+			lastMod:  time.Now(),
+		})
+		_, ttl, _, ok := ns.cacheGet("/ipns/late")
+		require.True(t, ok)
+		require.Greater(t, ttl, time.Duration(0))
+		require.LessOrEqual(t, ttl, 2*time.Second)
+	})
+
+	t.Run("early hit returns full ttl", func(t *testing.T) {
+		ns.cache.Add("/ipns/early", cacheEntry{
+			val:      p,
+			ttl:      30 * time.Second,
+			cacheEOL: time.Now().Add(time.Hour),
+			lastMod:  time.Now(),
+		})
+		_, ttl, _, ok := ns.cacheGet("/ipns/early")
+		require.True(t, ok)
+		require.Equal(t, 30*time.Second, ttl)
 	})
 }
