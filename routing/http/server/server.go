@@ -553,7 +553,10 @@ func (s *server) GetIPNS(w http.ResponseWriter, r *http.Request) {
 			remainingValidity = int(time.Until(validity).Seconds())
 		}
 	} else {
-		remainingValidity = int(ipns.DefaultRecordLifetime.Seconds())
+		// Unrecognized or unsupported ValidityType: the record's expiration is
+		// unknown, so it must not be cached (setIPNSCacheControl emits no-store
+		// for a non-positive remaining validity).
+		remainingValidity = 0
 	}
 	ttl := int(ipns.DefaultRecordTTL.Seconds())
 	if recordTTL, err := record.TTL(); err == nil {
