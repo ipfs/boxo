@@ -755,14 +755,15 @@ func setCacheControl(w http.ResponseWriter, maxAge int, stale int) {
 // validation. Both the freshness lifetime (max-age) and the stale-serving
 // window (stale-while-revalidate, stale-if-error) are therefore bounded by the
 // remaining validity. max-age is the record TTL capped to the remaining
-// validity, and the stale window covers whatever validity is left after it, so
-// max-age+stale never exceeds EOL. An already-expired record is not cacheable.
+// validity (and floored at zero, as a record may report a negative TTL), and
+// the stale window covers whatever validity is left after it, so max-age+stale
+// never exceeds EOL. An already-expired record is not cacheable.
 func setIPNSCacheControl(w http.ResponseWriter, ttl int, remainingValidity int) {
 	if remainingValidity <= 0 {
 		w.Header().Set("Cache-Control", "no-store")
 		return
 	}
-	maxAge := min(ttl, remainingValidity)
+	maxAge := min(max(0, ttl), remainingValidity)
 	setCacheControl(w, maxAge, remainingValidity-maxAge)
 }
 

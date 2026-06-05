@@ -22,7 +22,7 @@ The following emojis are used to highlight certain changes:
 
 ### Fixed
 
-- `routing/http/server`: `GET /routing/v1/ipns/{name}` no longer advertises a cache window that outlives the record. `max-age` is capped to the record's remaining validity and `stale-while-revalidate`/`stale-if-error` cover only the validity left after it, so `max-age`+stale never crosses the record's EOL. An already-expired record is returned with `Cache-Control: no-store`. Previously the stale window could extend past EOL, letting caches serve an expired record that then fails validation.
+- `routing/http/server`: `GET /routing/v1/ipns/{name}` no longer advertises a cache window that outlives the record. `max-age` is capped to the record's remaining validity and `stale-while-revalidate`/`stale-if-error` cover only the validity left after it, so `max-age`+stale never crosses the record's EOL. An already-expired record is returned with `Cache-Control: no-store`, and a record reporting a negative TTL no longer yields a negative `max-age`. Previously the stale window could extend past EOL, letting caches serve an expired record that then fails validation.
 
 ### Security
 

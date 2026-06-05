@@ -1381,6 +1381,25 @@ func TestIPNS(t *testing.T) {
 			require.Equal(t, "no-store", resp.Header.Get("Cache-Control"))
 		})
 
+		t.Run("GET /routing/v1/ipns/{cid-peer-id} floors a negative TTL to max-age=0", func(t *testing.T) {
+			t.Parallel()
+
+			// A record may report a negative TTL; max-age must never go negative.
+			eol := time.Now().Add(time.Hour)
+			_, rawRecord := makeIPNSRecord(t, cid1, eol, -time.Minute, sk, opts...)
+			rec, err := ipns.UnmarshalRecord(rawRecord)
+			require.NoError(t, err)
+
+			router := &mockContentRouter{}
+			router.On("GetIPNS", mock.Anything, name1).Return(rec, nil)
+
+			resp := makeRequest(t, router, "/routing/v1/ipns/"+name1.String(), mediaTypeIPNSRecord)
+			require.Equal(t, http.StatusOK, resp.StatusCode)
+			cc := resp.Header.Get("Cache-Control")
+			require.Contains(t, cc, "public, max-age=0,")
+			require.NotContains(t, cc, "=-") // no negative directive values
+		})
+
 		t.Run("GET /routing/v1/ipns/{cid-peer-id} returns 200 (Accept header missing)", func(t *testing.T) {
 			t.Parallel()
 
