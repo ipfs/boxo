@@ -27,6 +27,7 @@ The following emojis are used to highlight certain changes:
 - `namesys`: the IPNS resolver now floors a negative record TTL at zero, so a malformed record can no longer surface a negative TTL through `Result.TTL`. [#1166](https://github.com/ipfs/boxo/pull/1166)
 - `namesys`: a cache hit now reports the TTL remaining in the cache entry rather than the record's original TTL, so a late hit near a record's EOL can no longer advertise a freshness lifetime that outlives the record. [#1166](https://github.com/ipfs/boxo/pull/1166)
 - `ipns`: `NewRecord` floors a negative TTL at zero and `Validate` rejects records carrying one. [#1166](https://github.com/ipfs/boxo/pull/1166)
+- `bitswap/network/bsnet`: stop marking a peer unresponsive on a single failed send attempt. `send()` is retried by `multiAttempt()`, which already marks the peer once all retries are exhausted; marking on the first failure could permanently sideline a peer that had just reconnected (the disconnect notification being suppressed), hanging fetches from it until it fully disconnected. [#1164](https://github.com/ipfs/boxo/pull/1164)
 
 ### Security
 
