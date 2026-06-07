@@ -32,7 +32,7 @@ func TestIPNSRecordMaxAge(t *testing.T) {
 		rec := makeRecord(t, time.Minute, time.Now().Add(time.Hour))
 		maxAge, ok := ipnsRecordMaxAge(rec)
 		require.True(t, ok)
-		require.Equal(t, 60, maxAge)
+		require.Equal(t, time.Minute, maxAge)
 	})
 
 	t.Run("ttl above remaining validity is clamped to EOL", func(t *testing.T) {
@@ -40,8 +40,8 @@ func TestIPNSRecordMaxAge(t *testing.T) {
 		rec := makeRecord(t, time.Hour, time.Now().Add(30*time.Second))
 		maxAge, ok := ipnsRecordMaxAge(rec)
 		require.True(t, ok)
-		require.Greater(t, maxAge, 0)
-		require.LessOrEqual(t, maxAge, 30)
+		require.Greater(t, maxAge, time.Duration(0))
+		require.LessOrEqual(t, maxAge, 30*time.Second)
 	})
 
 	t.Run("expired record yields max-age=0", func(t *testing.T) {
@@ -49,7 +49,7 @@ func TestIPNSRecordMaxAge(t *testing.T) {
 		rec := makeRecord(t, time.Hour, time.Now().Add(-time.Hour))
 		maxAge, ok := ipnsRecordMaxAge(rec)
 		require.True(t, ok)
-		require.Equal(t, 0, maxAge)
+		require.Equal(t, time.Duration(0), maxAge)
 	})
 
 	t.Run("negative ttl is floored to max-age=0", func(t *testing.T) {
@@ -60,6 +60,6 @@ func TestIPNSRecordMaxAge(t *testing.T) {
 		require.NoError(t, err)
 		maxAge, ok := ipnsRecordMaxAge(rec)
 		require.True(t, ok)
-		require.Equal(t, 0, maxAge)
+		require.Equal(t, time.Duration(0), maxAge)
 	})
 }

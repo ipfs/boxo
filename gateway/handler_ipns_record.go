@@ -69,7 +69,10 @@ func (i *handler) serveIpnsRecord(ctx context.Context, w http.ResponseWriter, r 
 	}
 
 	if maxAge, ok := ipnsRecordMaxAge(record); ok {
-		w.Header().Set("Cache-Control", fmt.Sprintf("public, max-age=%d", maxAge))
+		// Truncate to whole seconds rather than round: rounding up could advertise
+		// a max-age that outlives the record's EOL, the cross-EOL overshoot this
+		// bounding exists to prevent.
+		w.Header().Set("Cache-Control", fmt.Sprintf("public, max-age=%d", int(maxAge.Seconds())))
 	} else {
 		w.Header().Set("Last-Modified", time.Now().UTC().Format(http.TimeFormat))
 	}
@@ -99,20 +102,20 @@ func (i *handler) serveIpnsRecord(ctx context.Context, w http.ResponseWriter, r 
 	return false
 }
 
-// ipnsRecordMaxAge returns the Cache-Control max-age (in seconds) for a raw IPNS
+// ipnsRecordMaxAge returns the Cache-Control max-age duration for a raw IPNS
 // record response. It is the record TTL clamped to the record's remaining EOL
 // validity, so a cache never reuses the record past the point its signature
 // expires (an expired record fails validation), and floored at zero, as a
 // record may report a negative TTL. ok is false when the record carries no TTL,
 // leaving the caller to fall back to Last-Modified.
-func ipnsRecordMaxAge(record *ipns.Record) (seconds int, ok bool) {
+func ipnsRecordMaxAge(record *ipns.Record) (maxAge time.Duration, ok bool) {
 	ttl, err := record.TTL()
 	if err != nil {
 		return 0, false
 	}
-	maxAge := int(ttl.Seconds())
+	maxAge = ttl
 	if eol, err := record.Validity(); err == nil {
-		if remaining := int(time.Until(eol).Seconds()); remaining < maxAge {
+		if remaining := time.Until(eol); remaining < maxAge {
 			maxAge = remaining
 		}
 	}
