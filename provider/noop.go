@@ -15,8 +15,8 @@ func NewNoopProvider() System {
 	return &noopProvider{}
 }
 
-func (op *noopProvider) Clear() int {
-	return 0
+func (op *noopProvider) Clear() error {
+	return nil
 }
 
 func (op *noopProvider) Close() error {

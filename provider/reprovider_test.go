@@ -118,9 +118,11 @@ func testProvider(t *testing.T, singleProvide bool) {
 		keysToProvide[i] = c
 	}
 
+	qdir := t.TempDir()
+
 	var keyWait sync.Mutex
 	keyWait.Lock()
-	batchSystem, err := New(ds, Online(provider), KeyProvider(func(ctx context.Context) (<-chan cid.Cid, error) {
+	batchSystem, err := New(ds, QueueDir(qdir), Online(provider), KeyProvider(func(ctx context.Context) (<-chan cid.Cid, error) {
 		ch := make(chan cid.Cid)
 		go func() {
 			defer keyWait.Unlock()
@@ -197,6 +199,7 @@ func TestOfflineRecordsThenOnlineRepublish(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		test.Flaky(t)
 	}
+
 	// Don't run in Parallel as this test is time sensitive.
 
 	someHash, err := mh.Sum([]byte("Vires in Numeris!"), mh.BLAKE3, -1)
@@ -206,7 +209,8 @@ func TestOfflineRecordsThenOnlineRepublish(t *testing.T) {
 	ds := dssync.MutexWrap(datastore.NewMapDatastore())
 
 	// First public using an offline system to enqueue in the datastore.
-	sys, err := New(ds)
+	qdir := t.TempDir()
+	sys, err := New(ds, QueueDir(qdir))
 	assert.NoError(t, err)
 
 	err = sys.Provide(context.Background(), c, true)
@@ -217,7 +221,7 @@ func TestOfflineRecordsThenOnlineRepublish(t *testing.T) {
 
 	// Secondly restart an online datastore and we want to see this previously provided cid published.
 	prov := &mockProvideMany{}
-	sys, err = New(ds, Online(prov), initialReprovideDelay(0))
+	sys, err = New(ds, QueueDir(qdir), Online(prov), initialReprovideDelay(0))
 	assert.NoError(t, err)
 
 	time.Sleep(time.Millisecond * 10) // give it time to call provider after that
