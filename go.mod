@@ -31,7 +31,7 @@ require (
 	github.com/ipfs/go-peertaskqueue v0.8.3
 	github.com/ipfs/go-test v0.3.0
 	github.com/ipfs/go-unixfsnode v1.10.4
-	github.com/ipld/go-car/v2 v2.16.0
+	github.com/ipld/go-car/v2 v2.17.0
 	github.com/ipld/go-codec-dagpb v1.7.0
 	github.com/ipld/go-ipld-prime v0.24.0
 	github.com/libp2p/go-buffer-pool v0.1.0
@@ -68,7 +68,7 @@ require (
 	go.opentelemetry.io/otel/sdk v1.43.0
 	go.opentelemetry.io/otel/trace v1.43.0
 	go.uber.org/zap v1.28.0
-	golang.org/x/exp v0.0.0-20260508232706-74f9aab9d74a
+	golang.org/x/exp v0.0.0-20260603202125-055de637280b
 	golang.org/x/oauth2 v0.36.0
 	golang.org/x/sync v0.20.0
 	golang.org/x/sys v0.45.0
