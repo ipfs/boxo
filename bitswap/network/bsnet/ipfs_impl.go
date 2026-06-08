@@ -244,7 +244,6 @@ func (s *streamMessageSender) send(ctx context.Context, msg bsmsg.BitSwapMessage
 	stream, err := s.Connect(ctx)
 	if err != nil {
 		log.Infof("failed to open stream to %s: %s", s.to, err)
-		s.bsnet.connectEvtMgr.MarkUnresponsive(s.to)
 		return err
 	}
 
@@ -254,7 +253,6 @@ func (s *streamMessageSender) send(ctx context.Context, msg bsmsg.BitSwapMessage
 	timeout := s.opts.SendTimeout - time.Since(start)
 	if err = s.bsnet.msgToStream(ctx, stream, msg, timeout); err != nil {
 		log.Infof("failed to send message to %s: %s", s.to, err)
-		s.bsnet.connectEvtMgr.MarkUnresponsive(s.to)
 		return err
 	}
 

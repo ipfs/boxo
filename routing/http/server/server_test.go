@@ -14,12 +14,16 @@ import (
 	"testing"
 	"time"
 
+	ipnstest "github.com/ipfs/boxo/internal/ipnstest"
 	"github.com/ipfs/boxo/ipns"
+	ipns_pb "github.com/ipfs/boxo/ipns/pb"
 	"github.com/ipfs/boxo/path"
 	"github.com/ipfs/boxo/routing/http/filters"
 	"github.com/ipfs/boxo/routing/http/types"
 	"github.com/ipfs/boxo/routing/http/types/iter"
 	"github.com/ipfs/go-cid"
+	"github.com/ipld/go-ipld-prime/codec/dagcbor"
+	basicnode "github.com/ipld/go-ipld-prime/node/basic"
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/routing"
@@ -27,6 +31,7 @@ import (
 	"github.com/multiformats/go-multiaddr"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/proto"
 )
 
 func TestHeaders(t *testing.T) {
@@ -1258,6 +1263,50 @@ func makeIPNSRecord(t *testing.T, cid cid.Cid, eol time.Time, ttl time.Duration,
 	return record, rawRecord
 }
 
+// makeIPNSRecordWithValidityType returns a copy of base whose signed CBOR data
+// carries the given ValidityType, used to exercise records the server cannot
+// interpret (anything other than EOL). The signature carried over from base is
+// left intact and is therefore invalid, which is fine here: the GetIPNS handler
+// is a passthrough that does not verify records.
+func makeIPNSRecordWithValidityType(t *testing.T, base *ipns.Record, validityType int64) *ipns.Record {
+	raw, err := ipns.MarshalRecord(base)
+	require.NoError(t, err)
+
+	var pb ipns_pb.IpnsRecord
+	require.NoError(t, proto.Unmarshal(raw, &pb))
+
+	nb := basicnode.Prototype.Any.NewBuilder()
+	require.NoError(t, dagcbor.Decode(nb, bytes.NewReader(pb.Data)))
+	orig := nb.Build()
+
+	ob := basicnode.Prototype.Map.NewBuilder()
+	ma, err := ob.BeginMap(orig.Length())
+	require.NoError(t, err)
+	for it := orig.MapIterator(); !it.Done(); {
+		k, v, err := it.Next()
+		require.NoError(t, err)
+		ks, err := k.AsString()
+		require.NoError(t, err)
+		require.NoError(t, ma.AssembleKey().AssignString(ks))
+		if ks == "ValidityType" {
+			require.NoError(t, ma.AssembleValue().AssignInt(validityType))
+		} else {
+			require.NoError(t, ma.AssembleValue().AssignNode(v))
+		}
+	}
+	require.NoError(t, ma.Finish())
+
+	var buf bytes.Buffer
+	require.NoError(t, dagcbor.Encode(ob.Build(), &buf))
+	pb.Data = buf.Bytes()
+
+	raw2, err := proto.Marshal(&pb)
+	require.NoError(t, err)
+	rec, err := ipns.UnmarshalRecord(raw2)
+	require.NoError(t, err)
+	return rec
+}
+
 func TestIPNS(t *testing.T) {
 	cid1, err := cid.Decode("bafkreifjjcie6lypi6ny7amxnfftagclbuxndqonfipmb64f2km2devei4")
 	require.NoError(t, err)
@@ -1331,6 +1380,92 @@ func TestIPNS(t *testing.T) {
 			body, err := io.ReadAll(resp.Body)
 			require.NoError(t, err)
 			require.Equal(t, body, rawRecord1)
+		})
+
+		t.Run("GET /routing/v1/ipns/{cid-peer-id} caps Cache-Control to remaining validity", func(t *testing.T) {
+			t.Parallel()
+
+			// TTL is longer than the remaining validity, so neither max-age nor
+			// the stale window may let a cache serve the record past its EOL.
+			eol := time.Now().Add(30 * time.Second)
+			_, rawRecord := makeIPNSRecord(t, cid1, eol, time.Hour, sk, opts...)
+			rec, err := ipns.UnmarshalRecord(rawRecord)
+			require.NoError(t, err)
+
+			router := &mockContentRouter{}
+			router.On("GetIPNS", mock.Anything, name1).Return(rec, nil)
+
+			resp := makeRequest(t, router, "/routing/v1/ipns/"+name1.String(), mediaTypeIPNSRecord)
+			require.Equal(t, http.StatusOK, resp.StatusCode)
+
+			re := regexp.MustCompile(`(?:^|,\s*)(max-age|stale-while-revalidate|stale-if-error)=(\d+)`)
+			matches := re.FindAllStringSubmatch(resp.Header.Get("Cache-Control"), -1)
+			require.Len(t, matches, 3)
+			maxAge := stringToDuration(matches[0][2])
+			staleWhileRevalidate := stringToDuration(matches[1][2])
+			staleIfError := stringToDuration(matches[2][2])
+
+			// max-age must not exceed the remaining validity
+			require.LessOrEqual(t, maxAge, 30*time.Second)
+			// the full stale window must end at EOL, not after it (allow drift)
+			require.WithinDuration(t, eol, time.Now().Add(maxAge+staleWhileRevalidate), 1*time.Minute)
+			require.WithinDuration(t, eol, time.Now().Add(maxAge+staleIfError), 1*time.Minute)
+		})
+
+		t.Run("GET /routing/v1/ipns/{cid-peer-id} is not cacheable when expired", func(t *testing.T) {
+			t.Parallel()
+
+			// An expired record must not be cached by anyone: serving it later
+			// hands the client a record that fails validation.
+			eol := time.Now().Add(-time.Hour)
+			_, rawRecord := makeIPNSRecord(t, cid1, eol, time.Hour, sk, opts...)
+			rec, err := ipns.UnmarshalRecord(rawRecord)
+			require.NoError(t, err)
+
+			router := &mockContentRouter{}
+			router.On("GetIPNS", mock.Anything, name1).Return(rec, nil)
+
+			resp := makeRequest(t, router, "/routing/v1/ipns/"+name1.String(), mediaTypeIPNSRecord)
+			require.Equal(t, http.StatusOK, resp.StatusCode)
+			require.Equal(t, "no-store", resp.Header.Get("Cache-Control"))
+		})
+
+		t.Run("GET /routing/v1/ipns/{cid-peer-id} floors a negative TTL to max-age=0", func(t *testing.T) {
+			t.Parallel()
+
+			// A record may report a negative TTL; max-age must never go negative.
+			// Built at the wire level so the record carries a genuinely negative
+			// TTL that ipns.NewRecord would otherwise floor.
+			eol := time.Now().Add(time.Hour)
+			rec, err := ipnstest.RawRecordWithTTL(path.FromCid(cid1), eol, -time.Minute)
+			require.NoError(t, err)
+
+			router := &mockContentRouter{}
+			router.On("GetIPNS", mock.Anything, name1).Return(rec, nil)
+
+			resp := makeRequest(t, router, "/routing/v1/ipns/"+name1.String(), mediaTypeIPNSRecord)
+			require.Equal(t, http.StatusOK, resp.StatusCode)
+			cc := resp.Header.Get("Cache-Control")
+			require.Contains(t, cc, "public, max-age=0,")
+			require.NotContains(t, cc, "=-") // no negative directive values
+		})
+
+		t.Run("GET /routing/v1/ipns/{cid-peer-id} is not cacheable when validity type is unrecognized", func(t *testing.T) {
+			t.Parallel()
+
+			// A record whose ValidityType is not EOL has an unknown expiration,
+			// so the server must not advertise a cache window for it.
+			eol := time.Now().Add(time.Hour)
+			base, _ := makeIPNSRecord(t, cid1, eol, time.Hour, sk, opts...)
+			rec := makeIPNSRecordWithValidityType(t, base, 1)
+
+			router := &mockContentRouter{}
+			router.On("GetIPNS", mock.Anything, name1).Return(rec, nil)
+
+			resp := makeRequest(t, router, "/routing/v1/ipns/"+name1.String(), mediaTypeIPNSRecord)
+			require.Equal(t, http.StatusOK, resp.StatusCode)
+			require.Equal(t, "no-store", resp.Header.Get("Cache-Control"))
+			require.Empty(t, resp.Header.Get("Expires"))
 		})
 
 		t.Run("GET /routing/v1/ipns/{cid-peer-id} returns 200 (Accept header missing)", func(t *testing.T) {

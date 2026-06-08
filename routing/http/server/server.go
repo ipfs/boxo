@@ -553,13 +553,16 @@ func (s *server) GetIPNS(w http.ResponseWriter, r *http.Request) {
 			remainingValidity = int(time.Until(validity).Seconds())
 		}
 	} else {
-		remainingValidity = int(ipns.DefaultRecordLifetime.Seconds())
+		// Unrecognized or unsupported ValidityType: the record's expiration is
+		// unknown, so it must not be cached (setIPNSCacheControl emits no-store
+		// for a non-positive remaining validity).
+		remainingValidity = 0
 	}
-	if ttl, err := record.TTL(); err == nil {
-		setCacheControl(w, int(ttl.Seconds()), remainingValidity)
-	} else {
-		setCacheControl(w, int(ipns.DefaultRecordTTL.Seconds()), remainingValidity)
+	ttl := int(ipns.DefaultRecordTTL.Seconds())
+	if recordTTL, err := record.TTL(); err == nil {
+		ttl = int(recordTTL.Seconds())
 	}
+	setIPNSCacheControl(w, ttl, remainingValidity)
 	w.Header().Set("Last-Modified", time.Now().UTC().Format(http.TimeFormat))
 
 	w.Header().Set("Etag", fmt.Sprintf(`"%x"`, xxhash.Sum64(rawRecord)))
@@ -747,6 +750,24 @@ func parseKey(keyStr string) (cid.Cid, error) {
 
 func setCacheControl(w http.ResponseWriter, maxAge int, stale int) {
 	w.Header().Set("Cache-Control", fmt.Sprintf("public, max-age=%d, stale-while-revalidate=%d, stale-if-error=%d", maxAge, stale, stale))
+}
+
+// setIPNSCacheControl sets Cache-Control for an IPNS record response. An IPNS
+// record is cryptographically valid only until its EOL, so no cache may reuse
+// the response past that point: doing so hands clients a record that fails
+// validation. Both the freshness lifetime (max-age) and the stale-serving
+// window (stale-while-revalidate, stale-if-error) are therefore bounded by the
+// remaining validity. max-age is the record TTL capped to the remaining
+// validity (and floored at zero, as a record may report a negative TTL), and
+// the stale window covers whatever validity is left after it, so max-age+stale
+// never exceeds EOL. An already-expired record is not cacheable.
+func setIPNSCacheControl(w http.ResponseWriter, ttl int, remainingValidity int) {
+	if remainingValidity <= 0 {
+		w.Header().Set("Cache-Control", "no-store")
+		return
+	}
+	maxAge := min(max(0, ttl), remainingValidity)
+	setCacheControl(w, maxAge, remainingValidity-maxAge)
 }
 
 func writeJSONResult(w http.ResponseWriter, method string, val interface{ Length() int }) {

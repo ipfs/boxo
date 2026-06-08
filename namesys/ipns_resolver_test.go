@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	ipnstest "github.com/ipfs/boxo/internal/ipnstest"
 	ipns "github.com/ipfs/boxo/ipns"
 	"github.com/ipfs/boxo/path"
 	"github.com/ipfs/boxo/routing/offline"
@@ -127,5 +128,51 @@ func TestResolver(t *testing.T) {
 		res, err := resolver.Resolve(context.Background(), name.AsPath())
 		require.NoError(t, err)
 		require.Equal(t, pathDog, res.Path)
+	})
+}
+
+func TestCalculateBestTTL(t *testing.T) {
+	t.Parallel()
+
+	id := tnet.RandIdentityOrFatal(t)
+	value := path.FromCid(cid.MustParse("bafkqabddmf2au"))
+
+	makeRecord := func(t *testing.T, ttl time.Duration, eol time.Time) *ipns.Record {
+		rec, err := ipns.NewRecord(id.PrivateKey(), value, 1, eol, ttl)
+		require.NoError(t, err)
+		return rec
+	}
+
+	t.Run("record ttl below remaining validity is used as-is", func(t *testing.T) {
+		t.Parallel()
+		got, err := calculateBestTTL(makeRecord(t, time.Minute, time.Now().Add(time.Hour)))
+		require.NoError(t, err)
+		require.Equal(t, time.Minute, got)
+	})
+
+	t.Run("record ttl above remaining validity is clamped to EOL", func(t *testing.T) {
+		t.Parallel()
+		got, err := calculateBestTTL(makeRecord(t, time.Hour, time.Now().Add(30*time.Second)))
+		require.NoError(t, err)
+		require.Greater(t, got, time.Duration(0))
+		require.LessOrEqual(t, got, 30*time.Second)
+	})
+
+	t.Run("expired record yields zero ttl", func(t *testing.T) {
+		t.Parallel()
+		got, err := calculateBestTTL(makeRecord(t, time.Hour, time.Now().Add(-time.Hour)))
+		require.NoError(t, err)
+		require.Equal(t, time.Duration(0), got)
+	})
+
+	t.Run("negative record ttl is floored to zero with valid EOL", func(t *testing.T) {
+		t.Parallel()
+		// Built at the wire level so the record carries a genuinely negative TTL
+		// that ipns.NewRecord would otherwise floor.
+		rec, err := ipnstest.RawRecordWithTTL(value, time.Now().Add(time.Hour), -time.Minute)
+		require.NoError(t, err)
+		got, err := calculateBestTTL(rec)
+		require.NoError(t, err)
+		require.Equal(t, time.Duration(0), got)
 	})
 }
