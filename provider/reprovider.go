@@ -347,9 +347,8 @@ func (s *reprovider) provideWorker() {
 	}
 
 	const batchReadSize = 2048
-	provCh := s.q.Out()
 
-	for data := range provCh {
+	for data := range s.q.Out() {
 		provideCid(data)
 		buf, err := s.q.GetN(batchReadSize)
 		if err != nil {
