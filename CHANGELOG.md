@@ -20,6 +20,7 @@ The following emojis are used to highlight certain changes:
 
 - upgrade to `go-ipld-prime` [v0.24.0](https://github.com/ipld/go-ipld-prime/releases/tag/v0.24.0)
 - upgrade to `polydawn/refmt` [v0.90.0](https://github.com/polydawn/refmt/releases/tag/v0.90.0)
+- upgrade to `go-car/v2` [v2.17.0](https://github.com/ipld/go-car/releases/tag/v2.17.0)
 
 ### Removed
 
