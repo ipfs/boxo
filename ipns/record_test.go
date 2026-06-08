@@ -53,6 +53,21 @@ func mustNewRawRecord(t *testing.T, sk ic.PrivKey, value []byte, seq uint64, eol
 	return rec
 }
 
+func TestNewRecordFloorsNegativeTTL(t *testing.T) {
+	t.Parallel()
+
+	sk, pk, _ := mustKeyPair(t, ic.Ed25519)
+	rec, err := NewRecord(sk, testPath, 1, time.Now().Add(time.Hour), -time.Minute)
+	require.NoError(t, err)
+
+	ttl, err := rec.TTL()
+	require.NoError(t, err)
+	require.Equal(t, time.Duration(0), ttl)
+	require.Equal(t, uint64(0), rec.pb.GetTtl()) // v1 protobuf TTL must not underflow
+
+	require.NoError(t, Validate(rec, pk))
+}
+
 func mustMarshal(t *testing.T, entry *Record) []byte {
 	data, err := MarshalRecord(entry)
 	require.NoError(t, err)

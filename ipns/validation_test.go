@@ -5,12 +5,14 @@ import (
 	"testing"
 	"time"
 
+	ipns_pb "github.com/ipfs/boxo/ipns/pb"
 	"github.com/ipfs/boxo/path"
 	ic "github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/peerstore"
 	"github.com/libp2p/go-libp2p/p2p/host/peerstore/pstoremem"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/proto"
 )
 
 func shuffle[T any](a []T) {
@@ -248,4 +250,31 @@ func TestValidateWithName(t *testing.T) {
 		err := ValidateWithName(r, name2)
 		assert.ErrorIs(t, err, ErrSignature)
 	})
+}
+
+func TestValidateRejectsNegativeTTL(t *testing.T) {
+	t.Parallel()
+
+	sk, pk, _ := mustKeyPair(t, ic.Ed25519)
+
+	// Build a validly-signed record whose CBOR TTL is negative, bypassing the
+	// floor in newRecord, and confirm verification rejects it.
+	node, err := createNode([]byte(testPath.String()), 1, time.Now().Add(time.Hour), -time.Minute, nil)
+	require.NoError(t, err)
+	cborData, err := nodeToCBOR(node)
+	require.NoError(t, err)
+	sigData, err := recordDataForSignatureV2(cborData)
+	require.NoError(t, err)
+	sig, err := sk.Sign(sigData)
+	require.NoError(t, err)
+	raw, err := proto.Marshal(&ipns_pb.IpnsRecord{Data: cborData, SignatureV2: sig})
+	require.NoError(t, err)
+	rec, err := UnmarshalRecord(raw)
+	require.NoError(t, err)
+
+	ttl, err := rec.TTL()
+	require.NoError(t, err)
+	require.Less(t, ttl, time.Duration(0)) // sanity: the record really carries a negative TTL
+
+	require.ErrorIs(t, Validate(rec, pk), ErrInvalidRecord)
 }

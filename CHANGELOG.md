@@ -22,6 +22,11 @@ The following emojis are used to highlight certain changes:
 
 ### Fixed
 
+- `routing/http/server`: `GET /routing/v1/ipns/{name}` no longer gives a cache a window that outlasts the record. It caps `max-age` to the record's remaining validity and sizes the stale window (`stale-while-revalidate`/`stale-if-error`) to the time left after it, so the two never cross the record's EOL. An expired record, or one whose `ValidityType` is not EOL (unknown expiration), returns `Cache-Control: no-store`, and a negative TTL no longer yields a negative `max-age`. [#1166](https://github.com/ipfs/boxo/pull/1166)
+- `gateway`: serving a raw IPNS record (`GET /ipns/{name}?format=ipns-record`) now caps `max-age` to the record's remaining validity and never lets it go negative, so a cache cannot reuse the record past its EOL. [#1166](https://github.com/ipfs/boxo/pull/1166)
+- `namesys`: the IPNS resolver now floors a negative record TTL at zero, so a malformed record can no longer surface a negative TTL through `Result.TTL`. [#1166](https://github.com/ipfs/boxo/pull/1166)
+- `namesys`: a cache hit now reports the TTL remaining in the cache entry rather than the record's original TTL, so a late hit near a record's EOL can no longer advertise a freshness lifetime that outlives the record. [#1166](https://github.com/ipfs/boxo/pull/1166)
+- `ipns`: `NewRecord` floors a negative TTL at zero and `Validate` rejects records carrying one. [#1166](https://github.com/ipfs/boxo/pull/1166)
 - `bitswap/network/bsnet`: stop marking a peer unresponsive on a single failed send attempt. `send()` is retried by `multiAttempt()`, which already marks the peer once all retries are exhausted; marking on the first failure could permanently sideline a peer that had just reconnected (the disconnect notification being suppressed), hanging fetches from it until it fully disconnected. [#1164](https://github.com/ipfs/boxo/pull/1164)
 
 ### Security
