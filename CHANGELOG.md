@@ -18,6 +18,9 @@ The following emojis are used to highlight certain changes:
 
 ### Changed
 
+- upgrade to `go-ipld-prime` [v0.24.0](https://github.com/ipld/go-ipld-prime/releases/tag/v0.24.0)
+- upgrade to `polydawn/refmt` [v0.90.0](https://github.com/polydawn/refmt/releases/tag/v0.90.0)
+
 ### Removed
 
 ### Fixed
