@@ -33,7 +33,7 @@ require (
 	github.com/ipfs/go-unixfsnode v1.10.4
 	github.com/ipld/go-car/v2 v2.16.0
 	github.com/ipld/go-codec-dagpb v1.7.0
-	github.com/ipld/go-ipld-prime v0.23.0
+	github.com/ipld/go-ipld-prime v0.24.0
 	github.com/libp2p/go-buffer-pool v0.1.0
 	github.com/libp2p/go-doh-resolver v0.5.0
 	github.com/libp2p/go-libp2p v0.48.0
@@ -51,7 +51,7 @@ require (
 	github.com/multiformats/go-multicodec v0.10.0
 	github.com/multiformats/go-multihash v0.2.3
 	github.com/multiformats/go-multistream v0.6.1
-	github.com/polydawn/refmt v0.89.1-0.20231129105047-37766d95467a
+	github.com/polydawn/refmt v0.90.0
 	github.com/prometheus/client_golang v1.23.2
 	github.com/prometheus/client_model v0.6.2
 	github.com/slok/go-http-metrics v0.13.0
