@@ -8,6 +8,7 @@ import (
 
 	mdag "github.com/ipfs/boxo/ipld/merkledag"
 	mdagtest "github.com/ipfs/boxo/ipld/merkledag/test"
+	cid "github.com/ipfs/go-cid"
 	ipld "github.com/ipfs/go-ipld-format"
 )
 
@@ -321,6 +322,94 @@ func TestBFSSkip(t *testing.T) {
 3 /a/aa/aaa/aaaa
 4 /a/aa/aaa/aaaa/aaaaa
 `))
+}
+
+// countingVisited wraps a *cid.Set and counts Visit calls, so a test can confirm
+// the traversal really uses the Visited we passed in.
+type countingVisited struct {
+	set   *cid.Set
+	calls int
+}
+
+func (c *countingVisited) Visit(k cid.Cid) bool {
+	c.calls++
+	return c.set.Visit(k)
+}
+
+func TestInjectedVisitedIsConsulted(t *testing.T) {
+	ds := mdagtest.Mock()
+	v := &countingVisited{set: cid.NewSet()}
+	opts := Options{Order: DFSPre, SkipDuplicates: true, DAG: ds, Visited: v}
+
+	// newBinaryDAG links every node twice. With duplicates skipped, the DFSPre
+	// walk collapses to one line of distinct nodes. Seeing that output means our
+	// injected set, not some internal default, did the skipping.
+	testWalkOutputs(t, newBinaryDAG(t, ds), opts, []byte(`
+0 /a
+1 /a/aa
+2 /a/aa/aaa
+3 /a/aa/aaa/aaaa
+4 /a/aa/aaa/aaaa/aaaaa
+`))
+
+	if v.calls == 0 {
+		t.Fatal("injected Visited was never consulted")
+	}
+}
+
+func TestPrePopulatedVisitedSkipsSubtree(t *testing.T) {
+	ds := mdagtest.Mock()
+
+	a := mdag.NodeWithData([]byte("/a"))
+	aa := child(t, ds, a, "aa")
+	ab := child(t, ds, a, "ab")
+	ac := child(t, ds, a, "ac")
+	addLink(t, ds, a, aa)
+	addLink(t, ds, a, ab)
+	addLink(t, ds, a, ac)
+
+	// Put ab in the set up front, so the walk treats it as already seen and
+	// skips it.
+	seen := cid.NewSet()
+	seen.Add(ab.Cid())
+
+	opts := Options{Order: BFS, SkipDuplicates: true, DAG: ds, Visited: seen}
+	testWalkOutputs(t, a, opts, []byte(`
+0 /a
+1 /a/aa
+1 /a/ac
+`))
+}
+
+// TestPrePopulatedVisitedRootAsymmetry locks in a gotcha for anyone who passes a
+// Visited set with CIDs already in it to skip them: the root is handled
+// differently per order. The default depth-first walk always visits the root,
+// but BFS checks the root just like any other node. So if you seed the root CID
+// expecting depth-first behavior and then switch to BFS, you get no output at
+// all. Read the BFS branch below before reusing a seeded set with a non-DFS walk.
+func TestPrePopulatedVisitedRootAsymmetry(t *testing.T) {
+	ds := mdagtest.Mock()
+	root := newFan(t, ds)
+
+	// Default order: DFSPre never checks the root against the set (it runs the
+	// root's Func right away), so seeding the root CID does not skip the root.
+	// Only the children are checked.
+	dfsSeen := cid.NewSet()
+	dfsSeen.Add(root.Cid())
+	testWalkOutputs(t, root, Options{Order: DFSPre, SkipDuplicates: true, DAG: ds, Visited: dfsSeen}, []byte(`
+0 /a
+1 /a/aa
+1 /a/ab
+1 /a/ac
+1 /a/ad
+`))
+
+	// Gotcha: BFS checks the root just like any other node, so the same seed
+	// skips the whole walk. Reusing a DFS-style seeded set with BFS drops the
+	// root, and you get nothing.
+	bfsSeen := cid.NewSet()
+	bfsSeen.Add(root.Cid())
+	testWalkOutputs(t, root, Options{Order: BFS, SkipDuplicates: true, DAG: ds, Visited: bfsSeen}, []byte(""))
 }
 
 func testWalkOutputs(t *testing.T, root ipld.Node, opts Options, expect []byte) {
