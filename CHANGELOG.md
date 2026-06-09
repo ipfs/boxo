@@ -18,11 +18,25 @@ The following emojis are used to highlight certain changes:
 
 ### Changed
 
+### Removed
+
+### Fixed
+
+### Security
+
+
+## [v0.41.0]
+
+### Added
+
+- `ipld/merkledag/traverse`: added the `Visited` interface and `Options.Visited` field, so callers can plug in their own set for skipping duplicates when `SkipDuplicates` is on. `*go-cid.Set` already works as one; a bounded or disk-backed set keeps memory low on very large DAGs.
+
+### Changed
+
 - upgrade to `go-ipld-prime` [v0.24.0](https://github.com/ipld/go-ipld-prime/releases/tag/v0.24.0)
 - upgrade to `polydawn/refmt` [v0.90.0](https://github.com/polydawn/refmt/releases/tag/v0.90.0)
 - upgrade to `go-car/v2` [v2.17.0](https://github.com/ipld/go-car/releases/tag/v2.17.0)
-
-### Removed
+- upgrade to `go.opentelemetry.io` to [v1.44.0](https://github.com/open-telemetry/opentelemetry-go/releases/tag/v1.44.0)(includes [v1.43.0](https://github.com/open-telemetry/opentelemetry-go/releases/tag/v1.43.0))
 
 ### Fixed
 
