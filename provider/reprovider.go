@@ -278,7 +278,6 @@ func (s *reprovider) run() {
 
 func (s *reprovider) provideWorker() {
 	defer s.closewg.Done()
-	provCh := s.q.Out()
 
 	provideFunc := func(ctx context.Context, c cid.Cid) {
 		log.Debugf("provider worker: providing %s", c)
@@ -334,17 +333,31 @@ func (s *reprovider) provideWorker() {
 		}
 	}
 
-	for data := range provCh {
+	provideCid := func(data []byte) {
 		c, err := cid.Parse(data)
 		if err != nil {
 			log.Errorf("invalid cid read from queue: %s", err)
-			continue
+			return
 		}
 		if err = verifcid.ValidateCid(s.allowlist, c); err != nil {
 			log.Errorf("insecure hash in reprovider, %s (%s)", c, err)
-			continue
+			return
 		}
 		provideOperation(s.ctx, c)
+	}
+
+	const batchReadSize = 2048
+
+	for data := range s.q.Out() {
+		provideCid(data)
+		buf, err := s.q.GetN(batchReadSize)
+		if err != nil {
+			log.Errorf("error fetching data from queue: %s", err)
+			continue
+		}
+		for _, data = range buf {
+			provideCid(data)
+		}
 	}
 }
 
