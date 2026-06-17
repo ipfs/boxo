@@ -39,7 +39,7 @@ require (
 	github.com/filecoin-project/go-clock v0.1.0 // indirect
 	github.com/flynn/noise v1.1.0 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.13 // indirect
-	github.com/gammazero/cascadeq v0.1.1 // indirect
+	github.com/gammazero/cascadeq v0.2.0 // indirect
 	github.com/gammazero/chanqueue v1.1.2 // indirect
 	github.com/gammazero/deque v1.2.1 // indirect
 	github.com/gammazero/fsutil v0.2.0 // indirect
