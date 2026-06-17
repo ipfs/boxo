@@ -9,7 +9,7 @@ require (
 	github.com/cskr/pubsub v1.0.2
 	github.com/dustin/go-humanize v1.0.1
 	github.com/gabriel-vasile/mimetype v1.4.13
-	github.com/gammazero/cascadeq v0.1.1
+	github.com/gammazero/cascadeq v0.2.0
 	github.com/gammazero/chanqueue v1.1.2
 	github.com/gammazero/deque v1.2.1
 	github.com/google/uuid v1.6.0

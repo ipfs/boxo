@@ -153,7 +153,7 @@ func New(ds datastore.Batching, opts ...Option) (System, error) {
 	if s.queueDir == "" {
 		s.queueDir = filepath.Join(os.TempDir(), "providequeue")
 	}
-	s.q, err = cascadeq.New("provide", s.queueDir)
+	s.q, err = cascadeq.New(s.queueDir)
 	if err != nil {
 		return nil, err
 	}
