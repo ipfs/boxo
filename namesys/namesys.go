@@ -91,11 +91,27 @@ func WithMaxCacheTTL(dur time.Duration) Option {
 	}
 }
 
-// WithDNSResolver is an option that supplies a custom DNS resolver to use instead
-// of the system default.
+// WithDNSResolver sets a custom DNS resolver in place of the system default. If
+// that resolver also implements [madns.TXTWithTTLResolver], its TXT TTLs flow
+// into resolved results, and from there into the gateway's Cache-Control header.
 func WithDNSResolver(rslv madns.BasicResolver) Option {
 	return func(ns *namesys) error {
-		ns.dnsResolver = NewDNSResolver(rslv.LookupTXT)
+		// A resolver that reports TXT TTLs (such as a DoH resolver via
+		// multiformats/go-multiaddr-dns#75) carries the DNSLink TTL through.
+		if ttlRslv, ok := rslv.(madns.TXTWithTTLResolver); ok {
+			ns.dnsResolver = NewDNSResolverWithTTL(ttlRslv.LookupTXTWithTTL)
+		} else {
+			ns.dnsResolver = NewDNSResolver(rslv.LookupTXT)
+		}
+		return nil
+	}
+}
+
+// WithDNSResolverWithTTL is like [WithDNSResolver] but takes a lookup that
+// reports TXT TTLs directly.
+func WithDNSResolverWithTTL(lookup LookupTXTWithTTLFunc) Option {
+	return func(ns *namesys) error {
+		ns.dnsResolver = NewDNSResolverWithTTL(lookup)
 		return nil
 	}
 }
