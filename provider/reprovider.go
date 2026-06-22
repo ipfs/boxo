@@ -36,6 +36,13 @@ const (
 	// MAGIC: Maximum duration during which no workers are available to provide a
 	// cid before a warning is triggered.
 	provideDelayWarnDuration = 15 * time.Second
+
+	// batchReadSize is number of CIDs to read from provide queue in one visit.
+	batchReadSize = 2048
+
+	// dedupCacheSize is the number of CIDs which deduplication is done across.
+	// Set to 0 is disable deduplication.
+	dedupCacheSize = 2048
 )
 
 var log = logging.Logger("provider")
@@ -146,7 +153,7 @@ func New(ds datastore.Batching, opts ...Option) (System, error) {
 	}
 
 	s.ds = namespace.Wrap(ds, s.keyPrefix)
-	s.q = dsqueue.New(s.ds, "provide", dsqueue.WithDedupCacheSize(2048))
+	s.q = dsqueue.New(s.ds, "provide", dsqueue.WithDedupCacheSize(dedupCacheSize))
 
 	// This is after the options processing so we do not have to worry about leaking a context if there is an
 	// initialization error processing the options
@@ -345,8 +352,6 @@ func (s *reprovider) provideWorker() {
 		}
 		provideOperation(s.ctx, c)
 	}
-
-	const batchReadSize = 2048
 
 	for data := range s.q.Out() {
 		provideCid(data)
