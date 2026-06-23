@@ -64,6 +64,17 @@ func TestEmptyIdentityCIDProbeShortCircuit(t *testing.T) {
 		defer res.Body.Close()
 		require.Equal(t, http.StatusNotFound, res.StatusCode)
 	})
+
+	// The short-circuit matches the bare CID only. A trailing path under the
+	// empty identity CID falls through to the backend, which here cannot
+	// resolve it, so the gateway returns 404 rather than an empty 200.
+	t.Run("identity CID with trailing path is not short-circuited", func(t *testing.T) {
+		req := mustNewRequest(t, http.MethodGet, ts.URL+"/ipfs/"+EmptyIdentityCIDString+"/trailing?format=raw", nil)
+		req.Header.Set("Accept", rawResponseFormat)
+		res := mustDo(t, req)
+		defer res.Body.Close()
+		require.Equal(t, http.StatusNotFound, res.StatusCode)
+	})
 }
 
 // BenchmarkIsEmptyIdentityProbe guards that the check added to every raw-block
