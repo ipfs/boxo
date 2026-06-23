@@ -52,7 +52,7 @@ func wantlistsSeconds(ctx context.Context) imetrics.Histogram {
 }
 
 func status(ctx context.Context) imetrics.CounterVec {
-	return imetrics.NewCtx(ctx, "status", "Request status count").CounterVec([]string{"method", "status", "host"})
+	return imetrics.NewCtx(ctx, "status", "Request status count").CounterVec([]string{"method", "status", "host", "version"})
 }
 
 type metrics struct {
@@ -92,13 +92,31 @@ func newMetrics(endpoints map[string]struct{}) *metrics {
 		WantlistsItemsTotal: wantlistsItemsTotal(ctx),
 		WantlistsSeconds:    wantlistsSeconds(ctx),
 		ResponseSizes:       responseSizes(ctx),
-		// labels: method, status, host
+		// labels: method, status, host, version
 		Status:      status(ctx),
 		RequestTime: requestTime(ctx),
 	}
 }
 
-func (m *metrics) updateStatusCounter(method string, statusCode int, host string) {
+// httpVersionLabel maps an http.Response.Proto to a short, bounded metrics
+// label value (the ALPN protocol ids), so HTTP/2 and HTTP/3 traffic can be
+// compared. An empty proto (e.g. a cancel, which makes no request) yields "".
+func httpVersionLabel(proto string) string {
+	switch proto {
+	case http2proto: // "HTTP/2.0"
+		return "h2"
+	case http3proto: // "HTTP/3.0"
+		return "h3"
+	case "":
+		return ""
+	case "HTTP/1.1":
+		return "http/1.1"
+	default:
+		return "other"
+	}
+}
+
+func (m *metrics) updateStatusCounter(method string, statusCode int, host, version string) {
 	m.RequestsTotal.Inc()
 	// Set host == other if we are:
 	// - not tracking all hosts
@@ -121,5 +139,5 @@ func (m *metrics) updateStatusCounter(method string, statusCode int, host string
 		statusStr = "other"
 	}
 
-	m.Status.WithLabelValues(method, statusStr, host).Inc()
+	m.Status.WithLabelValues(method, statusStr, host, version).Inc()
 }

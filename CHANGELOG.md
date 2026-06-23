@@ -16,6 +16,8 @@ The following emojis are used to highlight certain changes:
 
 ### Added
 
+- ✨ `bitswap/network/httpnet`: experimental, opt-in HTTP/3 (QUIC) support for trustless HTTP retrieval via the new `WithHTTP3()` option (off by default). Providers keep announcing their existing `/tcp/443/tls/http` address; with the option enabled the client opportunistically upgrades to HTTP/3 on hosts that advertise it through `Alt-Svc`, remembers the result per peer so it survives reconnects, and falls back to HTTP/2 whenever QUIC is unavailable (for example when outbound UDP is blocked). HTTP/3 needs outbound UDP, and operators may need to raise UDP buffer limits (`net.core.rmem_max`/`wmem_max` on Linux). The `status` metric gains a `version` label (`h2`/`h3`) so HTTP/2 and HTTP/3 request volume and status codes can be compared. This is an early prototype whose behavior may still change; early feedback on how it performs against real providers is very welcome at https://github.com/ipfs/boxo/issues.
+
 ### Changed
 
 ### Removed

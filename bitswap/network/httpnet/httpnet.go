@@ -62,6 +62,11 @@ const http2proto = "HTTP/2.0"
 
 const peerstoreSupportsHeadKey = "http-retrieval-head-support"
 
+// connKeepAlive is the keep-alive period shared by the TCP dialer and the
+// HTTP/3 (QUIC) transport, so idle connections are probed on the same schedule
+// and survive NAT/firewall timeouts regardless of the transport.
+const connKeepAlive = 15 * time.Second
+
 // Option allows to configure the Network.
 type Option func(net *Network)
 
@@ -225,6 +230,9 @@ type Network struct {
 
 	host   host.Host
 	client *http.Client
+	// h3 is the HTTP/3 round-tripper wrapping client.Transport. It is nil
+	// unless WithHTTP3() was set. Kept here so Stop() can close its UDP socket.
+	h3 *h3Fallback
 
 	closeOnce       sync.Once
 	closing         chan struct{}
@@ -249,6 +257,7 @@ type Network struct {
 	maxHTTPAddressesPerPeer int
 	maxDontHaveErrors       int
 	httpWorkers             int
+	enableHTTP3             bool
 	allowlist               map[string]struct{}
 	denylist                map[string]struct{}
 	trackedEndpoints        map[string]struct{}
@@ -305,7 +314,7 @@ func New(host host.Host, opts ...Option) network.BitSwapNetwork {
 	netdialer := &net.Dialer{
 		// Timeout for connects to complete.
 		Timeout:   htnet.dialTimeout,
-		KeepAlive: 15 * time.Second,
+		KeepAlive: connKeepAlive,
 		// TODO for go1.23
 		// // KeepAlive config for sending probes for an active
 		// // connection.
@@ -358,6 +367,13 @@ func New(host host.Host, opts ...Option) network.BitSwapNetwork {
 			return http.ErrUseLastResponse
 		},
 	}
+
+	// When HTTP/3 is enabled, wrap the TCP transport so requests prefer
+	// HTTP/3 for hosts that advertise it and fall back to HTTP/2 otherwise.
+	if htnet.enableHTTP3 {
+		htnet.h3 = newH3Fallback(t, tlsCfg, htnet.idleConnTimeout)
+		c.Transport = htnet.h3
+	}
 	htnet.client = c
 
 	pinger := newPinger(htnet, pingCid)
@@ -399,6 +415,11 @@ func (ht *Network) Stop() {
 	ht.connEvtMgr.Stop()
 	ht.closeOnce.Do(func() {
 		ht.cooldownTracker.stopCleaner()
+		if ht.h3 != nil {
+			if err := ht.h3.Close(); err != nil {
+				log.Debugf("error closing HTTP/3 transport: %s", err)
+			}
+		}
 		close(ht.closing)
 	})
 }
@@ -531,6 +552,13 @@ func (ht *Network) Connect(ctx context.Context, pi peer.AddrInfo) error {
 		urls = urls[0:ht.maxHTTPAddressesPerPeer]
 	}
 
+	// If HTTP/3 is enabled, prime the per-host cache from what we previously
+	// remembered about this peer, so the probe below (and later requests) can
+	// prefer HTTP/3 right away instead of re-learning it via Alt-Svc.
+	if ht.h3 != nil {
+		ht.h3.seedFromPeerstore(ht.host.Peerstore(), p, urls)
+	}
+
 	// Try to talk to the peer by making HTTP requests to its urls and
 	// recording which ones work. This allows re-using the connections
 	// that we are about to open next time with the client. We call
@@ -584,6 +612,12 @@ func (ht *Network) Connect(ctx context.Context, pi peer.AddrInfo) error {
 	// Record whether HEAD test passed for all urls - ignoring error
 	_ = ps.Put(pi.ID, peerstoreSupportsHeadKey, supportsHead)
 
+	// Remember whether this peer's endpoint supports HTTP/3, so the verdict
+	// survives reconnects (and restarts with a persistent peerstore).
+	if ht.h3 != nil {
+		ht.h3.persistToPeerstore(ps, p, urls)
+	}
+
 	ht.pinger.startPinging(p)
 	ht.connEvtMgr.Connected(p)
 
@@ -609,10 +643,11 @@ func (ht *Network) connectToURL(ctx context.Context, p peer.ID, u network.Parsed
 
 	// For HTTP, the address can only be a LAN IP as otherwise it would have
 	// been filtered out before.
-	// So IF it is HTTPS and not http2, we abort because we don't want
-	// requests to non-local hosts without http2.
-	if u.URL.Scheme == "https" && resp.Proto != http2proto {
-		err = fmt.Errorf("%s://%q is not using HTTP/2 (%s)", req.URL.Scheme, req.URL.Host, resp.Proto)
+	// So IF it is HTTPS, we require HTTP/2 or HTTP/3: we don't want requests
+	// to non-local hosts over HTTP/1.x. HTTP/3 only appears when WithHTTP3()
+	// is set and the server upgraded the connection.
+	if u.URL.Scheme == "https" && resp.Proto != http2proto && resp.Proto != http3proto {
+		err = fmt.Errorf("%s://%q is not using HTTP/2 or HTTP/3 (%s)", req.URL.Scheme, req.URL.Host, resp.Proto)
 		log.Warn(err)
 		return resp.StatusCode, err
 	}

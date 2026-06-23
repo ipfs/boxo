@@ -293,7 +293,7 @@ func (sender *httpMsgSender) tryURL(ctx context.Context, u *senderURL, entry bsm
 	sender.ht.metrics.RequestsInFlight.Dec()
 	host := u.URL.Hostname()
 	// updateStatusCounter
-	sender.ht.metrics.updateStatusCounter(req.Method, statusCode, host)
+	sender.ht.metrics.updateStatusCounter(req.Method, statusCode, host, httpVersionLabel(resp.Proto))
 
 	switch statusCode {
 	// Valid responses signaling unavailability of the
@@ -479,7 +479,7 @@ WANTLIST_LOOP:
 	for i, entry := range wantlist {
 		if entry.Cancel { // shortcut cancel entries.
 			sender.ht.requestTracker.cancelRequest(entry.Cid)
-			sender.ht.metrics.updateStatusCounter("CANCEL", 0, "")
+			sender.ht.metrics.updateStatusCounter("CANCEL", 0, "", "")
 			// Do not observe request time for cancel requests as they cost us
 			// nothing, so it is unfair to compare against bsnet requests-time.
 			// sender.ht.metrics.RequestTime.Observe(float64(time.Since(reqStart))
