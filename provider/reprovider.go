@@ -42,7 +42,7 @@ const (
 
 	// dedupCacheSize is the number of CIDs which deduplication is done across.
 	// Set to 0 is disable deduplication.
-	dedupCacheSize = 2048
+	dedupCacheSize = 0
 )
 
 var log = logging.Logger("provider")
