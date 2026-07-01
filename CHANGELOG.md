@@ -16,6 +16,7 @@ The following emojis are used to highlight certain changes:
 
 ### Added
 
+- `gateway`: `GET`/`HEAD /ipfs/bafkqaaa?format=raw` now always returns `200` with an empty body, so probing clients keep marking the gateway as functional even when its backend cannot serve identity CIDs. `bitswap/network/httpnet` sends this [trustless gateway probe](https://specs.ipfs.tech/http-gateways/trustless-gateway/#dedicated-probe-paths) to check providers, and a failed probe drops the provider. Exported as `gateway.EmptyIdentityCID`. [#1179](https://github.com/ipfs/boxo/pull/1179)
 - `path`: added `NewPathFromURI`, which accepts native IPFS URIs (`ipfs://cid`, `ipns://name`, `ipld://cid`, and the schemeless `ipfs:`/`ipns:`/`ipld:` forms) and rewrites them to canonical content paths, so values copied from browsers and other tools parse as-is. `NewPath` stays strict and still rejects URI-shaped input, leaving untrusted parsing such as DNSLink records unchanged. [#1182](https://github.com/ipfs/boxo/pull/1182)
 
 ### Changed
