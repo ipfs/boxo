@@ -41,7 +41,7 @@ func hasURIScheme(str, ns string) bool {
 	if len(str) <= len(ns) || str[len(ns)] != ':' {
 		return false
 	}
-	for i := 0; i < len(ns); i++ {
+	for i := range len(ns) {
 		if toLowerASCII(str[i]) != ns[i] {
 			return false
 		}
