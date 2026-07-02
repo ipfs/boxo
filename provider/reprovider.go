@@ -362,7 +362,7 @@ func (s *reprovider) provideWorker() {
 		}
 	}
 
-	for data := range s.q.Out() {
+	provideCid := func(data []byte) {
 		c, err := cid.Parse(data)
 		if err != nil {
 			log.Errorf("invalid cid read from queue: %s", err)
@@ -375,15 +375,13 @@ func (s *reprovider) provideWorker() {
 		provideOperation(s.ctx, c)
 	}
 
+	buf := make([][]byte, batchReadSize)
+
 	for data := range s.q.Out() {
 		provideCid(data)
-		buf, err := s.q.GetN(batchReadSize)
-		if err != nil {
-			log.Errorf("error fetching data from queue: %s", err)
-			continue
-		}
-		for _, data = range buf {
-			provideCid(data)
+		n := s.q.Drain(buf)
+		for i := range n {
+			provideCid(buf[i])
 		}
 	}
 }
