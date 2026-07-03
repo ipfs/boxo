@@ -37,7 +37,7 @@ require (
 	github.com/libp2p/go-buffer-pool v0.1.0
 	github.com/libp2p/go-doh-resolver v0.5.0
 	github.com/libp2p/go-libp2p v0.48.0
-	github.com/libp2p/go-libp2p-kad-dht v0.40.1-0.20260617160602-96c8548a5e2a
+	github.com/libp2p/go-libp2p-kad-dht v0.41.1-0.20260703233757-7e03fc4a9736
 	github.com/libp2p/go-libp2p-record v0.3.1
 	github.com/libp2p/go-libp2p-routing-helpers v0.7.5
 	github.com/libp2p/go-libp2p-testing v0.12.0
