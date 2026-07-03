@@ -35,7 +35,7 @@ indexed, reporting present blocks as missing (`Has` returns false,
 The build now activates the filter only when enumeration is known to have
 completed; otherwise the cache degrades to correct pass-through. This also
 fixes a race where a cancelled build could still mark the filter active.
-[#NNNN](https://github.com/ipfs/boxo/pull/NNNN)
+[#1183](https://github.com/ipfs/boxo/pull/1183)
 
 ### Security
 
