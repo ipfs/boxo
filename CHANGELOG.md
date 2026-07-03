@@ -24,6 +24,19 @@ The following emojis are used to highlight certain changes:
 
 ### Fixed
 
+- `blockstore`: the Bloom filter cache no longer activates after an incomplete
+build. Previously, if `AllKeysChan` enumeration was truncated by a
+mid-iteration datastore error (which was only logged, never propagated) or by a
+cancelled context, the cache treated the closed channel as a complete build and
+activated a Bloom filter holding only a subset of the stored CIDs. It then
+answered "not present" conclusively for blocks that exist but were never
+indexed, reporting present blocks as missing (`Has` returns false,
+`Get`/`GetSize`/`View` return not-found, `DeleteBlock` becomes a silent no-op).
+The build now activates the filter only when enumeration is known to have
+completed; otherwise the cache degrades to correct pass-through. This also
+fixes a race where a cancelled build could still mark the filter active.
+[#NNNN](https://github.com/ipfs/boxo/pull/NNNN)
+
 ### Security
 
 

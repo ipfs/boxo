@@ -79,8 +79,9 @@ type bloomcache struct {
 }
 
 var (
-	_ Blockstore = (*bloomcache)(nil)
-	_ Viewer     = (*bloomcache)(nil)
+	_ Blockstore           = (*bloomcache)(nil)
+	_ Viewer               = (*bloomcache)(nil)
+	_ allKeysChanWithErrer = (*bloomcache)(nil)
 )
 
 func (b *bloomcache) BloomActive() bool {
@@ -104,15 +105,30 @@ func (b *bloomcache) build(ctx context.Context) error {
 	}()
 	defer close(b.buildChan)
 
-	ch, err := b.blockstore.AllKeysChan(ctx)
+	ch, errFn, err := allKeysChanWithErrFor(ctx, b.blockstore)
 	if err != nil {
-		b.buildErr = fmt.Errorf("AllKeysChan failed in bloomcache rebuild with: %v", err)
+		b.buildErr = fmt.Errorf("AllKeysChan failed in bloomcache build with: %w", err)
 		return b.buildErr
 	}
 	for {
 		select {
 		case key, ok := <-ch:
 			if !ok {
+				// A closed channel alone does not prove the enumeration was
+				// complete: it could have been truncated by a mid-iteration
+				// error or a cancelled context. Trust the filter only if every
+				// key was delivered, otherwise the "not in bloom" answer would
+				// be a false negative for blocks that exist but were never
+				// indexed.
+				//
+				// If the wrapped store does not implement allKeysChanWithErrer,
+				// errFn is a no-op returning nil (see allKeysChanWithErrFor) and
+				// the filter is treated as complete, preserving the pre-existing
+				// best-effort behavior for such stores.
+				if err := errFn(); err != nil {
+					b.buildErr = fmt.Errorf("bloomcache build incomplete, not activating filter: %w", err)
+					return b.buildErr
+				}
 				atomic.StoreInt32(&b.active, 1)
 				return nil
 			}
@@ -122,6 +138,12 @@ func (b *bloomcache) build(ctx context.Context) error {
 			return b.buildErr
 		}
 	}
+}
+
+// allKeysChanWithErr forwards the error-reporting enumeration to the wrapped
+// blockstore, so the completeness signal survives the cache stack.
+func (b *bloomcache) allKeysChanWithErr(ctx context.Context) (<-chan cid.Cid, func() error, error) {
+	return allKeysChanWithErrFor(ctx, b.blockstore)
 }
 
 func (b *bloomcache) DeleteBlock(ctx context.Context, k cid.Cid) error {
