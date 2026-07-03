@@ -41,10 +41,6 @@ const (
 
 	// batchReadSize is number of CIDs to read from provide queue in one visit.
 	batchReadSize = 2048
-
-	// dedupCacheSize is the number of CIDs which deduplication is done across.
-	// Set to 0 is disable deduplication.
-	dedupCacheSize = 0
 )
 
 var log = logging.Logger("provider")
