@@ -65,9 +65,30 @@ type Blockstore interface {
 	// cancelled context), the channel may be closed early without warning.
 	// Callers MUST NOT assume the returned error reflects enumeration
 	// completeness: it is only guaranteed to cover query setup, not
-	// mid-iteration failures. A consumer that requires a complete enumeration
-	// (such as building a Bloom filter) cannot rely on this method alone.
+	// mid-iteration failures. Consumers that require a complete enumeration
+	// (such as building a Bloom filter) should check whether the blockstore
+	// implements [AllKeysChanWithErrer].
 	AllKeysChan(ctx context.Context) (<-chan cid.Cid, error)
+}
+
+// AllKeysChanWithErrer is an optional capability a Blockstore may implement
+// alongside AllKeysChan. AllKeysChanWithErr behaves like
+// [Blockstore.AllKeysChan], but additionally returns a function that, once the
+// returned channel has been fully drained, reports any error that terminated
+// enumeration early.
+//
+// The reported error is nil if enumeration ran to completion without a
+// mid-iteration error or cancellation; a non-nil error means enumeration was
+// truncated and the delivered keys must not be treated as the complete set.
+// Datastore keys that cannot be parsed as a block key are skipped without being
+// treated as an error: such a key cannot correspond to a retrievable block, so
+// omitting it cannot cause a Bloom-filter false negative.
+//
+// The function blocks until enumeration finishes, so it must be called only
+// after the channel has been drained; calling it earlier deadlocks the caller
+// once the producer fills the channel buffer.
+type AllKeysChanWithErrer interface {
+	AllKeysChanWithErr(ctx context.Context) (<-chan cid.Cid, func() error, error)
 }
 
 // Viewer can be implemented by blockstores that offer zero-copy access to
@@ -292,35 +313,16 @@ func (bs *blockstore) DeleteBlock(ctx context.Context, k cid.Cid) error {
 //
 // AllKeysChan respects context.
 func (bs *blockstore) AllKeysChan(ctx context.Context) (<-chan cid.Cid, error) {
-	ch, _, err := bs.allKeysChanWithErr(ctx)
+	ch, _, err := bs.AllKeysChanWithErr(ctx)
 	return ch, err
 }
 
-// allKeysChanWithErrer is an optional capability a Blockstore may implement
-// alongside AllKeysChan. allKeysChanWithErr behaves like AllKeysChan, but
-// additionally returns a function that, once the returned channel has been
-// fully drained, reports any error that terminated enumeration early.
-//
-// The reported error is nil if enumeration ran to completion without a
-// mid-iteration error or cancellation; a non-nil error means enumeration was
-// truncated and the delivered keys must not be treated as the complete set.
-// Datastore keys that cannot be parsed as a block key are skipped without being
-// treated as an error: such a key cannot correspond to a retrievable block, so
-// omitting it cannot cause a Bloom-filter false negative.
-//
-// The function blocks until enumeration finishes, so it must be called only
-// after the channel has been drained; calling it earlier deadlocks the caller
-// once the producer fills the channel buffer.
-type allKeysChanWithErrer interface {
-	allKeysChanWithErr(ctx context.Context) (<-chan cid.Cid, func() error, error)
-}
+var _ AllKeysChanWithErrer = (*blockstore)(nil)
 
-var _ allKeysChanWithErrer = (*blockstore)(nil)
-
-// allKeysChanWithErr implements [allKeysChanWithErrer]. The returned function
+// AllKeysChanWithErr implements [AllKeysChanWithErrer]. The returned function
 // reports any error that ended key enumeration early (nil if every key was
 // delivered) and must be called only after the channel has been drained.
-func (bs *blockstore) allKeysChanWithErr(ctx context.Context) (<-chan cid.Cid, func() error, error) {
+func (bs *blockstore) AllKeysChanWithErr(ctx context.Context) (<-chan cid.Cid, func() error, error) {
 	// KeysOnly, because that would be _a lot_ of data.
 	q := dsq.Query{KeysOnly: true}
 	res, err := bs.datastore.Query(ctx, q)
@@ -373,13 +375,13 @@ func (bs *blockstore) allKeysChanWithErr(ctx context.Context) (<-chan cid.Cid, f
 	return output, func() error { <-done; return iterErr }, nil
 }
 
-// allKeysChanWithErrFor returns bs.allKeysChanWithErr when bs implements
-// [allKeysChanWithErrer]. Otherwise it falls back to [Blockstore.AllKeysChan]
+// allKeysChanWithErrFor returns bs.AllKeysChanWithErr when bs implements
+// [AllKeysChanWithErrer]. Otherwise it falls back to [Blockstore.AllKeysChan]
 // with a no-op error function, preserving best-effort behavior for blockstores
 // that cannot report enumeration errors.
 func allKeysChanWithErrFor(ctx context.Context, bs Blockstore) (<-chan cid.Cid, func() error, error) {
-	if e, ok := bs.(allKeysChanWithErrer); ok {
-		return e.allKeysChanWithErr(ctx)
+	if e, ok := bs.(AllKeysChanWithErrer); ok {
+		return e.AllKeysChanWithErr(ctx)
 	}
 	ch, err := bs.AllKeysChan(ctx)
 	return ch, func() error { return nil }, err

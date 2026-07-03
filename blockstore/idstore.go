@@ -19,7 +19,7 @@ var (
 	_ Blockstore           = (*idstore)(nil)
 	_ Viewer               = (*idstore)(nil)
 	_ io.Closer            = (*idstore)(nil)
-	_ allKeysChanWithErrer = (*idstore)(nil)
+	_ AllKeysChanWithErrer = (*idstore)(nil)
 )
 
 func NewIdStore(bs Blockstore) Blockstore {
@@ -114,7 +114,7 @@ func (b *idstore) AllKeysChan(ctx context.Context) (<-chan cid.Cid, error) {
 	return b.bs.AllKeysChan(ctx)
 }
 
-func (b *idstore) allKeysChanWithErr(ctx context.Context) (<-chan cid.Cid, func() error, error) {
+func (b *idstore) AllKeysChanWithErr(ctx context.Context) (<-chan cid.Cid, func() error, error) {
 	return allKeysChanWithErrFor(ctx, b.bs)
 }
 

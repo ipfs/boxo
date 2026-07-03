@@ -12,9 +12,9 @@ type ValidatingBlockstore struct {
 	Blockstore
 }
 
-var _ allKeysChanWithErrer = (*ValidatingBlockstore)(nil)
+var _ AllKeysChanWithErrer = (*ValidatingBlockstore)(nil)
 
-func (bs *ValidatingBlockstore) allKeysChanWithErr(ctx context.Context) (<-chan cid.Cid, func() error, error) {
+func (bs *ValidatingBlockstore) AllKeysChanWithErr(ctx context.Context) (<-chan cid.Cid, func() error, error) {
 	return allKeysChanWithErrFor(ctx, bs.Blockstore)
 }
 
