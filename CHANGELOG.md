@@ -27,7 +27,7 @@ rebuild runs the filter is inactive (lookups fall through to the underlying
 blockstore, so results stay correct but unaccelerated) and it is activated
 again only on a complete enumeration. A new optional `AllKeysChanWithErrer`
 capability lets a `Blockstore` report an error that truncates `AllKeysChan`
-enumeration. [#MMMM](https://github.com/ipfs/boxo/pull/MMMM)
+enumeration. [#1184](https://github.com/ipfs/boxo/pull/1184)
 
 ### Changed
 
