@@ -67,7 +67,7 @@ func bloomCached(ctx context.Context, bs Blockstore, bloomSize, hashCount int) (
 }
 
 type bloomcache struct {
-	active int32
+	active atomic.Bool
 
 	// bloom is the live filter. It is swapped atomically by Rebuild, so all
 	// accesses go through Load.
@@ -97,7 +97,7 @@ var (
 )
 
 func (b *bloomcache) BloomActive() bool {
-	return atomic.LoadInt32(&b.active) != 0
+	return b.active.Load()
 }
 
 func (b *bloomcache) Wait(ctx context.Context) error {
@@ -124,7 +124,7 @@ func (b *bloomcache) build(ctx context.Context) error {
 		b.buildErr = err
 		return err
 	}
-	atomic.StoreInt32(&b.active, 1)
+	b.active.Store(true)
 	return nil
 }
 
@@ -168,13 +168,13 @@ func (b *bloomcache) Rebuild(ctx context.Context) error {
 	// instead leave a block written concurrently with a rebuild as a transient
 	// false negative until the next rebuild: the bloom-pointer atomic orders
 	// only the filter swap, not datastore visibility.
-	atomic.StoreInt32(&b.active, 0)
+	b.active.Store(false)
 	b.bloom.Store(fresh)
 
 	if err := b.populate(ctx, fresh); err != nil {
 		return err
 	}
-	atomic.StoreInt32(&b.active, 1)
+	b.active.Store(true)
 	return nil
 }
 
