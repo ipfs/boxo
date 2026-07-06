@@ -61,6 +61,12 @@ type parent interface {
 	// reads, or zero for unbounded. Set once at the root, inherited by every
 	// child directory.
 	getFetchTimeout() time.Duration
+
+	// getContext returns the long-lived context of this MFS subtree, rooted
+	// at the context passed to NewRoot. It is cancelled when the MFS is torn
+	// down, so operations bound to it (such as a file's DagModifier) do not
+	// outlive the root.
+	getContext() context.Context
 }
 
 type NodeType int
@@ -223,6 +229,11 @@ func (kr *Root) getChunker() chunker.SplitterGen {
 // getFetchTimeout implements the parent interface.
 func (kr *Root) getFetchTimeout() time.Duration {
 	return kr.fetchTimeout
+}
+
+// getContext implements the parent interface.
+func (kr *Root) getContext() context.Context {
+	return kr.dir.ctx
 }
 
 // Flush signals that an update has occurred since the last publish,

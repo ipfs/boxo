@@ -108,7 +108,15 @@ func (fi *File) Open(flags Flags) (_ FileDescriptor, _retErr error) {
 		chunkerGen = chunker.DefaultSplitter
 	}
 
-	dmod, err := mod.NewDagModifier(context.TODO(), node, fi.dagService, chunkerGen)
+	// Bind the DagModifier to the MFS subtree's context so a block fetch on
+	// the write path (for example editing a lazily-referenced file whose
+	// blocks are not local) is cancelled when the MFS is torn down, instead of
+	// blocking forever on the network under the file's lock.
+	//
+	// TODO: thread the caller's request context through Open, the way
+	// CtxReadFull already does for reads, so writes also honor a client
+	// --timeout and per-request cancellation and not only MFS teardown.
+	dmod, err := mod.NewDagModifier(fi.parent.getContext(), node, fi.dagService, chunkerGen)
 	if err != nil {
 		return nil, err
 	}

@@ -26,6 +26,8 @@ The following emojis are used to highlight certain changes:
 
 ### Fixed
 
+- `mfs`: a file write that must fetch a missing, unreachable block (such as editing a lazily-referenced file) no longer blocks forever; it now cancels on MFS shutdown instead of holding the file's lock and delaying a clean shutdown. [#1185](https://github.com/ipfs/boxo/pull/1185)
+
 ### Security
 
 

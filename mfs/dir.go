@@ -171,6 +171,11 @@ func (d *Directory) getFetchTimeout() time.Duration {
 	return d.fetchTimeout
 }
 
+// getContext implements the parent interface.
+func (d *Directory) getContext() context.Context {
+	return d.ctx
+}
+
 // opContext returns a context for a single under-lock DAG read (a child
 // lookup or HAMT-shard walk). When a fetch timeout is configured it bounds the
 // read so a locally-missing block fails with a deadline error instead of
