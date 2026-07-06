@@ -76,9 +76,10 @@ func NewDirectory(ctx context.Context, name string, node ipld.Node, parent paren
 
 	return &Directory{
 		inode: inode{
-			name:       name,
-			parent:     parent,
-			dagService: dserv,
+			name:         name,
+			parent:       parent,
+			dagService:   dserv,
+			fetchTimeout: parent.getFetchTimeout(), // inherit from parent
 		},
 		ctx:          ctx,
 		unixfsDir:    db,
@@ -134,9 +135,10 @@ func newEmptyDirectory(ctx context.Context, name string, p parent, dserv ipld.DA
 
 	return &Directory{
 		inode: inode{
-			name:       name,
-			parent:     p,
-			dagService: dserv,
+			name:         name,
+			parent:       p,
+			dagService:   dserv,
+			fetchTimeout: p.getFetchTimeout(),
 		},
 		ctx:          ctx,
 		unixfsDir:    db,
@@ -154,6 +156,23 @@ func (d *Directory) GetCidBuilder() cid.Builder {
 // getChunker implements the parent interface.
 func (d *Directory) getChunker() chunker.SplitterGen {
 	return d.chunker
+}
+
+// getFetchTimeout implements the parent interface.
+func (d *Directory) getFetchTimeout() time.Duration {
+	return d.fetchTimeout
+}
+
+// opContext returns a context for a single under-lock DAG read (a child
+// lookup or HAMT-shard walk). When a fetch timeout is configured it bounds the
+// read so a locally-missing block fails with a deadline error instead of
+// blocking forever on the network while d.lock is held. The caller must call
+// the returned cancel func.
+func (d *Directory) opContext() (context.Context, context.CancelFunc) {
+	if d.fetchTimeout <= 0 {
+		return d.ctx, func() {}
+	}
+	return context.WithTimeout(d.ctx, d.fetchTimeout)
 }
 
 // SetCidBuilder sets the CID builder
@@ -185,7 +204,9 @@ func (d *Directory) localUpdate(c child) (*dag.ProtoNode, error) {
 	d.lock.Lock()
 	defer d.lock.Unlock()
 
-	err := d.unixfsDir.AddChild(d.ctx, c.Name, c.Node)
+	octx, cancel := d.opContext()
+	err := d.unixfsDir.AddChild(octx, c.Name, c.Node)
+	cancel()
 	if err != nil {
 		return nil, err
 	}
@@ -289,7 +310,9 @@ func (d *Directory) Uncache(name string) {
 // childFromDag searches through this directories dag node for a child link
 // with the given name
 func (d *Directory) childFromDag(name string) (ipld.Node, error) {
-	return d.unixfsDir.Find(d.ctx, name)
+	ctx, cancel := d.opContext()
+	defer cancel()
+	return d.unixfsDir.Find(ctx, name)
 }
 
 // childUnsync returns the child under this directory by the given name
@@ -410,7 +433,9 @@ func (d *Directory) mkdirWithOpts(name string, o options) (*Directory, error) {
 		return nil, err
 	}
 
-	err = d.unixfsDir.AddChild(d.ctx, name, ndir)
+	octx, cancel := d.opContext()
+	err = d.unixfsDir.AddChild(octx, name, ndir)
+	cancel()
 	if err != nil {
 		return nil, err
 	}
@@ -433,7 +458,9 @@ func (d *Directory) Unlink(name string) error {
 	}
 	delete(d.entriesCache, name)
 
-	return d.unixfsDir.RemoveChild(d.ctx, name)
+	octx, cancel := d.opContext()
+	defer cancel()
+	return d.unixfsDir.RemoveChild(octx, name)
 }
 
 func (d *Directory) Flush() error {
@@ -467,7 +494,9 @@ func (d *Directory) AddChild(name string, nd ipld.Node) error {
 		}
 	}
 
-	return d.unixfsDir.AddChild(d.ctx, name, nd)
+	octx, cancel := d.opContext()
+	defer cancel()
+	return d.unixfsDir.AddChild(octx, name, nd)
 }
 
 func (d *Directory) cacheSync(clean bool) error {
@@ -477,7 +506,9 @@ func (d *Directory) cacheSync(clean bool) error {
 			return err
 		}
 
-		err = d.unixfsDir.AddChild(d.ctx, name, nd)
+		octx, cancel := d.opContext()
+		err = d.unixfsDir.AddChild(octx, name, nd)
+		cancel()
 		if err != nil {
 			return err
 		}

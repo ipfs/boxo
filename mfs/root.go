@@ -56,6 +56,11 @@ type parent interface {
 
 	// getChunker returns the chunker factory for files, or nil for default.
 	getChunker() chunker.SplitterGen
+
+	// getFetchTimeout returns the per-operation bound for under-lock DAG
+	// reads, or zero for unbounded. Set once at the root, inherited by every
+	// child directory.
+	getFetchTimeout() time.Duration
 }
 
 type NodeType int
@@ -99,9 +104,10 @@ type Root struct {
 	// Root directory of the MFS layout.
 	dir *Directory
 
-	repub   *Republisher
-	prov    provider.MultihashProvider
-	chunker chunker.SplitterGen // chunker factory for files, nil means default
+	repub        *Republisher
+	prov         provider.MultihashProvider
+	chunker      chunker.SplitterGen // chunker factory for files, nil means default
+	fetchTimeout time.Duration       // bound for under-lock DAG reads, 0 = unbounded
 }
 
 // NewRoot creates a new Root from an existing DAG node and starts a
@@ -116,9 +122,10 @@ func NewRoot(ctx context.Context, ds ipld.DAGService, node *dag.ProtoNode, pf Pu
 	}
 
 	root := &Root{
-		repub:   repub,
-		prov:    prov,
-		chunker: o.chunker,
+		repub:        repub,
+		prov:         prov,
+		chunker:      o.chunker,
+		fetchTimeout: o.fetchTimeout,
 	}
 
 	fsn, err := ft.FSNodeFromBytes(node.Data())
@@ -171,8 +178,9 @@ func NewEmptyRoot(ctx context.Context, ds ipld.DAGService, pf PubFunc, prov prov
 	o := resolveOpts(opts)
 
 	root := &Root{
-		prov:    prov,
-		chunker: o.chunker,
+		prov:         prov,
+		chunker:      o.chunker,
+		fetchTimeout: o.fetchTimeout,
 	}
 
 	dir, err := newEmptyDirectory(ctx, "", root, ds, prov, o)
@@ -210,6 +218,11 @@ func (kr *Root) GetChunker() chunker.SplitterGen {
 // getChunker implements the parent interface.
 func (kr *Root) getChunker() chunker.SplitterGen {
 	return kr.chunker
+}
+
+// getFetchTimeout implements the parent interface.
+func (kr *Root) getFetchTimeout() time.Duration {
+	return kr.fetchTimeout
 }
 
 // Flush signals that an update has occurred since the last publish,
