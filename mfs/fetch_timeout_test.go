@@ -124,3 +124,78 @@ func TestFetchTimeoutDefault(t *testing.T) {
 		})
 	}
 }
+
+// TestOpenContextCancelsFetch confirms that the context passed to File.Open
+// bounds the block fetches the descriptor makes, so an operation on a file
+// whose data cannot be fetched is cancelled through that context instead of
+// hanging forever. Without the context threaded into Open (an earlier version
+// used context.TODO), this read would block forever and the test would time
+// out.
+func TestOpenContextCancelsFetch(t *testing.T) {
+	ctx := context.Background()
+	ds := getDagserv(t)
+
+	// Create /f, write enough content to span several blocks, and persist it.
+	root, err := NewEmptyRoot(ctx, ds, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	empty := dag.NodeWithData(ft.FilePBData(nil, 0))
+	if err := ds.Add(ctx, empty); err != nil {
+		t.Fatal(err)
+	}
+	if err := PutNode(root, "/f", empty); err != nil {
+		t.Fatal(err)
+	}
+	fsn, err := root.GetDirectory().Child("f")
+	if err != nil {
+		t.Fatal(err)
+	}
+	file := fsn.(*File)
+	wfd, err := file.Open(ctx, Flags{Write: true, Sync: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := wfd.Write(make([]byte, 1<<20)); err != nil { // 1 MiB, multiple blocks
+		t.Fatal(err)
+	}
+	if err := wfd.Close(); err != nil {
+		t.Fatal(err)
+	}
+	fileNode, err := file.GetNode()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Reopen the file over a DAG service whose reads block forever, with a
+	// context that expires quickly. Reading has to fetch a block that never
+	// arrives; it must return when the context expires, not hang.
+	blocked, err := NewFile("f", fileNode, root.GetDirectory(), blockingDAGService{ds}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	opctx, cancel := context.WithTimeout(ctx, 200*time.Millisecond)
+	defer cancel()
+	rfd, err := blocked.Open(opctx, Flags{Read: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := rfd.Read(make([]byte, 16))
+		done <- err
+	}()
+
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("Read over a blocking DAG service succeeded; expected a context error")
+		}
+		if !errors.Is(err, context.DeadlineExceeded) && !errors.Is(err, context.Canceled) {
+			t.Fatalf("Read error = %v, want a context deadline or cancel error", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Read hung; the context passed to File.Open was not honored")
+	}
+}

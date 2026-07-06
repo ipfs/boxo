@@ -57,7 +57,12 @@ func NewFile(name string, node ipld.Node, parent parent, dserv ipld.DAGService, 
 	return fi, nil
 }
 
-func (fi *File) Open(flags Flags) (_ FileDescriptor, _retErr error) {
+// Open returns a FileDescriptor for reading or writing the file. The context
+// controls how long the descriptor waits for blocks it has to fetch from the
+// network while writing (and while reading through the plain Read method): if a
+// block is missing, the operation stops when ctx is cancelled instead of
+// waiting forever. Use CtxReadFull to give a single read its own context.
+func (fi *File) Open(ctx context.Context, flags Flags) (_ FileDescriptor, _retErr error) {
 	if flags.Write {
 		fi.desclock.Lock()
 		defer func() {
@@ -108,15 +113,13 @@ func (fi *File) Open(flags Flags) (_ FileDescriptor, _retErr error) {
 		chunkerGen = chunker.DefaultSplitter
 	}
 
-	// Bind the DagModifier to the MFS subtree's context so a block fetch on
-	// the write path (for example editing a lazily-referenced file whose
-	// blocks are not local) is cancelled when the MFS is torn down, instead of
-	// blocking forever on the network under the file's lock.
-	//
-	// TODO: thread the caller's request context through Open, the way
-	// CtxReadFull already does for reads, so writes also honor a client
-	// --timeout and per-request cancellation and not only MFS teardown.
-	dmod, err := mod.NewDagModifier(fi.parent.getContext(), node, fi.dagService, chunkerGen)
+	// The DagModifier uses this context for the blocks it fetches while writing
+	// (for example when editing a file whose data is not stored locally).
+	// Passing the caller's context here lets a timeout or cancellation stop the
+	// write instead of it waiting forever. Callers with no request context of
+	// their own (File.Flush) pass the MFS context, which is cancelled when MFS
+	// shuts down.
+	dmod, err := mod.NewDagModifier(ctx, node, fi.dagService, chunkerGen)
 	if err != nil {
 		return nil, err
 	}
@@ -172,8 +175,9 @@ func (fi *File) GetNode() (ipld.Node, error) {
 // seems to implicitly be targeting a closed file, a file we forgot to flush?
 // can we close a file without flushing?)
 func (fi *File) Flush() error {
-	// open the file in fullsync mode
-	fd, err := fi.Open(Flags{Write: true, Sync: true})
+	// open the file in fullsync mode; Flush has no request context of its own,
+	// so use the MFS context, which is cancelled when MFS shuts down
+	fd, err := fi.Open(fi.parent.getContext(), Flags{Write: true, Sync: true})
 	if err != nil {
 		return err
 	}

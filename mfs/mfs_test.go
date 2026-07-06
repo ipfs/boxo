@@ -173,7 +173,7 @@ func assertFileAtPath(ds ipld.DAGService, root *Directory, expn ipld.Node, pth s
 		return fmt.Errorf("%s was not a file", pth)
 	}
 
-	rfd, err := file.Open(Flags{Read: true})
+	rfd, err := file.Open(context.Background(), Flags{Read: true})
 	if err != nil {
 		return err
 	}
@@ -529,7 +529,7 @@ func TestMfsFile(t *testing.T) {
 		t.Fatal("modification time should not be set on a new file")
 	}
 
-	wfd, err := fi.Open(Flags{Read: true, Write: true, Sync: true})
+	wfd, err := fi.Open(ctx, Flags{Read: true, Write: true, Sync: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -697,7 +697,7 @@ func TestMfsModeAndModTime(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		time.Sleep(3 * time.Second) // for os with low-res mod time.
 	}
-	wfd, err := fi.Open(Flags{Read: false, Write: true, Sync: true})
+	wfd, err := fi.Open(ctx, Flags{Read: false, Write: true, Sync: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -722,7 +722,7 @@ func TestMfsModeAndModTime(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		time.Sleep(3 * time.Second) // for os with low-res mod time.
 	}
-	wfd, err = fi.Open(Flags{Read: false, Write: true, Sync: true})
+	wfd, err = fi.Open(ctx, Flags{Read: false, Write: true, Sync: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -747,7 +747,7 @@ func TestMfsModeAndModTime(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		time.Sleep(3 * time.Second) // for os with low-res mod time.
 	}
-	wfd, err = fi.Open(Flags{Read: false, Write: true, Sync: true})
+	wfd, err = fi.Open(ctx, Flags{Read: false, Write: true, Sync: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -772,7 +772,7 @@ func TestMfsModeAndModTime(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		time.Sleep(3 * time.Second) // for os with low-res mod time.
 	}
-	wfd, err = fi.Open(Flags{Read: false, Write: true, Sync: true})
+	wfd, err = fi.Open(ctx, Flags{Read: false, Write: true, Sync: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -953,7 +953,7 @@ func actorMakeFile(d *Directory) error {
 		return err
 	}
 
-	wfd, err := f.Open(Flags{Write: true, Sync: true})
+	wfd, err := f.Open(context.Background(), Flags{Write: true, Sync: true})
 	if err != nil {
 		return err
 	}
@@ -1035,7 +1035,7 @@ func actorWriteFile(d *Directory) error {
 		return err
 	}
 
-	wfd, err := fi.Open(Flags{Write: true, Sync: true})
+	wfd, err := fi.Open(context.Background(), Flags{Write: true, Sync: true})
 	if err != nil {
 		return err
 	}
@@ -1067,7 +1067,7 @@ func actorReadFile(d *Directory) error {
 		return err
 	}
 
-	rfd, err := fi.Open(Flags{Read: true})
+	rfd, err := fi.Open(context.Background(), Flags{Read: true})
 	if err != nil {
 		return err
 	}
@@ -1266,7 +1266,7 @@ func readFile(rt *Root, path string, offset int64, buf []byte) error {
 		return fmt.Errorf("%s was not a file", path)
 	}
 
-	fd, err := fi.Open(Flags{Read: true})
+	fd, err := fi.Open(context.Background(), Flags{Read: true})
 	if err != nil {
 		return err
 	}
@@ -1344,7 +1344,7 @@ func writeFile(rt *Root, path string, transform func([]byte) []byte) error {
 		return errors.New("expected to receive a file, but didnt get one")
 	}
 
-	fd, err := fi.Open(Flags{Read: true, Write: true, Sync: true})
+	fd, err := fi.Open(context.Background(), Flags{Read: true, Write: true, Sync: true})
 	if err != nil {
 		return err
 	}
@@ -1468,7 +1468,7 @@ func TestConcurrentFlushAndClose(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		fd, err := fi.Open(Flags{Read: true, Write: true, Sync: true})
+		fd, err := fi.Open(ctx, Flags{Read: true, Write: true, Sync: true})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1520,7 +1520,7 @@ func TestFileDescriptors(t *testing.T) {
 	}
 
 	// test read only
-	rfd1, err := fi.Open(Flags{Read: true})
+	rfd1, err := fi.Open(ctx, Flags{Read: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1544,7 +1544,7 @@ func TestFileDescriptors(t *testing.T) {
 	go func() {
 		defer close(done)
 		// can open second readonly file descriptor
-		rfd2, err := fi.Open(Flags{Read: true})
+		rfd2, err := fi.Open(ctx, Flags{Read: true})
 		if err != nil {
 			t.Error(err)
 			return
@@ -1567,7 +1567,7 @@ func TestFileDescriptors(t *testing.T) {
 	done = make(chan struct{})
 	go func() {
 		defer close(done)
-		wfd1, err := fi.Open(Flags{Write: true, Sync: true})
+		wfd1, err := fi.Open(ctx, Flags{Write: true, Sync: true})
 		if err != nil {
 			t.Error(err)
 		}
@@ -1596,7 +1596,7 @@ func TestFileDescriptors(t *testing.T) {
 	case <-done:
 	}
 
-	wfd, err := fi.Open(Flags{Write: true, Sync: true})
+	wfd, err := fi.Open(ctx, Flags{Write: true, Sync: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1625,7 +1625,7 @@ func TestTruncateAtSize(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	fd, err := fi.Open(Flags{Read: true, Write: true, Sync: true})
+	fd, err := fi.Open(ctx, Flags{Read: true, Write: true, Sync: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1650,7 +1650,7 @@ func TestTruncateAndWrite(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	fd, err := fi.Open(Flags{Read: true, Write: true, Sync: true})
+	fd, err := fi.Open(ctx, Flags{Read: true, Write: true, Sync: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1834,7 +1834,7 @@ func FuzzMkdirAndWriteConcurrently(f *testing.F) {
 			t.Logf("error getting file handle on path %s: %s", filepath, err)
 			return
 		}
-		wfd, err := fi.Open(Flags{Write: true, Sync: flush})
+		wfd, err := fi.Open(context.Background(), Flags{Write: true, Sync: flush})
 		if err != nil {
 			t.Logf("error opening file from filepath %s: %s", filepath, err)
 			return
@@ -1899,7 +1899,7 @@ func TestRootOptionChunker(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	fd, err := fi.(*File).Open(Flags{Write: true, Sync: true})
+	fd, err := fi.(*File).Open(ctx, Flags{Write: true, Sync: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2191,7 +2191,7 @@ func TestChunkerInheritance(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	fd, err := fi.(*File).Open(Flags{Write: true, Sync: true})
+	fd, err := fi.(*File).Open(ctx, Flags{Write: true, Sync: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2505,7 +2505,7 @@ func TestMkdirParentsChunker(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	fd, err := fi.(*File).Open(Flags{Write: true, Sync: true})
+	fd, err := fi.(*File).Open(ctx, Flags{Write: true, Sync: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2736,7 +2736,7 @@ func TestFlushUpAfterUnlink(t *testing.T) {
 		t.Fatal(err)
 	}
 	fi := child.(*File)
-	fd, err := fi.Open(Flags{Write: true, Sync: true})
+	fd, err := fi.Open(ctx, Flags{Write: true, Sync: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2802,7 +2802,7 @@ func TestSetModePreservesContent(t *testing.T) {
 	fi := child.(*File)
 
 	// Write content and flush.
-	fd, _ := fi.Open(Flags{Write: true, Sync: true})
+	fd, _ := fi.Open(ctx, Flags{Write: true, Sync: true})
 	fd.Write([]byte("hello world"))
 	fd.Flush()
 	fd.Close()
@@ -2811,7 +2811,7 @@ func TestSetModePreservesContent(t *testing.T) {
 	fi.SetMode(0o755)
 
 	// Reopen and read: content must still be present.
-	fd2, _ := fi.Open(Flags{Read: true})
+	fd2, _ := fi.Open(ctx, Flags{Read: true})
 	sz, _ := fd2.Size()
 	buf := make([]byte, 100)
 	n, _ := fd2.Read(buf)

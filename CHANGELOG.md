@@ -22,11 +22,11 @@ The following emojis are used to highlight certain changes:
 
 ### Changed
 
+- 🛠 `mfs`: `File.Open` now takes a `context.Context`. Writing to a file whose data has to be fetched from the network (for example, a lazy reference created with `ipfs files cp`) now uses that context, so the write stops when the context is cancelled, such as on a client timeout or when MFS shuts down, instead of waiting forever for a block that never arrives. Callers must add a context argument; pass the request's context to let a timeout cancel the write. [#1185](https://github.com/ipfs/boxo/pull/1185)
+
 ### Removed
 
 ### Fixed
-
-- `mfs`: a file write that must fetch a missing, unreachable block (such as editing a lazily-referenced file) no longer blocks forever; it now cancels on MFS shutdown instead of holding the file's lock and delaying a clean shutdown. [#1185](https://github.com/ipfs/boxo/pull/1185)
 
 ### Security
 
