@@ -93,3 +93,34 @@ func TestWithFetchTimeout(t *testing.T) {
 		t.Fatal("Child(sub) hung; the fetch timeout was not enforced")
 	}
 }
+
+// TestFetchTimeoutDefault checks that the bound is on by default at
+// DefaultFetchTimeout, that a root can override it, and that WithFetchTimeout(0)
+// disables it.
+func TestFetchTimeoutDefault(t *testing.T) {
+	ctx := context.Background()
+	ds := getDagserv(t)
+
+	cases := []struct {
+		name string
+		opts []Option
+		want time.Duration
+	}{
+		{"unset uses default", nil, DefaultFetchTimeout},
+		{"explicit value", []Option{WithFetchTimeout(30 * time.Second)}, 30 * time.Second},
+		{"zero disables", []Option{WithFetchTimeout(0)}, 0},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			root, err := NewEmptyRoot(ctx, ds, nil, nil, tc.opts...)
+			if err != nil {
+				t.Fatal(err)
+			}
+			// The root's value is inherited by every directory under it.
+			if got := root.GetDirectory().fetchTimeout; got != tc.want {
+				t.Fatalf("fetchTimeout = %s, want %s", got, tc.want)
+			}
+		})
+	}
+}

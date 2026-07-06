@@ -38,8 +38,24 @@ type options struct {
 	fetchTimeout       time.Duration
 }
 
+// DefaultFetchTimeout is the fetch timeout applied to an MFS root that does not
+// set its own with WithFetchTimeout. It bounds a single under-lock DAG read (a
+// child lookup or HAMT-shard walk) so a missing, unreachable block fails with a
+// deadline error instead of blocking MFS forever.
+//
+// Five minutes is deliberately generous. These reads fetch small directory and
+// shard nodes: one resolves in well under a second from a connected peer, and
+// usually within tens of seconds even when its provider must be found through
+// the DHT, so a live-but-slow fetch never reaches the bound. It only takes
+// effect against genuinely unreachable data, trading a permanent wedge for a
+// recoverable error. On teardown the root context cancels the read at once, so
+// the bound never delays shutdown.
+//
+// Pass WithFetchTimeout(0) to disable it and restore unbounded reads.
+const DefaultFetchTimeout = 5 * time.Minute
+
 func resolveOpts(opts []Option) options {
-	var o options
+	o := options{fetchTimeout: DefaultFetchTimeout}
 	for _, opt := range opts {
 		opt(&o)
 	}
@@ -124,8 +140,9 @@ func WithSizeEstimationMode(mode uio.SizeEstimationMode) Option {
 }
 
 // WithFetchTimeout bounds each DAG read that MFS performs while holding a
-// directory lock: resolving a child link, or walking a HAMT shard. Zero (the
-// default) means unbounded, preserving the previous behavior.
+// directory lock: resolving a child link, or walking a HAMT shard. When unset,
+// DefaultFetchTimeout applies; pass zero to disable the bound and restore
+// unbounded reads.
 //
 // MFS routinely holds a DAG that is only lazily linked: the root node is
 // present locally while the rest of the tree is fetched from the network on
@@ -143,9 +160,8 @@ func WithSizeEstimationMode(mode uio.SizeEstimationMode) Option {
 // the network forever while the directory lock is held, wedging every
 // operation queued behind it, and graceful shutdown (which flushes MFS) with
 // it. With one the read fails with a deadline error and releases the lock,
-// turning a permanent wedge into an ordinary, recoverable error. Because those
-// nodes are small, a value on the order of a minute is generous while still
-// bounding the unreachable case.
+// turning a permanent wedge into an ordinary, recoverable error. See
+// DefaultFetchTimeout for the default and its rationale.
 //
 // This option only takes effect when passed to NewRoot or NewEmptyRoot; it is
 // inherited by every directory under the root.
