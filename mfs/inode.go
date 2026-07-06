@@ -2,7 +2,6 @@ package mfs
 
 import (
 	"sync/atomic"
-	"time"
 
 	"github.com/ipfs/boxo/provider"
 	ipld "github.com/ipfs/go-ipld-format"
@@ -22,15 +21,6 @@ type inode struct {
 	// dagService used to store modifications made to the contents
 	// of the file or directory the `inode` belongs to.
 	dagService ipld.DAGService
-
-	// fetchTimeout bounds a single DAG read done while the directory lock is
-	// held (looking up a child, walking a HAMT shard). Zero means no bound.
-	// When set, a block that is missing locally and cannot be fetched from the
-	// network within the timeout fails with a deadline error instead of
-	// blocking forever under the lock, which would wedge every other operation
-	// queued behind it. Inherited from the parent, set at the root via
-	// WithFetchTimeout.
-	fetchTimeout time.Duration
 
 	// provider used to announce CIDs
 	prov provider.MultihashProvider

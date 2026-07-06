@@ -45,6 +45,14 @@ type Directory struct {
 
 	prov    provider.MultihashProvider
 	chunker chunker.SplitterGen // inherited from parent, nil means default
+
+	// fetchTimeout bounds a single DAG read done while this directory's lock
+	// is held (looking up a child, walking a HAMT shard). Zero means no bound.
+	// When set, a block that is missing locally and cannot be fetched from the
+	// network within the timeout fails with a deadline error instead of
+	// blocking forever under the lock, which would wedge every operation queued
+	// behind it. Inherited from the parent, set at the root via WithFetchTimeout.
+	fetchTimeout time.Duration
 }
 
 // NewDirectory constructs a new MFS directory.
@@ -76,16 +84,16 @@ func NewDirectory(ctx context.Context, name string, node ipld.Node, parent paren
 
 	return &Directory{
 		inode: inode{
-			name:         name,
-			parent:       parent,
-			dagService:   dserv,
-			fetchTimeout: parent.getFetchTimeout(), // inherit from parent
+			name:       name,
+			parent:     parent,
+			dagService: dserv,
 		},
 		ctx:          ctx,
 		unixfsDir:    db,
 		prov:         prov,
 		entriesCache: make(map[string]FSNode),
-		chunker:      parent.getChunker(), // inherit from parent
+		chunker:      parent.getChunker(),      // inherit from parent
+		fetchTimeout: parent.getFetchTimeout(), // inherit from parent
 	}, nil
 }
 
@@ -135,16 +143,16 @@ func newEmptyDirectory(ctx context.Context, name string, p parent, dserv ipld.DA
 
 	return &Directory{
 		inode: inode{
-			name:         name,
-			parent:       p,
-			dagService:   dserv,
-			fetchTimeout: p.getFetchTimeout(),
+			name:       name,
+			parent:     p,
+			dagService: dserv,
 		},
 		ctx:          ctx,
 		unixfsDir:    db,
 		prov:         prov,
 		entriesCache: make(map[string]FSNode),
 		chunker:      c,
+		fetchTimeout: p.getFetchTimeout(),
 	}, nil
 }
 
