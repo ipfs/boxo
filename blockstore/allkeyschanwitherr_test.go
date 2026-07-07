@@ -65,7 +65,7 @@ type cleanChanErrFnBS struct {
 	enumErr error
 }
 
-func (f *cleanChanErrFnBS) allKeysChanWithErr(ctx context.Context) (<-chan cid.Cid, func() error, error) {
+func (f *cleanChanErrFnBS) AllKeysChanWithErr(ctx context.Context) (<-chan cid.Cid, func() error, error) {
 	ch, err := f.AllKeysChan(ctx)
 	if err != nil {
 		return nil, nil, err
@@ -76,8 +76,8 @@ func (f *cleanChanErrFnBS) allKeysChanWithErr(ctx context.Context) (<-chan cid.C
 func TestAllKeysChanWithErrClean(t *testing.T) {
 	bs, keys := newBlockStoreWithKeys(t, nil, 100)
 
-	e := bs.(allKeysChanWithErrer)
-	ch, errFn, err := e.allKeysChanWithErr(t.Context())
+	e := bs.(AllKeysChanWithErrer)
+	ch, errFn, err := e.AllKeysChanWithErr(t.Context())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -100,8 +100,8 @@ func TestAllKeysChanWithErrMidIteration(t *testing.T) {
 		}
 	}
 
-	e := bs.(allKeysChanWithErrer)
-	ch, errFn, err := e.allKeysChanWithErr(t.Context())
+	e := bs.(AllKeysChanWithErrer)
+	ch, errFn, err := e.AllKeysChanWithErr(t.Context())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -125,10 +125,10 @@ func TestAllKeysChanWithErrContextCancel(t *testing.T) {
 	n := 2*dsq.KeysOnlyBufSize + 10
 	bs, _ := newBlockStoreWithKeys(t, nil, n)
 
-	e := bs.(allKeysChanWithErrer)
+	e := bs.(AllKeysChanWithErrer)
 	ctx, cancel := context.WithCancel(t.Context())
 	t.Cleanup(cancel)
-	ch, errFn, err := e.allKeysChanWithErr(ctx)
+	ch, errFn, err := e.AllKeysChanWithErr(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -295,11 +295,11 @@ func TestAllKeysChanWithErrForwardsThroughCacheStack(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	e, ok := cbs.(allKeysChanWithErrer)
+	e, ok := cbs.(AllKeysChanWithErrer)
 	if !ok {
-		t.Fatal("CachedBlockstore result does not implement allKeysChanWithErrer")
+		t.Fatal("CachedBlockstore result does not implement AllKeysChanWithErrer")
 	}
-	ch, errFn, err := e.allKeysChanWithErr(ctx)
+	ch, errFn, err := e.AllKeysChanWithErr(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -309,7 +309,7 @@ func TestAllKeysChanWithErrForwardsThroughCacheStack(t *testing.T) {
 	}
 }
 
-// legacyBS implements only the Blockstore interface (no allKeysChanWithErrer),
+// legacyBS implements only the Blockstore interface (no AllKeysChanWithErrer),
 // to exercise the best-effort fallback in allKeysChanWithErrFor. It must NOT
 // embed *blockstore, or the capability method would be promoted and the
 // fallback branch would never run.
@@ -341,8 +341,8 @@ func TestAllKeysChanWithErrFallbackForLegacyBlockstore(t *testing.T) {
 
 	// Guard the premise: legacyBS must NOT advertise the capability, else the
 	// fallback branch is not exercised.
-	if _, ok := Blockstore(legacy).(allKeysChanWithErrer); ok {
-		t.Fatal("legacyBS unexpectedly implements allKeysChanWithErrer")
+	if _, ok := Blockstore(legacy).(AllKeysChanWithErrer); ok {
+		t.Fatal("legacyBS unexpectedly implements AllKeysChanWithErrer")
 	}
 
 	// The fallback yields a no-op errFn and a full enumeration.
@@ -400,11 +400,11 @@ func TestAllKeysChanWithErrForwardingWrappers(t *testing.T) {
 	for name, wrap := range wrappers {
 		t.Run(name, func(t *testing.T) {
 			w := wrap(newBaseWithErr())
-			e, ok := w.(allKeysChanWithErrer)
+			e, ok := w.(AllKeysChanWithErrer)
 			if !ok {
-				t.Fatalf("%s does not implement allKeysChanWithErrer", name)
+				t.Fatalf("%s does not implement AllKeysChanWithErrer", name)
 			}
-			ch, errFn, err := e.allKeysChanWithErr(t.Context())
+			ch, errFn, err := e.AllKeysChanWithErr(t.Context())
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -437,8 +437,8 @@ func TestAllKeysChanWithErrSkipsUnparseableKey(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	e := bs.(allKeysChanWithErrer)
-	ch, errFn, err := e.allKeysChanWithErr(t.Context())
+	e := bs.(AllKeysChanWithErrer)
+	ch, errFn, err := e.AllKeysChanWithErr(t.Context())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -476,7 +476,7 @@ type incompleteViewerBS struct {
 	enumErr error
 }
 
-func (f *incompleteViewerBS) allKeysChanWithErr(ctx context.Context) (<-chan cid.Cid, func() error, error) {
+func (f *incompleteViewerBS) AllKeysChanWithErr(ctx context.Context) (<-chan cid.Cid, func() error, error) {
 	ch, err := f.AllKeysChan(ctx)
 	if err != nil {
 		return nil, nil, err

@@ -44,7 +44,7 @@ type tqcache struct {
 var (
 	_ Blockstore           = (*tqcache)(nil)
 	_ Viewer               = (*tqcache)(nil)
-	_ allKeysChanWithErrer = (*tqcache)(nil)
+	_ AllKeysChanWithErrer = (*tqcache)(nil)
 )
 
 func newTwoQueueCachedBS(ctx context.Context, bs Blockstore, lruSize int) (*tqcache, error) {
@@ -399,7 +399,7 @@ func (b *tqcache) AllKeysChan(ctx context.Context) (<-chan cid.Cid, error) {
 	return b.blockstore.AllKeysChan(ctx)
 }
 
-func (b *tqcache) allKeysChanWithErr(ctx context.Context) (<-chan cid.Cid, func() error, error) {
+func (b *tqcache) AllKeysChanWithErr(ctx context.Context) (<-chan cid.Cid, func() error, error) {
 	return allKeysChanWithErrFor(ctx, b.blockstore)
 }
 
