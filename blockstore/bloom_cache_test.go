@@ -41,7 +41,7 @@ func TestPutManyAddsToBloom(t *testing.T) {
 	}
 
 	if err := cachedbs.Wait(ctx); err != nil {
-		t.Fatalf("Failed while waiting for the filter to build: %d", cachedbs.bloom.ElementsAdded())
+		t.Fatalf("Failed while waiting for the filter to build: %d", cachedbs.bloom.Load().ElementsAdded())
 	}
 
 	block1 := blocks.NewBlock([]byte("foo"))
@@ -110,7 +110,7 @@ func TestHasIsBloomCached(t *testing.T) {
 	}
 
 	if err := cachedbs.Wait(ctx); err != nil {
-		t.Fatalf("Failed while waiting for the filter to build: %d", cachedbs.bloom.ElementsAdded())
+		t.Fatalf("Failed while waiting for the filter to build: %d", cachedbs.bloom.Load().ElementsAdded())
 	}
 
 	cacheFails := 0

@@ -18,6 +18,16 @@ The following emojis are used to highlight certain changes:
 
 - `gateway`: `GET`/`HEAD /ipfs/bafkqaaa?format=raw` now always returns `200` with an empty body, so probing clients keep marking the gateway as functional even when its backend cannot serve identity CIDs. `bitswap/network/httpnet` sends this [trustless gateway probe](https://specs.ipfs.tech/http-gateways/trustless-gateway/#dedicated-probe-paths) to check providers, and a failed probe drops the provider. Exported as `gateway.EmptyIdentityCID`. [#1179](https://github.com/ipfs/boxo/pull/1179)
 - `path`: added `NewPathFromURI`, which accepts native IPFS URIs (`ipfs://cid`, `ipns://name`, `ipld://cid`, and the schemeless `ipfs:`/`ipns:`/`ipld:` forms) and rewrites them to canonical content paths, so values copied from browsers and other tools parse as-is. `NewPath` stays strict and still rejects URI-shaped input, leaving untrusted parsing such as DNSLink records unchanged. [#1182](https://github.com/ipfs/boxo/pull/1182)
+- `blockstore`: `CachedBlockstore` now returns a value implementing the
+exported `BloomCacheStatus` interface (`Wait`/`BloomActive`/`Rebuild`) when a
+Bloom filter is configured, so callers can wait for and observe the result of
+the asynchronous filter build (previously these methods were unreachable on the
+unexported cache type), and retry a failed build with `Rebuild`. While a
+rebuild runs the filter is inactive (lookups fall through to the underlying
+blockstore, so results stay correct but unaccelerated) and it is activated
+again only on a complete enumeration. A new optional `AllKeysChanWithErrer`
+capability lets a `Blockstore` report an error that truncates `AllKeysChan`
+enumeration. [#1184](https://github.com/ipfs/boxo/pull/1184)
 
 ### Changed
 
@@ -26,6 +36,20 @@ The following emojis are used to highlight certain changes:
 ### Removed
 
 ### Fixed
+
+- `blockstore`: the Bloom filter cache no longer activates after an incomplete
+build. Previously, if `AllKeysChan` enumeration was truncated by a
+mid-iteration datastore error (which was only logged, never propagated) or by a
+cancelled context, the cache treated the closed channel as a complete build and
+activated a Bloom filter holding only a subset of the stored CIDs. It then
+answered "not present" conclusively for blocks that exist but were never
+indexed, reporting present blocks as missing (`Has` returns false,
+`Get`/`GetSize`/`View` return not-found, `DeleteBlock` becomes a silent no-op).
+The build now activates the filter only when enumeration is known to have
+completed; otherwise it records the error (observable via
+`BloomCacheStatus.Wait`) and the cache degrades to correct pass-through. This
+also fixes a race where a cancelled build could still mark the filter active.
+[#1183](https://github.com/ipfs/boxo/pull/1183)
 
 ### Security
 
