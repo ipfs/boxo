@@ -28,8 +28,11 @@ blockstore, so results stay correct but unaccelerated) and it is activated
 again only on a complete enumeration. A new optional `AllKeysChanWithErrer`
 capability lets a `Blockstore` report an error that truncates `AllKeysChan`
 enumeration. [#1184](https://github.com/ipfs/boxo/pull/1184)
+- `mfs`: added `WithFetchTimeout`, a time limit on how long MFS waits when it has to fetch part of a tree from the network. MFS can hold a tree whose contents are pulled in on demand, for example a reference made with `ipfs files cp /ipfs/<cid>`. If a needed part is unavailable, MFS would otherwise wait for it forever, freezing every MFS operation and blocking a clean shutdown; with a timeout the wait ends in an error instead. On by default at a generous `DefaultFetchTimeout` (5 minutes) that only affects unreachable data; pass `WithFetchTimeout(0)` to disable. [#1185](https://github.com/ipfs/boxo/pull/1185)
 
 ### Changed
+
+- 🛠 `mfs`: `File.Open` now takes a `context.Context`. Writing to a file whose data has to be fetched from the network (for example, a lazy reference created with `ipfs files cp`) now uses that context, so the write stops when the context is cancelled, such as on a client timeout or when MFS shuts down, instead of waiting forever for a block that never arrives. Callers must add a context argument; pass the request's context to let a timeout cancel the write. [#1185](https://github.com/ipfs/boxo/pull/1185)
 
 ### Removed
 
