@@ -3,8 +3,9 @@ package chunk
 import (
 	"bytes"
 	"io"
-	"math/rand"
 	"testing"
+
+	random "github.com/ipfs/go-test/random"
 )
 
 type newSplitter func(io.Reader) Splitter
@@ -30,7 +31,7 @@ func benchmarkChunker(b *testing.B, ns newSplitter) {
 }
 
 func benchmarkChunkerSize(b *testing.B, ns newSplitter, size int) {
-	rng := rand.New(rand.NewSource(1))
+	rng := random.NewSeeded(random.MakeSeed(1))
 	data := make([]byte, size)
 	rng.Read(data)
 
@@ -64,7 +65,8 @@ func benchmarkFilesAlloc(b *testing.B, ns newSplitter) {
 		maxDataSize = 60000
 		fileCount   = 10000
 	)
-	rng := rand.New(rand.NewSource(1))
+
+	rng := random.NewSeeded(random.MakeSeed(1))
 	data := make([]byte, maxDataSize)
 	rng.Read(data)
 
@@ -76,7 +78,7 @@ func benchmarkFilesAlloc(b *testing.B, ns newSplitter) {
 
 	for i := 0; i < b.N; i++ {
 		for range fileCount {
-			fileSize := rng.Intn(maxDataSize-minDataSize) + minDataSize
+			fileSize := rng.IntN(maxDataSize-minDataSize) + minDataSize
 			r := ns(bytes.NewReader(data[:fileSize]))
 			for {
 				chunk, err := r.NextBytes()

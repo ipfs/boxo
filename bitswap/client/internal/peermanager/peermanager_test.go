@@ -2,7 +2,6 @@ package peermanager
 
 import (
 	"context"
-	"math/rand"
 	"slices"
 	"testing"
 	"time"
@@ -131,11 +130,12 @@ func TestBroadcastOnConnect(t *testing.T) {
 	defer cancel()
 	msgs := make(chan msg, 16)
 	peerQueueFactory := makePeerQueueFactory(msgs)
-	tp := random.Peers(2)
+	rnd := random.New()
+	tp := rnd.Peers(2)
 	peer1 := tp[0]
 	peerManager := New(ctx, peerQueueFactory, bcastAlways)
 
-	cids := random.Cids(2)
+	cids := rnd.Cids(2)
 	peerManager.BroadcastWantHaves(cids)
 
 	// Connect with two broadcast wants for first peer
@@ -152,11 +152,12 @@ func TestBroadcastWantHaves(t *testing.T) {
 	defer cancel()
 	msgs := make(chan msg, 16)
 	peerQueueFactory := makePeerQueueFactory(msgs)
-	tp := random.Peers(3)
+	rnd := random.New()
+	tp := rnd.Peers(3)
 	peer1, peer2 := tp[0], tp[1]
 	peerManager := New(ctx, peerQueueFactory, bcastAlways)
 
-	cids := random.Cids(3)
+	cids := rnd.Cids(3)
 
 	// Broadcast the first two.
 	peerManager.BroadcastWantHaves(cids[:2])
@@ -193,10 +194,11 @@ func TestSendWants(t *testing.T) {
 	defer cancel()
 	msgs := make(chan msg, 16)
 	peerQueueFactory := makePeerQueueFactory(msgs)
-	tp := random.Peers(2)
+	rnd := random.New()
+	tp := rnd.Peers(2)
 	peer1 := tp[0]
 	peerManager := New(ctx, peerQueueFactory, bcastAlways)
-	cids := random.Cids(4)
+	cids := rnd.Cids(4)
 
 	peerManager.Connected(peer1)
 	peerManager.SendWants(peer1, []cid.Cid{cids[0]}, []cid.Cid{cids[2]})
@@ -349,7 +351,8 @@ func BenchmarkPeerManager(b *testing.B) {
 		return &benchPeerQueue{}
 	}
 
-	peers := random.Peers(500)
+	rnd := random.New()
+	peers := rnd.Peers(500)
 	peerManager := New(ctx, peerQueueFactory, bcastAlways)
 
 	// Create a bunch of connections
@@ -364,16 +367,16 @@ func BenchmarkPeerManager(b *testing.B) {
 	b.StartTimer()
 	for n := 0; n < b.N; n++ {
 		// Pick a random peer
-		i := rand.Intn(connected)
+		i := rnd.IntN(connected)
 
 		// Alternately add either a few wants or many broadcast wants
-		r := rand.Intn(8)
+		r := rnd.IntN(8)
 		if r == 0 {
-			wants := random.Cids(10)
+			wants := rnd.Cids(10)
 			peerManager.SendWants(peers[i], wants[:2], wants[2:])
 			wanted = append(wanted, wants...)
 		} else if r == 1 {
-			wants := random.Cids(30)
+			wants := rnd.Cids(30)
 			peerManager.BroadcastWantHaves(wants)
 			wanted = append(wanted, wants...)
 		} else {

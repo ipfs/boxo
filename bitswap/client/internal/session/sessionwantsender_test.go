@@ -140,8 +140,9 @@ func (ep *exhaustedPeers) exhausted() []cid.Cid {
 }
 
 func TestSendWants(t *testing.T) {
-	cids := random.Cids(4)
-	peers := random.Peers(1)
+	rnd := random.New()
+	cids := rnd.Cids(4)
+	peers := rnd.Peers(1)
 	peerA := peers[0]
 	const sid = uint64(1)
 	pm := newMockPeerManager()
@@ -174,8 +175,9 @@ func TestSendWants(t *testing.T) {
 }
 
 func TestSendsWantBlockToOnePeerOnly(t *testing.T) {
-	cids := random.Cids(4)
-	peers := random.Peers(2)
+	rnd := random.New()
+	cids := rnd.Cids(4)
+	peers := rnd.Peers(2)
 	peerA := peers[0]
 	peerB := peers[1]
 	const sid = uint64(1)
@@ -225,8 +227,9 @@ func TestSendsWantBlockToOnePeerOnly(t *testing.T) {
 }
 
 func TestReceiveBlock(t *testing.T) {
-	cids := random.Cids(2)
-	peers := random.Peers(2)
+	rnd := random.New()
+	cids := rnd.Cids(2)
+	peers := rnd.Peers(2)
 	peerA := peers[0]
 	peerB := peers[1]
 	const sid = uint64(1)
@@ -315,8 +318,9 @@ func TestCancelWants(t *testing.T) {
 }
 
 func TestRegisterSessionWithPeerManager(t *testing.T) {
-	cids := random.Cids(2)
-	peers := random.Peers(2)
+	rnd := random.New()
+	cids := rnd.Cids(2)
+	peers := rnd.Peers(2)
 	peerA := peers[0]
 	peerB := peers[1]
 	const sid = uint64(1)
@@ -352,8 +356,9 @@ func TestRegisterSessionWithPeerManager(t *testing.T) {
 }
 
 func TestProtectConnFirstPeerToSendWantedBlock(t *testing.T) {
-	cids := random.Cids(2)
-	peers := random.Peers(3)
+	rnd := random.New()
+	cids := rnd.Cids(2)
+	peers := rnd.Peers(3)
 	peerA := peers[0]
 	peerB := peers[1]
 	peerC := peers[2]
@@ -409,8 +414,9 @@ func TestProtectConnFirstPeerToSendWantedBlock(t *testing.T) {
 }
 
 func TestPeerUnavailable(t *testing.T) {
-	cids := random.Cids(2)
-	peers := random.Peers(2)
+	rnd := random.New()
+	cids := rnd.Cids(2)
+	peers := rnd.Peers(2)
 	peerA := peers[0]
 	peerB := peers[1]
 	const sid = uint64(1)
@@ -469,8 +475,9 @@ func TestPeerUnavailable(t *testing.T) {
 }
 
 func TestPeersExhausted(t *testing.T) {
-	cids := random.Cids(3)
-	peers := random.Peers(2)
+	rnd := random.New()
+	cids := rnd.Cids(3)
+	peers := rnd.Peers(2)
 	peerA := peers[0]
 	peerB := peers[1]
 	const sid = uint64(1)
@@ -543,8 +550,9 @@ func TestPeersExhausted(t *testing.T) {
 // - the remaining peer becomes unavailable
 // onPeersExhausted should be sent for that CID
 func TestPeersExhaustedLastWaitingPeerUnavailable(t *testing.T) {
-	cids := random.Cids(2)
-	peers := random.Peers(2)
+	rnd := random.New()
+	cids := rnd.Cids(2)
+	peers := rnd.Peers(2)
 	peerA := peers[0]
 	peerB := peers[1]
 	const sid = uint64(1)
@@ -591,8 +599,9 @@ func TestPeersExhaustedLastWaitingPeerUnavailable(t *testing.T) {
 // Tests that when all the peers are removed from the session
 // onPeersExhausted should be called with all outstanding CIDs
 func TestPeersExhaustedAllPeersUnavailable(t *testing.T) {
-	cids := random.Cids(3)
-	peers := random.Peers(2)
+	rnd := random.New()
+	cids := rnd.Cids(3)
+	peers := rnd.Peers(2)
 	peerA := peers[0]
 	peerB := peers[1]
 	const sid = uint64(1)
@@ -632,8 +641,9 @@ func TestPeersExhaustedAllPeersUnavailable(t *testing.T) {
 }
 
 func TestConsecutiveDontHaveLimit(t *testing.T) {
-	cids := random.Cids(peerDontHaveLimit + 10)
-	p := random.Peers(1)[0]
+	rnd := random.New()
+	cids := rnd.Cids(peerDontHaveLimit + 10)
+	p := rnd.Peers(1)[0]
 	const sid = uint64(1)
 	pm := newMockPeerManager()
 	fpm := newFakeSessionPeerManager()
@@ -685,8 +695,9 @@ func TestConsecutiveDontHaveLimit(t *testing.T) {
 }
 
 func TestConsecutiveDontHaveLimitInterrupted(t *testing.T) {
-	cids := random.Cids(peerDontHaveLimit + 10)
-	p := random.Peers(1)[0]
+	rnd := random.New()
+	cids := rnd.Cids(peerDontHaveLimit + 10)
+	p := rnd.Peers(1)[0]
 	const sid = uint64(1)
 	pm := newMockPeerManager()
 	fpm := newFakeSessionPeerManager()
@@ -739,8 +750,9 @@ func TestConsecutiveDontHaveLimitInterrupted(t *testing.T) {
 }
 
 func TestConsecutiveDontHaveReinstateAfterRemoval(t *testing.T) {
-	cids := random.Cids(peerDontHaveLimit + 10)
-	p := random.Peers(1)[0]
+	rnd := random.New()
+	cids := rnd.Cids(peerDontHaveLimit + 10)
+	p := rnd.Peers(1)[0]
 	const sid = uint64(1)
 	pm := newMockPeerManager()
 	fpm := newFakeSessionPeerManager()
@@ -788,7 +800,7 @@ func TestConsecutiveDontHaveReinstateAfterRemoval(t *testing.T) {
 	// Peer should be available
 	require.True(t, fpm.HasPeer(p), "Expected peer to be available")
 
-	cids2 := random.Cids(peerDontHaveLimit + 10)
+	cids2 := rnd.Cids(peerDontHaveLimit + 10)
 
 	// Receive DONT_HAVEs from peer that don't exceed limit
 	for _, c := range cids2[1:peerDontHaveLimit] {
@@ -816,8 +828,9 @@ func TestConsecutiveDontHaveReinstateAfterRemoval(t *testing.T) {
 }
 
 func TestConsecutiveDontHaveDontRemoveIfHasWantedBlock(t *testing.T) {
-	cids := random.Cids(peerDontHaveLimit + 10)
-	p := random.Peers(1)[0]
+	rnd := random.New()
+	cids := rnd.Cids(peerDontHaveLimit + 10)
+	p := rnd.Peers(1)[0]
 	const sid = uint64(1)
 	pm := newMockPeerManager()
 	fpm := newFakeSessionPeerManager()

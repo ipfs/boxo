@@ -3,7 +3,6 @@ package merkledag_test
 import (
 	"bytes"
 	"context"
-	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -353,7 +352,7 @@ func (devZero) Read(b []byte) (int, error) {
 }
 
 func TestBatchFetch(t *testing.T) {
-	read := io.LimitReader(random.NewRand(), 1024*32)
+	read := io.LimitReader(random.New(), 1024*32)
 	runBatchFetchTest(t, read)
 }
 
@@ -513,7 +512,7 @@ func TestFetchGraph(t *testing.T) {
 		dservs = append(dservs, NewDAGService(bsi))
 	}
 
-	read := io.LimitReader(random.NewRand(), 1024*32)
+	read := io.LimitReader(random.New(), 1024*32)
 	root := makeTestDAG(t, read, dservs[0])
 
 	err := FetchGraph(context.TODO(), root.Cid(), dservs[1])
@@ -595,12 +594,12 @@ func TestWalk(t *testing.T) {
 	bsi := bstest.Mocks(1)
 	ds := NewDAGService(bsi[0])
 
-	read := io.LimitReader(random.NewRand(), 1024*1024)
+	read := io.LimitReader(random.New(), 1024*1024)
 	root := makeTestDAG(t, read, ds)
 
 	set := cid.NewSet()
 
-	err := Walk(context.Background(), ds.GetLinks, root.Cid(), set.Visit)
+	err := Walk(t.Context(), ds.GetLinks, root.Cid(), set.Visit)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1160,11 +1159,11 @@ func TestProgressIndicatorNoChildren(t *testing.T) {
 
 func testProgressIndicator(t *testing.T, depth int) {
 	ds := dstest.Mock()
-
-	top, numChildren, totalSize := mkDag(ds, depth)
+	ctx := t.Context()
+	top, numChildren, totalSize := mkDag(ctx, ds, depth)
 
 	v := new(ProgressTracker)
-	ctx := v.DeriveContext(context.Background())
+	ctx = v.DeriveContext(ctx)
 
 	err := FetchGraph(ctx, top, ds)
 	if err != nil {
@@ -1187,14 +1186,14 @@ func testProgressIndicator(t *testing.T, depth int) {
 	}
 }
 
-func mkDag(ds ipld.DAGService, depth int) (cid.Cid, int, uint64) {
-	ctx := context.Background()
+func mkDag(ctx context.Context, ds ipld.DAGService, depth int) (cid.Cid, int, uint64) {
+	rnd := random.New()
 
 	totalChildren := 0
 	f := func() *ProtoNode {
 		p := new(ProtoNode)
 		buf := make([]byte, 16)
-		rand.Read(buf)
+		rnd.Read(buf)
 
 		p.SetData(buf)
 		err := ds.Add(ctx, p)

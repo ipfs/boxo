@@ -1,9 +1,12 @@
-package util
+package util_test
 
 import (
 	"bytes"
-	"math/rand"
+	"encoding/binary"
+	"math/rand/v2"
 	"testing"
+
+	"github.com/ipfs/boxo/util"
 )
 
 func TestXOR(t *testing.T) {
@@ -26,7 +29,7 @@ func TestXOR(t *testing.T) {
 	}
 
 	for _, c := range cases {
-		r := XOR(c[0], c[1])
+		r := util.XOR(c[0], c[1])
 		if !bytes.Equal(r, c[2]) {
 			t.Error("XOR failed")
 		}
@@ -39,7 +42,7 @@ func BenchmarkHash256K(b *testing.B) {
 	b.SetBytes(size)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		Hash(buf)
+		util.Hash(buf)
 	}
 }
 
@@ -49,7 +52,7 @@ func BenchmarkHash512K(b *testing.B) {
 	b.SetBytes(size)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		Hash(buf)
+		util.Hash(buf)
 	}
 }
 
@@ -59,13 +62,15 @@ func BenchmarkHash1M(b *testing.B) {
 	b.SetBytes(size)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		Hash(buf)
+		util.Hash(buf)
 	}
 }
 
 func randomBytes(n int) []byte {
+	var seed [32]byte
+	binary.BigEndian.PutUint64(seed[:], uint64(n))
+	cc8 := rand.NewChaCha8(seed)
 	data := make([]byte, n)
-	r := rand.New(rand.NewSource(int64(n)))
-	r.Read(data)
+	cc8.Read(data)
 	return data
 }

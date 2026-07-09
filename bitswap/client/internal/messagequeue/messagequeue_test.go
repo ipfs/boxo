@@ -6,7 +6,6 @@ import (
 	"context"
 	"errors"
 	"math"
-	"math/rand"
 	"sync"
 	"testing"
 	"testing/synctest"
@@ -172,9 +171,10 @@ func TestStartupAndShutdown(t *testing.T) {
 	resetChan := make(chan struct{}, 1)
 	fakeSender := newFakeMessageSender(resetChan, messagesSent, true)
 	fakenet := &fakeMessageNetwork{nil, nil, fakeSender}
-	peerID := random.Peers(1)[0]
+	rnd := random.New()
+	peerID := rnd.Peers(1)[0]
 	messageQueue := New(ctx, peerID, fakenet, mockTimeoutCb)
-	bcstwh := random.Cids(10)
+	bcstwh := rnd.Cids(10)
 
 	messageQueue.Startup()
 	messageQueue.AddBroadcastWantHaves(bcstwh)
@@ -211,10 +211,11 @@ func TestSendingMessagesDeduped(t *testing.T) {
 	resetChan := make(chan struct{}, 1)
 	fakeSender := newFakeMessageSender(resetChan, messagesSent, true)
 	fakenet := &fakeMessageNetwork{nil, nil, fakeSender}
-	peerID := random.Peers(1)[0]
+	rnd := random.New()
+	peerID := rnd.Peers(1)[0]
 	messageQueue := New(ctx, peerID, fakenet, mockTimeoutCb)
-	wantHaves := random.Cids(10)
-	wantBlocks := random.Cids(10)
+	wantHaves := rnd.Cids(10)
+	wantBlocks := rnd.Cids(10)
 
 	messageQueue.Startup()
 	defer messageQueue.Shutdown()
@@ -234,10 +235,11 @@ func TestSendingMessagesPartialDupe(t *testing.T) {
 	resetChan := make(chan struct{}, 1)
 	fakeSender := newFakeMessageSender(resetChan, messagesSent, true)
 	fakenet := &fakeMessageNetwork{nil, nil, fakeSender}
-	peerID := random.Peers(1)[0]
+	rnd := random.New()
+	peerID := rnd.Peers(1)[0]
 	messageQueue := New(ctx, peerID, fakenet, mockTimeoutCb)
-	wantHaves := random.Cids(10)
-	wantBlocks := random.Cids(10)
+	wantHaves := rnd.Cids(10)
+	wantBlocks := rnd.Cids(10)
 
 	messageQueue.Startup()
 	defer messageQueue.Shutdown()
@@ -257,13 +259,14 @@ func TestSendingMessagesPriority(t *testing.T) {
 	resetChan := make(chan struct{}, 1)
 	fakeSender := newFakeMessageSender(resetChan, messagesSent, true)
 	fakenet := &fakeMessageNetwork{nil, nil, fakeSender}
-	peerID := random.Peers(1)[0]
+	rnd := random.New()
+	peerID := rnd.Peers(1)[0]
 	messageQueue := New(ctx, peerID, fakenet, mockTimeoutCb)
-	wantHaves1 := random.Cids(5)
-	wantHaves2 := random.Cids(5)
+	wantHaves1 := rnd.Cids(5)
+	wantHaves2 := rnd.Cids(5)
 	wantHaves := append(wantHaves1, wantHaves2...)
-	wantBlocks1 := random.Cids(5)
-	wantBlocks2 := random.Cids(5)
+	wantBlocks1 := rnd.Cids(5)
+	wantBlocks2 := rnd.Cids(5)
 	wantBlocks := append(wantBlocks1, wantBlocks2...)
 
 	messageQueue.Startup()
@@ -326,11 +329,12 @@ func TestCancelOverridesPendingWants(t *testing.T) {
 		resetChan := make(chan struct{}, 1)
 		fakeSender := newFakeMessageSender(resetChan, messagesSent, true)
 		fakenet := &fakeMessageNetwork{nil, nil, fakeSender}
-		peerID := random.Peers(1)[0]
+		rnd := random.New()
+		peerID := rnd.Peers(1)[0]
 		messageQueue := New(ctx, peerID, fakenet, mockTimeoutCb)
 
-		wantHaves := random.Cids(2)
-		wantBlocks := random.Cids(2)
+		wantHaves := rnd.Cids(2)
+		wantBlocks := rnd.Cids(2)
 		cancels := []cid.Cid{wantBlocks[0], wantHaves[0]}
 
 		messageQueue.Startup()
@@ -390,10 +394,11 @@ func TestWantOverridesPendingCancels(t *testing.T) {
 	resetChan := make(chan struct{}, 1)
 	fakeSender := newFakeMessageSender(resetChan, messagesSent, true)
 	fakenet := &fakeMessageNetwork{nil, nil, fakeSender}
-	peerID := random.Peers(1)[0]
+	rnd := random.New()
+	peerID := rnd.Peers(1)[0]
 	messageQueue := New(ctx, peerID, fakenet, mockTimeoutCb)
 
-	cids := random.Cids(3)
+	cids := rnd.Cids(3)
 	wantBlocks := cids[:1]
 	wantHaves := cids[1:]
 
@@ -439,13 +444,14 @@ func TestWantlistRebroadcast(t *testing.T) {
 		resetChan := make(chan struct{}, 1)
 		fakeSender := newFakeMessageSender(resetChan, messagesSent, true)
 		fakenet := &fakeMessageNetwork{nil, nil, fakeSender}
-		peerID := random.Peers(1)[0]
+		rnd := random.New()
+		peerID := rnd.Peers(1)[0]
 		dhtm := &fakeDontHaveTimeoutMgr{}
 		events := make(chan messageEvent, 1)
 		messageQueue := newMessageQueue(ctx, peerID, fakenet, maxMessageSize, sendErrorBackoff, maxValidLatency, dhtm, events)
-		bcstwh := random.Cids(10)
-		wantHaves := random.Cids(10)
-		wantBlocks := random.Cids(10)
+		bcstwh := rnd.Cids(10)
+		wantHaves := rnd.Cids(10)
+		wantBlocks := rnd.Cids(10)
 
 		// Add some broadcast want-haves
 		messageQueue.Startup()
@@ -546,9 +552,10 @@ func TestSendingLargeMessages(t *testing.T) {
 	fakeSender := newFakeMessageSender(resetChan, messagesSent, true)
 	fakenet := &fakeMessageNetwork{nil, nil, fakeSender}
 	dhtm := &fakeDontHaveTimeoutMgr{}
-	peerID := random.Peers(1)[0]
+	rnd := random.New()
+	peerID := rnd.Peers(1)[0]
 
-	wantBlocks := random.Cids(10)
+	wantBlocks := rnd.Cids(10)
 	entrySize := 44
 	maxMsgSize := entrySize * 3 // 3 wants
 	messageQueue := newMessageQueue(ctx, peerID, fakenet, maxMsgSize, sendErrorBackoff, maxValidLatency, dhtm, nil)
@@ -576,7 +583,8 @@ func TestSendToPeerThatDoesntSupportHave(t *testing.T) {
 	resetChan := make(chan struct{}, 1)
 	fakeSender := newFakeMessageSender(resetChan, messagesSent, false)
 	fakenet := &fakeMessageNetwork{nil, nil, fakeSender}
-	peerID := random.Peers(1)[0]
+	rnd := random.New()
+	peerID := rnd.Peers(1)[0]
 
 	messageQueue := New(ctx, peerID, fakenet, mockTimeoutCb)
 	messageQueue.Startup()
@@ -588,7 +596,7 @@ func TestSendToPeerThatDoesntSupportHave(t *testing.T) {
 	// - broadcast want-haves should be sent as want-blocks
 
 	// Check broadcast want-haves
-	bcwh := random.Cids(10)
+	bcwh := rnd.Cids(10)
 	messageQueue.AddBroadcastWantHaves(bcwh)
 	messages := collectMessages(ctx, t, messagesSent, collectTimeout)
 
@@ -606,8 +614,8 @@ func TestSendToPeerThatDoesntSupportHave(t *testing.T) {
 	}
 
 	// Check regular want-haves and want-blocks
-	wbs := random.Cids(10)
-	whs := random.Cids(10)
+	wbs := rnd.Cids(10)
+	whs := rnd.Cids(10)
 	messageQueue.AddWants(wbs, whs)
 	messages = collectMessages(ctx, t, messagesSent, collectTimeout)
 
@@ -632,14 +640,15 @@ func TestSendToPeerThatDoesntSupportHaveMonitorsTimeouts(t *testing.T) {
 	resetChan := make(chan struct{}, 1)
 	fakeSender := newFakeMessageSender(resetChan, messagesSent, false)
 	fakenet := &fakeMessageNetwork{nil, nil, fakeSender}
-	peerID := random.Peers(1)[0]
+	rnd := random.New()
+	peerID := rnd.Peers(1)[0]
 
 	dhtm := &fakeDontHaveTimeoutMgr{}
 	messageQueue := newMessageQueue(ctx, peerID, fakenet, maxMessageSize, sendErrorBackoff, maxValidLatency, dhtm, nil)
 	messageQueue.Startup()
 	defer messageQueue.Shutdown()
 
-	wbs := random.Cids(10)
+	wbs := rnd.Cids(10)
 	messageQueue.AddWants(wbs, nil)
 	collectMessages(ctx, t, messagesSent, collectTimeout)
 
@@ -666,7 +675,8 @@ func TestResponseReceived(t *testing.T) {
 		resetChan := make(chan struct{}, 1)
 		fakeSender := newFakeMessageSender(resetChan, messagesSent, false)
 		fakenet := &fakeMessageNetwork{nil, nil, fakeSender}
-		peerID := random.Peers(1)[0]
+		rnd := random.New()
+		peerID := rnd.Peers(1)[0]
 
 		dhtm := &fakeDontHaveTimeoutMgr{}
 		events := make(chan messageEvent)
@@ -674,7 +684,7 @@ func TestResponseReceived(t *testing.T) {
 		messageQueue.Startup()
 		defer messageQueue.Shutdown()
 
-		cids := random.Cids(10)
+		cids := rnd.Cids(10)
 
 		// Add some wants
 		messageQueue.AddWants(cids[:5], nil)
@@ -719,14 +729,15 @@ func TestResponseReceivedAppliesForFirstResponseOnly(t *testing.T) {
 	resetChan := make(chan struct{}, 1)
 	fakeSender := newFakeMessageSender(resetChan, messagesSent, false)
 	fakenet := &fakeMessageNetwork{nil, nil, fakeSender}
-	peerID := random.Peers(1)[0]
+	rnd := random.New()
+	peerID := rnd.Peers(1)[0]
 
 	dhtm := &fakeDontHaveTimeoutMgr{}
 	messageQueue := newMessageQueue(ctx, peerID, fakenet, maxMessageSize, sendErrorBackoff, maxValidLatency, dhtm, nil)
 	messageQueue.Startup()
 	defer messageQueue.Shutdown()
 
-	cids := random.Cids(2)
+	cids := rnd.Cids(2)
 
 	// Add some wants and wait
 	messageQueue.AddWants(cids, nil)
@@ -766,7 +777,8 @@ func TestResponseReceivedDiscardsOutliers(t *testing.T) {
 		resetChan := make(chan struct{}, 1)
 		fakeSender := newFakeMessageSender(resetChan, messagesSent, false)
 		fakenet := &fakeMessageNetwork{nil, nil, fakeSender}
-		peerID := random.Peers(1)[0]
+		rnd := random.New()
+		peerID := rnd.Peers(1)[0]
 
 		maxValLatency := 30 * time.Millisecond
 		dhtm := &fakeDontHaveTimeoutMgr{}
@@ -775,7 +787,7 @@ func TestResponseReceivedDiscardsOutliers(t *testing.T) {
 		messageQueue.Startup()
 		defer messageQueue.Shutdown()
 
-		cids := random.Cids(4)
+		cids := rnd.Cids(4)
 
 		// Add some wants and wait 20ms
 		messageQueue.AddWants(cids[:2], nil)
@@ -832,7 +844,8 @@ func filterWantTypes(wantlist []bsmsg.Entry) ([]cid.Cid, []cid.Cid, []cid.Cid) {
 
 // Simplistic benchmark to allow us to simulate conditions on the gateways
 func BenchmarkMessageQueue(b *testing.B) {
-	ctx := context.Background()
+	ctx := b.Context()
+	rnd := random.New()
 
 	createQueue := func() *MessageQueue {
 		messagesSent := make(chan []bsmsg.Entry)
@@ -840,7 +853,7 @@ func BenchmarkMessageQueue(b *testing.B) {
 		fakeSender := newFakeMessageSender(resetChan, messagesSent, true)
 		fakenet := &fakeMessageNetwork{nil, nil, fakeSender}
 		dhtm := &fakeDontHaveTimeoutMgr{}
-		peerID := random.Peers(1)[0]
+		peerID := rnd.Peers(1)[0]
 
 		messageQueue := newMessageQueue(ctx, peerID, fakenet, maxMessageSize, sendErrorBackoff, maxValidLatency, dhtm, nil)
 		messageQueue.Startup()
@@ -848,7 +861,7 @@ func BenchmarkMessageQueue(b *testing.B) {
 		go func() {
 			for {
 				<-messagesSent
-				time.Sleep(time.Duration(rand.Intn(1000)) * time.Millisecond)
+				time.Sleep(time.Duration(rnd.IntN(1000)) * time.Millisecond)
 			}
 		}()
 
@@ -869,17 +882,17 @@ func BenchmarkMessageQueue(b *testing.B) {
 
 		// Pick a random message queue, favoring those created later
 		qn := len(qs)
-		i := int(math.Floor(float64(qn) * float64(1-rand.Float32()*rand.Float32())))
+		i := int(math.Floor(float64(qn) * float64(1-rnd.Float32()*rnd.Float32())))
 		if i >= qn { // because of floating point math
 			i = qn - 1
 		}
 
 		// Alternately add either a few wants or a lot of broadcast wants
-		if rand.Intn(2) == 0 {
-			wants := random.Cids(10)
+		if rnd.IntN(2) == 0 {
+			wants := rnd.Cids(10)
 			qs[i].AddWants(wants[:2], wants[2:])
 		} else {
-			wants := random.Cids(60)
+			wants := rnd.Cids(60)
 			qs[i].AddBroadcastWantHaves(wants)
 		}
 	}

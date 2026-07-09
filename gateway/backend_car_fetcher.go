@@ -2,15 +2,15 @@ package gateway
 
 import (
 	"context"
+	crand "crypto/rand"
 	"errors"
 	"fmt"
 	"io"
-	"math/rand"
+	"math/rand/v2"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/ipfs/boxo/path"
 )
@@ -43,10 +43,13 @@ func NewRemoteCarFetcher(gatewayURL []string, httpClient *http.Client) (CarFetch
 		httpClient = newRemoteHTTPClient()
 	}
 
+	var seed [32]byte
+	_, _ = crand.Read(seed[:])
+
 	return &remoteCarFetcher{
 		gatewayURL: gatewayURL,
 		httpClient: httpClient,
-		rand:       rand.New(rand.NewSource(time.Now().Unix())),
+		rand:       rand.New(rand.NewChaCha8(seed)),
 	}, nil
 }
 
@@ -81,7 +84,7 @@ func (ps *remoteCarFetcher) Fetch(ctx context.Context, path path.ImmutablePath, 
 }
 
 func (ps *remoteCarFetcher) getRandomGatewayURL() string {
-	return ps.gatewayURL[ps.rand.Intn(len(ps.gatewayURL))]
+	return ps.gatewayURL[ps.rand.IntN(len(ps.gatewayURL))]
 }
 
 // contentPathToCarUrl returns an URL that allows retrieval of specified resource

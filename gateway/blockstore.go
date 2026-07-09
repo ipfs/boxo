@@ -2,13 +2,13 @@ package gateway
 
 import (
 	"context"
+	crand "crypto/rand"
 	"errors"
 	"fmt"
 	"io"
-	"math/rand"
+	"math/rand/v2"
 	"net/http"
 	"sync/atomic"
-	"time"
 
 	lru "github.com/hashicorp/golang-lru/v2"
 	blockstore "github.com/ipfs/boxo/blockstore"
@@ -159,10 +159,13 @@ func NewRemoteBlockstore(gatewayURL []string, httpClient *http.Client) (blocksto
 		httpClient = newRemoteHTTPClient()
 	}
 
+	var seed [32]byte
+	_, _ = crand.Read(seed[:])
+
 	return &remoteBlockstore{
 		gatewayURL: gatewayURL,
 		httpClient: httpClient,
-		rand:       rand.New(rand.NewSource(time.Now().Unix())),
+		rand:       rand.New(rand.NewChaCha8(seed)),
 		// Enables block validation by default. Important since we are
 		// proxying block requests to untrusted gateways.
 		validate: true,
@@ -250,5 +253,5 @@ func (c *remoteBlockstore) DeleteBlock(context.Context, cid.Cid) error {
 }
 
 func (ps *remoteBlockstore) getRandomGatewayURL() string {
-	return ps.gatewayURL[ps.rand.Intn(len(ps.gatewayURL))]
+	return ps.gatewayURL[ps.rand.IntN(len(ps.gatewayURL))]
 }

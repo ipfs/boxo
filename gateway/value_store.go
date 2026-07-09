@@ -2,13 +2,13 @@ package gateway
 
 import (
 	"context"
+	crand "crypto/rand"
 	"errors"
 	"fmt"
 	"io"
-	"math/rand"
+	"math/rand/v2"
 	"net/http"
 	"strings"
-	"time"
 
 	"github.com/ipfs/boxo/ipns"
 	"github.com/libp2p/go-libp2p/core/routing"
@@ -34,10 +34,13 @@ func NewRemoteValueStore(gatewayURL []string, httpClient *http.Client) (routing.
 		httpClient = newRemoteHTTPClient()
 	}
 
+	var seed [32]byte
+	_, _ = crand.Read(seed[:])
+
 	return &remoteValueStore{
 		gatewayURL: gatewayURL,
 		httpClient: httpClient,
-		rand:       rand.New(rand.NewSource(time.Now().Unix())),
+		rand:       rand.New(rand.NewChaCha8(seed)),
 	}, nil
 }
 
@@ -119,5 +122,5 @@ func (ps *remoteValueStore) fetch(ctx context.Context, name ipns.Name) ([]byte, 
 }
 
 func (ps *remoteValueStore) getRandomGatewayURL() string {
-	return ps.gatewayURL[ps.rand.Intn(len(ps.gatewayURL))]
+	return ps.gatewayURL[ps.rand.IntN(len(ps.gatewayURL))]
 }

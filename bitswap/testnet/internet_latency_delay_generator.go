@@ -1,13 +1,13 @@
 package bitswap
 
 import (
-	"math/rand"
 	"time"
 
 	delay "github.com/ipfs/go-ipfs-delay"
+	"github.com/ipfs/go-test/random"
 )
 
-var sharedRNG = rand.New(rand.NewSource(time.Now().UnixNano()))
+var sharedRNG = random.New()
 
 // InternetLatencyDelayGenerator generates three clusters of delays,
 // typical of the type of peers you would encounter on the interenet.
@@ -27,7 +27,7 @@ func InternetLatencyDelayGenerator(
 	percentMedium float64,
 	percentLarge float64,
 	std time.Duration,
-	rng *rand.Rand,
+	rng *random.Random,
 ) delay.Generator {
 	if rng == nil {
 		rng = sharedRNG
@@ -49,7 +49,7 @@ type internetLatencyDelayGenerator struct {
 	percentLarge  float64
 	percentMedium float64
 	std           time.Duration
-	rng           *rand.Rand
+	rng           *random.Random
 }
 
 func (d *internetLatencyDelayGenerator) NextWaitTime(t time.Duration) time.Duration {
@@ -57,7 +57,8 @@ func (d *internetLatencyDelayGenerator) NextWaitTime(t time.Duration) time.Durat
 	baseDelay := time.Duration(d.rng.NormFloat64()*float64(d.std)) + t
 	if clusterDistribution < d.percentLarge {
 		return baseDelay + d.largeDelay
-	} else if clusterDistribution < d.percentMedium+d.percentLarge {
+	}
+	if clusterDistribution < d.percentMedium+d.percentLarge {
 		return baseDelay + d.mediumDelay
 	}
 	return baseDelay

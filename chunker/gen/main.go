@@ -3,13 +3,13 @@ package main
 
 import (
 	"fmt"
-	"math/rand"
+	"math/rand/v2"
 )
 
 const nRounds = 200
 
 func main() {
-	rnd := rand.New(rand.NewSource(0))
+	rnd := rand.New(rand.NewChaCha8([32]byte{}))
 
 	lut := make([]uint32, 256)
 	for i := range 256 / 2 {
