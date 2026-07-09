@@ -69,7 +69,8 @@ func mustNotErr[T any](out T, err error) T {
 }
 
 func TestNormalSimultaneousFetch(t *testing.T) {
-	peers := random.Peers(10)
+	rnd := random.New()
+	peers := rnd.Peers(10)
 	fpd := &fakeProviderDialer{}
 	fpn := &fakeProviderDiscovery{
 		peersFound: peers,
@@ -77,7 +78,7 @@ func TestNormalSimultaneousFetch(t *testing.T) {
 	}
 	providerQueryManager := mustNotErr(New(fpd, fpn))
 	defer providerQueryManager.Close()
-	keys := random.Cids(2)
+	keys := rnd.Cids(2)
 
 	sessionCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -106,7 +107,8 @@ func TestNormalSimultaneousFetch(t *testing.T) {
 }
 
 func TestDedupingProviderRequests(t *testing.T) {
-	peers := random.Peers(10)
+	rnd := random.New()
+	peers := rnd.Peers(10)
 	fpd := &fakeProviderDialer{}
 	fpn := &fakeProviderDiscovery{
 		peersFound: peers,
@@ -114,7 +116,7 @@ func TestDedupingProviderRequests(t *testing.T) {
 	}
 	providerQueryManager := mustNotErr(New(fpd, fpn))
 	defer providerQueryManager.Close()
-	key := random.Cids(1)[0]
+	key := rnd.Cids(1)[0]
 
 	sessionCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -146,7 +148,8 @@ func TestDedupingProviderRequests(t *testing.T) {
 }
 
 func TestCancelOneRequestDoesNotTerminateAnother(t *testing.T) {
-	peers := random.Peers(10)
+	rnd := random.New()
+	peers := rnd.Peers(10)
 	fpd := &fakeProviderDialer{}
 	fpn := &fakeProviderDiscovery{
 		peersFound: peers,
@@ -155,7 +158,7 @@ func TestCancelOneRequestDoesNotTerminateAnother(t *testing.T) {
 	providerQueryManager := mustNotErr(New(fpd, fpn))
 	defer providerQueryManager.Close()
 
-	key := random.Cids(1)[0]
+	key := rnd.Cids(1)[0]
 
 	// first session will cancel before done
 	ctx := context.Background()
@@ -191,7 +194,8 @@ func TestCancelOneRequestDoesNotTerminateAnother(t *testing.T) {
 }
 
 func TestCancelManagerExitsGracefully(t *testing.T) {
-	peers := random.Peers(10)
+	rnd := random.New()
+	peers := rnd.Peers(10)
 	fpd := &fakeProviderDialer{}
 	fpn := &fakeProviderDiscovery{
 		peersFound: peers,
@@ -201,7 +205,7 @@ func TestCancelManagerExitsGracefully(t *testing.T) {
 	defer providerQueryManager.Close()
 	time.AfterFunc(5*time.Millisecond, providerQueryManager.Close)
 
-	key := random.Cids(1)[0]
+	key := rnd.Cids(1)[0]
 
 	sessionCtx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
 	defer cancel()
@@ -225,7 +229,8 @@ func TestCancelManagerExitsGracefully(t *testing.T) {
 }
 
 func TestPeersWithConnectionErrorsNotAddedToPeerList(t *testing.T) {
-	peers := random.Peers(10)
+	rnd := random.New()
+	peers := rnd.Peers(10)
 	fpd := &fakeProviderDialer{
 		connectError: errors.New("not able to connect"),
 	}
@@ -236,7 +241,7 @@ func TestPeersWithConnectionErrorsNotAddedToPeerList(t *testing.T) {
 	providerQueryManager := mustNotErr(New(fpd, fpn))
 	defer providerQueryManager.Close()
 
-	key := random.Cids(1)[0]
+	key := rnd.Cids(1)[0]
 
 	sessionCtx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
 	defer cancel()
@@ -261,7 +266,8 @@ func TestPeersWithConnectionErrorsNotAddedToPeerList(t *testing.T) {
 func TestRateLimitingRequests(t *testing.T) {
 	const maxInProcessRequests = 6
 
-	peers := random.Peers(10)
+	rnd := random.New()
+	peers := rnd.Peers(10)
 	fpd := &fakeProviderDialer{}
 	fpn := &fakeProviderDiscovery{
 		peersFound: peers,
@@ -270,7 +276,7 @@ func TestRateLimitingRequests(t *testing.T) {
 	providerQueryManager := mustNotErr(New(fpd, fpn, WithMaxInProcessRequests(maxInProcessRequests)))
 	defer providerQueryManager.Close()
 
-	keys := random.Cids(maxInProcessRequests + 1)
+	keys := rnd.Cids(maxInProcessRequests + 1)
 	sessionCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	var requestChannels []<-chan peer.AddrInfo
@@ -300,7 +306,8 @@ func TestRateLimitingRequests(t *testing.T) {
 func TestUnlimitedRequests(t *testing.T) {
 	const inProcessRequests = 11
 
-	peers := random.Peers(10)
+	rnd := random.New()
+	peers := rnd.Peers(10)
 	fpd := &fakeProviderDialer{}
 	fpn := &fakeProviderDiscovery{
 		peersFound: peers,
@@ -311,7 +318,7 @@ func TestUnlimitedRequests(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	keys := random.Cids(inProcessRequests)
+	keys := rnd.Cids(inProcessRequests)
 	sessionCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	var requestChannels []<-chan peer.AddrInfo
@@ -339,7 +346,8 @@ func TestUnlimitedRequests(t *testing.T) {
 }
 
 func TestFindProviderTimeout(t *testing.T) {
-	peers := random.Peers(10)
+	rnd := random.New()
+	peers := rnd.Peers(10)
 	fpd := &fakeProviderDialer{}
 	fpn := &fakeProviderDiscovery{
 		peersFound: peers,
@@ -347,7 +355,7 @@ func TestFindProviderTimeout(t *testing.T) {
 	}
 	providerQueryManager := mustNotErr(New(fpd, fpn, WithMaxTimeout(2*time.Millisecond)))
 	defer providerQueryManager.Close()
-	keys := random.Cids(1)
+	keys := rnd.Cids(1)
 
 	sessionCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -362,7 +370,8 @@ func TestFindProviderTimeout(t *testing.T) {
 }
 
 func TestFindProviderPreCanceled(t *testing.T) {
-	peers := random.Peers(10)
+	rnd := random.New()
+	peers := rnd.Peers(10)
 	fpd := &fakeProviderDialer{}
 	fpn := &fakeProviderDiscovery{
 		peersFound: peers,
@@ -370,7 +379,7 @@ func TestFindProviderPreCanceled(t *testing.T) {
 	}
 	providerQueryManager := mustNotErr(New(fpd, fpn, WithMaxTimeout(100*time.Millisecond)))
 	defer providerQueryManager.Close()
-	keys := random.Cids(1)
+	keys := rnd.Cids(1)
 
 	sessionCtx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -386,7 +395,8 @@ func TestFindProviderPreCanceled(t *testing.T) {
 }
 
 func TestCancelFindProvidersAfterCompletion(t *testing.T) {
-	peers := random.Peers(2)
+	rnd := random.New()
+	peers := rnd.Peers(2)
 	fpd := &fakeProviderDialer{}
 	fpn := &fakeProviderDiscovery{
 		peersFound: peers,
@@ -394,7 +404,7 @@ func TestCancelFindProvidersAfterCompletion(t *testing.T) {
 	}
 	providerQueryManager := mustNotErr(New(fpd, fpn, WithMaxTimeout(100*time.Millisecond)))
 	defer providerQueryManager.Close()
-	keys := random.Cids(1)
+	keys := rnd.Cids(1)
 
 	sessionCtx, cancel := context.WithCancel(context.Background())
 	firstRequestChan := providerQueryManager.FindProvidersAsync(sessionCtx, keys[0], 0)
@@ -417,8 +427,9 @@ func TestCancelFindProvidersAfterCompletion(t *testing.T) {
 }
 
 func TestLimitedProviders(t *testing.T) {
-	max := 5
-	peers := random.Peers(10)
+	const max = 5
+	rnd := random.New()
+	peers := rnd.Peers(10)
 	fpd := &fakeProviderDialer{}
 	fpn := &fakeProviderDiscovery{
 		peersFound: peers,
@@ -439,7 +450,8 @@ func TestLimitedProviders(t *testing.T) {
 }
 
 func TestIgnorePeers(t *testing.T) {
-	peers := random.Peers(5)
+	rnd := random.New()
+	peers := rnd.Peers(5)
 	fpd := &fakeProviderDialer{}
 	fpn := &fakeProviderDiscovery{
 		peersFound: peers,
@@ -449,7 +461,7 @@ func TestIgnorePeers(t *testing.T) {
 		WithIgnoreProviders(peers[0:4]...),
 	))
 	defer providerQueryManager.Close()
-	keys := random.Cids(1)
+	keys := rnd.Cids(1)
 
 	providersChan := providerQueryManager.FindProvidersAsync(context.Background(), keys[0], 0)
 	total := 0
@@ -547,7 +559,8 @@ func collect(ch <-chan peer.AddrInfo) []peer.AddrInfo {
 }
 
 func TestFindPeerFallbackRescuesFailedDial(t *testing.T) {
-	peers := random.Peers(1)
+	rnd := random.New()
+	peers := rnd.Peers(1)
 	p := peers[0]
 	freshAddr := ma.StringCast("/ip4/198.51.100.7/tcp/4001")
 
@@ -562,7 +575,7 @@ func TestFindPeerFallbackRescuesFailedDial(t *testing.T) {
 
 	sessionCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	received := collect(pqm.FindProvidersAsync(sessionCtx, random.Cids(1)[0], 0))
+	received := collect(pqm.FindProvidersAsync(sessionCtx, rnd.Cids(1)[0], 0))
 
 	if len(received) != 1 {
 		t.Fatalf("expected 1 provider after retry, got %d", len(received))
@@ -576,7 +589,8 @@ func TestFindPeerFallbackRescuesFailedDial(t *testing.T) {
 }
 
 func TestFindPeerFallbackSkippedWhenNoAddrs(t *testing.T) {
-	peers := random.Peers(1)
+	rnd := random.New()
+	peers := rnd.Peers(1)
 	p := peers[0]
 
 	dialer := &callCountingDialer{}
@@ -590,7 +604,7 @@ func TestFindPeerFallbackSkippedWhenNoAddrs(t *testing.T) {
 
 	sessionCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	received := collect(pqm.FindProvidersAsync(sessionCtx, random.Cids(1)[0], 0))
+	received := collect(pqm.FindProvidersAsync(sessionCtx, rnd.Cids(1)[0], 0))
 
 	if len(received) != 0 {
 		t.Fatalf("expected 0 providers, got %d", len(received))
@@ -604,7 +618,8 @@ func TestFindPeerFallbackSkippedWhenNoAddrs(t *testing.T) {
 }
 
 func TestFindPeerFallbackSkippedWhenErrors(t *testing.T) {
-	peers := random.Peers(1)
+	rnd := random.New()
+	peers := rnd.Peers(1)
 	p := peers[0]
 
 	dialer := &callCountingDialer{}
@@ -616,7 +631,7 @@ func TestFindPeerFallbackSkippedWhenErrors(t *testing.T) {
 
 	sessionCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	received := collect(pqm.FindProvidersAsync(sessionCtx, random.Cids(1)[0], 0))
+	received := collect(pqm.FindProvidersAsync(sessionCtx, rnd.Cids(1)[0], 0))
 
 	if len(received) != 0 {
 		t.Fatalf("expected 0 providers, got %d", len(received))
@@ -631,7 +646,8 @@ func TestFindPeerFallbackSkippedWhenErrors(t *testing.T) {
 // the routing-record AddrInfo just tried, we don't retry (it would just
 // dial the same broken set again).
 func TestFindPeerFallbackSkippedWhenNoNewAddrs(t *testing.T) {
-	peers := random.Peers(1)
+	rnd := random.New()
+	peers := rnd.Peers(1)
 	p := peers[0]
 	knownAddr := ma.StringCast("/ip4/198.51.100.7/tcp/4001")
 
@@ -651,7 +667,7 @@ func TestFindPeerFallbackSkippedWhenNoNewAddrs(t *testing.T) {
 
 	sessionCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	received := collect(pqm.FindProvidersAsync(sessionCtx, random.Cids(1)[0], 0))
+	received := collect(pqm.FindProvidersAsync(sessionCtx, rnd.Cids(1)[0], 0))
 
 	if len(received) != 0 {
 		t.Fatalf("expected 0 providers (retry skipped, dial stays failed), got %d", len(received))
