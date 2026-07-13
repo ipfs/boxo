@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"math"
 	"os"
-	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -209,10 +208,10 @@ const (
 
 func BenchmarkRealWorld(b *testing.B) {
 	benchmarkLog = nil
-	benchmarkSeed, err := strconv.ParseInt(os.Getenv("BENCHMARK_SEED"), 10, 64)
 	var randomGen *random.Random
-	if err == nil {
-		randomGen = random.NewSeeded(random.MakeSeed(uint64(benchmarkSeed)))
+	seed := os.Getenv("BENCHMARK_SEED")
+	if seed != "" {
+		randomGen = random.NewSeeded(random.StringToSeed(seed))
 	}
 
 	fastNetworkDelayGenerator := tn.InternetLatencyDelayGenerator(
@@ -248,10 +247,10 @@ func BenchmarkRealWorld(b *testing.B) {
 
 func BenchmarkDatacenter(b *testing.B) {
 	benchmarkLog = nil
-	benchmarkSeed, err := strconv.ParseInt(os.Getenv("BENCHMARK_SEED"), 10, 64)
 	var randomGen *random.Random
-	if err == nil {
-		randomGen = random.NewSeeded(random.MakeSeed(uint64(benchmarkSeed)))
+	seed := os.Getenv("BENCHMARK_SEED")
+	if seed != "" {
+		randomGen = random.NewSeeded(random.StringToSeed(seed))
 	}
 
 	datacenterNetworkDelayGenerator := tn.InternetLatencyDelayGenerator(
@@ -271,10 +270,10 @@ func BenchmarkDatacenter(b *testing.B) {
 
 func BenchmarkDatacenterMultiLeechMultiSeed(b *testing.B) {
 	benchmarkLog = nil
-	benchmarkSeed, err := strconv.ParseInt(os.Getenv("BENCHMARK_SEED"), 10, 64)
 	var randomGen *random.Random
-	if err == nil {
-		randomGen = random.NewSeeded(random.MakeSeed(uint64(benchmarkSeed)))
+	seed := os.Getenv("BENCHMARK_SEED")
+	if seed != "" {
+		randomGen = random.NewSeeded(random.StringToSeed(seed))
 	}
 
 	datacenterNetworkDelayGenerator := tn.InternetLatencyDelayGenerator(

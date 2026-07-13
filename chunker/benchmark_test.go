@@ -31,7 +31,7 @@ func benchmarkChunker(b *testing.B, ns newSplitter) {
 }
 
 func benchmarkChunkerSize(b *testing.B, ns newSplitter, size int) {
-	rng := random.NewSeeded(random.MakeSeed(1))
+	rng := random.NewSeeded(random.Uint64ToSeed(1))
 	data := make([]byte, size)
 	rng.Read(data)
 
@@ -66,7 +66,7 @@ func benchmarkFilesAlloc(b *testing.B, ns newSplitter) {
 		fileCount   = 10000
 	)
 
-	rng := random.NewSeeded(random.MakeSeed(1))
+	rng := random.NewSeeded(random.Uint64ToSeed(1))
 	data := make([]byte, maxDataSize)
 	rng.Read(data)
 

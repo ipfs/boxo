@@ -24,7 +24,7 @@ func TestInternetLatencyDelayNextWaitTimeDistribution(t *testing.T) {
 		percentMedium,
 		percentLarge,
 		deviation,
-		random.NewSeeded(random.MakeSeed(testSeed)))
+		random.NewSeeded(random.Uint64ToSeed(testSeed)))
 
 	buckets["fast"] = 0
 	buckets["medium"] = 0
