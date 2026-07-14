@@ -33,15 +33,18 @@ enumeration. [#1184](https://github.com/ipfs/boxo/pull/1184)
 ### Changed
 
 - 🛠 `mfs`: `File.Open` now takes a `context.Context`. Writing to a file whose data has to be fetched from the network (for example, a lazy reference created with `ipfs files cp`) now uses that context, so the write stops when the context is cancelled, such as on a client timeout or when MFS shuts down, instead of waiting forever for a block that never arrives. Callers must add a context argument; pass the request's context to let a timeout cancel the write. [#1185](https://github.com/ipfs/boxo/pull/1185)
-- 🧪`testing`: use new `go-test` and `math/rand/v2`. The `go-test/random` package now allows reuse of the random number generator for more efficiently generating sets of random values. The package also removes support for a global seed and sequence, which could lead to multiple tests interferring with each other when generatng deterministic values.
+- 🧪 `testing`: tests now use `go-test` v0.4.0 and `math/rand/v2`. `go-test/random` no longer has a global seed or a global sequence, so one test can no longer change the values another test expects to generate deterministically, a class of failure that showed up as an intermittent break in an unrelated test. A generator can also be reused now, instead of being rebuilt for every value. [#1187](https://github.com/ipfs/boxo/pull/1187)
 - upgrade to `go-libp2p-kad-dht` [v0.41.0](https://github.com/libp2p/go-libp2p-kad-dht/releases/tag/v0.41.0)
 - upgrade to `go-unixfsnode` [v1.10.5](https://github.com/ipfs/go-unixfsnode/releases/tag/v1.10.5)
 - upgrade to `go-cid` [v0.6.2](https://github.com/ipfs/go-cid/releases/tag/v0.6.2)
 
 ### Removed
 
+- 🛠 `util`: removed the deprecated `NewSeededRand` and `NewTimeSeededRand`. Use [`go-test/random`](https://github.com/ipfs/go-test) instead. [#1187](https://github.com/ipfs/boxo/pull/1187)
+
 ### Fixed
 
+- `gateway`: fixed a data race in the remote blockstore, CAR fetcher, and value store. Each picked a gateway URL out of its list using a per-instance `*rand.Rand`, which is not safe to use from more than one goroutine, so a gateway serving requests in parallel was racing on every request. They now use the top-level `math/rand/v2` functions, which are safe to share. [#1187](https://github.com/ipfs/boxo/pull/1187)
 - `blockstore`: the Bloom filter cache no longer activates after an incomplete
 build. Previously, if `AllKeysChan` enumeration was truncated by a
 mid-iteration datastore error (which was only logged, never propagated) or by a

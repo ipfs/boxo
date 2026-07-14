@@ -7,6 +7,10 @@ import (
 	"github.com/ipfs/go-test/random"
 )
 
+// sharedRNG is the fallback source for generators constructed with a nil rng.
+// A [random.Random] must not be used concurrently, so a test that drives
+// several generators from different goroutines has to pass each one its own
+// [random.Random] rather than rely on this.
 var sharedRNG = random.New()
 
 // InternetLatencyDelayGenerator generates three clusters of delays,
