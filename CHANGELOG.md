@@ -33,7 +33,7 @@ enumeration. [#1184](https://github.com/ipfs/boxo/pull/1184)
 ### Changed
 
 - 🛠 `mfs`: `File.Open` now takes a `context.Context`. Writing to a file whose data has to be fetched from the network (for example, a lazy reference created with `ipfs files cp`) now uses that context, so the write stops when the context is cancelled, such as on a client timeout or when MFS shuts down, instead of waiting forever for a block that never arrives. Callers must add a context argument; pass the request's context to let a timeout cancel the write. [#1185](https://github.com/ipfs/boxo/pull/1185)
-
+- 🧪`testing`: use new `go-test` and `math/rand/v2`. The `go-test/random` package now allows reuse of the random number generator for more efficiently generating sets of random values. The package also removes support for a global seed and sequence, which could lead to multiple tests interferring with each other when generatng deterministic values.
 - upgrade to `go-libp2p-kad-dht` [v0.41.0](https://github.com/libp2p/go-libp2p-kad-dht/releases/tag/v0.41.0)
 - upgrade to `go-unixfsnode` [v1.10.5](https://github.com/ipfs/go-unixfsnode/releases/tag/v1.10.5)
 - upgrade to `go-cid` [v0.6.2](https://github.com/ipfs/go-cid/releases/tag/v0.6.2)
