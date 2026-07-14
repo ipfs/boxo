@@ -2,7 +2,6 @@ package gateway
 
 import (
 	"context"
-	crand "crypto/rand"
 	"errors"
 	"fmt"
 	"io"
@@ -25,7 +24,6 @@ type CarFetcher interface {
 type remoteCarFetcher struct {
 	httpClient *http.Client
 	gatewayURL []string
-	rand       *rand.Rand
 }
 
 // NewRemoteCarFetcher returns a [CarFetcher] that is backed by one or more gateways
@@ -43,13 +41,9 @@ func NewRemoteCarFetcher(gatewayURL []string, httpClient *http.Client) (CarFetch
 		httpClient = newRemoteHTTPClient()
 	}
 
-	var seed [32]byte
-	_, _ = crand.Read(seed[:])
-
 	return &remoteCarFetcher{
 		gatewayURL: gatewayURL,
 		httpClient: httpClient,
-		rand:       rand.New(rand.NewChaCha8(seed)),
 	}, nil
 }
 
@@ -84,7 +78,9 @@ func (ps *remoteCarFetcher) Fetch(ctx context.Context, path path.ImmutablePath, 
 }
 
 func (ps *remoteCarFetcher) getRandomGatewayURL() string {
-	return ps.gatewayURL[ps.rand.IntN(len(ps.gatewayURL))]
+	// The top-level math/rand/v2 functions are safe to call from the concurrent
+	// request handlers that reach here; a *rand.Rand field would not be.
+	return ps.gatewayURL[rand.IntN(len(ps.gatewayURL))]
 }
 
 // contentPathToCarUrl returns an URL that allows retrieval of specified resource

@@ -2,7 +2,6 @@ package gateway
 
 import (
 	"context"
-	crand "crypto/rand"
 	"errors"
 	"fmt"
 	"io"
@@ -140,7 +139,6 @@ func (l *cacheBlockStore) HashOnRead(enabled bool) {
 type remoteBlockstore struct {
 	httpClient *http.Client
 	gatewayURL []string
-	rand       *rand.Rand
 	validate   bool
 }
 
@@ -159,13 +157,9 @@ func NewRemoteBlockstore(gatewayURL []string, httpClient *http.Client) (blocksto
 		httpClient = newRemoteHTTPClient()
 	}
 
-	var seed [32]byte
-	_, _ = crand.Read(seed[:])
-
 	return &remoteBlockstore{
 		gatewayURL: gatewayURL,
 		httpClient: httpClient,
-		rand:       rand.New(rand.NewChaCha8(seed)),
 		// Enables block validation by default. Important since we are
 		// proxying block requests to untrusted gateways.
 		validate: true,
@@ -253,5 +247,7 @@ func (c *remoteBlockstore) DeleteBlock(context.Context, cid.Cid) error {
 }
 
 func (ps *remoteBlockstore) getRandomGatewayURL() string {
-	return ps.gatewayURL[ps.rand.IntN(len(ps.gatewayURL))]
+	// The top-level math/rand/v2 functions are safe to call from the concurrent
+	// request handlers that reach here; a *rand.Rand field would not be.
+	return ps.gatewayURL[rand.IntN(len(ps.gatewayURL))]
 }
