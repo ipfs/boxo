@@ -3,13 +3,17 @@ package main
 
 import (
 	"fmt"
-	"math/rand/v2"
+	"math/rand"
 )
 
 const nRounds = 200
 
 func main() {
-	rnd := rand.New(rand.NewChaCha8([32]byte{}))
+	// Stay on math/rand seeded with NewSource(0). The table this prints is
+	// committed as bytehash in chunker/buzhash.go, and buzhash chunk
+	// boundaries, so the CID of anything chunked with buzhash, depend on it.
+	// Any other generator or seed prints a different table.
+	rnd := rand.New(rand.NewSource(0))
 
 	lut := make([]uint32, 256)
 	for i := range 256 / 2 {
