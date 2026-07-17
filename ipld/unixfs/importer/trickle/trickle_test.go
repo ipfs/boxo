@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	mrand "math/rand"
 	"runtime"
 	"testing"
 	"time"
@@ -77,14 +76,15 @@ func testSizeBasedSplit(t *testing.T, rawLeaves UseRawLeaves) {
 	if testing.Short() {
 		t.SkipNow()
 	}
+	rnd := random.New()
 	bs := chunker.SizeSplitterGen(512)
-	testFileConsistency(t, bs, 32*512, rawLeaves)
+	testFileConsistency(t, rnd, bs, 32*512, rawLeaves)
 
 	bs = chunker.SizeSplitterGen(4096)
-	testFileConsistency(t, bs, 32*4096, rawLeaves)
+	testFileConsistency(t, rnd, bs, 32*4096, rawLeaves)
 
 	// Uneven offset
-	testFileConsistency(t, bs, 31*4095, rawLeaves)
+	testFileConsistency(t, rnd, bs, 31*4095, rawLeaves)
 }
 
 func dup(b []byte) []byte {
@@ -93,9 +93,9 @@ func dup(b []byte) []byte {
 	return o
 }
 
-func testFileConsistency(t *testing.T, bs chunker.SplitterGen, nbytes int, rawLeaves UseRawLeaves) {
+func testFileConsistency(t *testing.T, rnd *random.Random, bs chunker.SplitterGen, nbytes int, rawLeaves UseRawLeaves) {
 	should := make([]byte, nbytes)
-	random.NewRand().Read(should)
+	rnd.Read(should)
 
 	read := bytes.NewReader(should)
 	ds := mdtest.Mock()
@@ -127,7 +127,7 @@ func TestBuilderConsistency(t *testing.T) {
 func testBuilderConsistency(t *testing.T, rawLeaves UseRawLeaves) {
 	const nbytes = 100000
 	buf := new(bytes.Buffer)
-	io.CopyN(buf, random.NewRand(), int64(nbytes))
+	io.CopyN(buf, random.New(), int64(nbytes))
 
 	should := dup(buf.Bytes())
 	dagserv := mdtest.Mock()
@@ -171,7 +171,7 @@ func testIndirectBlocks(t *testing.T, rawLeaves UseRawLeaves) {
 	splitter := chunker.SizeSplitterGen(512)
 	const nbytes = 1024 * 1024
 	buf := make([]byte, nbytes)
-	random.NewRand().Read(buf)
+	random.New().Read(buf)
 
 	read := bytes.NewReader(buf)
 
@@ -203,7 +203,7 @@ func TestSeekingBasic(t *testing.T) {
 func testSeekingBasic(t *testing.T, rawLeaves UseRawLeaves) {
 	const nbytes = 10 * 1024
 	should := make([]byte, nbytes)
-	random.NewRand().Read(should)
+	random.New().Read(should)
 
 	read := bytes.NewReader(should)
 	ds := mdtest.Mock()
@@ -244,7 +244,7 @@ func TestSeekToBegin(t *testing.T) {
 func testSeekToBegin(t *testing.T, rawLeaves UseRawLeaves) {
 	const nbytes = 10 * 1024
 	should := make([]byte, nbytes)
-	random.NewRand().Read(should)
+	random.New().Read(should)
 
 	read := bytes.NewReader(should)
 	ds := mdtest.Mock()
@@ -292,7 +292,7 @@ func TestSeekToAlmostBegin(t *testing.T) {
 func testSeekToAlmostBegin(t *testing.T, rawLeaves UseRawLeaves) {
 	const nbytes = 10 * 1024
 	should := make([]byte, nbytes)
-	random.NewRand().Read(should)
+	random.New().Read(should)
 
 	read := bytes.NewReader(should)
 	ds := mdtest.Mock()
@@ -340,7 +340,7 @@ func TestSeekEnd(t *testing.T) {
 func testSeekEnd(t *testing.T, rawLeaves UseRawLeaves) {
 	const nbytes = 50 * 1024
 	should := make([]byte, nbytes)
-	random.NewRand().Read(should)
+	random.New().Read(should)
 
 	read := bytes.NewReader(should)
 	ds := mdtest.Mock()
@@ -370,7 +370,7 @@ func TestSeekEndSingleBlockFile(t *testing.T) {
 func testSeekEndSingleBlockFile(t *testing.T, rawLeaves UseRawLeaves) {
 	const nbytes = 100
 	should := make([]byte, nbytes)
-	random.NewRand().Read(should)
+	random.New().Read(should)
 
 	read := bytes.NewReader(should)
 	ds := mdtest.Mock()
@@ -400,7 +400,8 @@ func TestSeekingStress(t *testing.T) {
 func testSeekingStress(t *testing.T, rawLeaves UseRawLeaves) {
 	const nbytes = 1024 * 1024
 	should := make([]byte, nbytes)
-	random.NewRand().Read(should)
+	rnd := random.New()
+	rnd.Read(should)
 
 	read := bytes.NewReader(should)
 	ds := mdtest.Mock()
@@ -416,7 +417,7 @@ func testSeekingStress(t *testing.T, rawLeaves UseRawLeaves) {
 
 	testbuf := make([]byte, nbytes)
 	for range 50 {
-		offset := mrand.Intn(int(nbytes))
+		offset := rnd.IntN(int(nbytes))
 		l := int(nbytes) - offset
 		n, err := rs.Seek(int64(offset), io.SeekStart)
 		if err != nil {
@@ -448,7 +449,7 @@ func TestSeekingConsistency(t *testing.T) {
 func testSeekingConsistency(t *testing.T, rawLeaves UseRawLeaves) {
 	const nbytes = 128 * 1024
 	should := make([]byte, nbytes)
-	random.NewRand().Read(should)
+	random.New().Read(should)
 
 	read := bytes.NewReader(should)
 	ds := mdtest.Mock()
@@ -495,7 +496,7 @@ func TestAppend(t *testing.T) {
 func testAppend(t *testing.T, rawLeaves UseRawLeaves) {
 	const nbytes = 128 * 1024
 	should := make([]byte, nbytes)
-	random.NewRand().Read(should)
+	random.New().Read(should)
 
 	// Reader for half the bytes
 	read := bytes.NewReader(should[:nbytes/2])
@@ -562,7 +563,7 @@ func testMultipleAppends(t *testing.T, rawLeaves UseRawLeaves) {
 	// TODO: fix small size appends and make this number bigger
 	const nbytes = 1000
 	should := make([]byte, nbytes)
-	random.NewRand().Read(should)
+	random.New().Read(should)
 
 	read := bytes.NewReader(nil)
 	nd, err := buildTestDag(ds, chunker.NewSizeSplitter(read, 500), rawLeaves)
@@ -748,7 +749,7 @@ func TestMetadata(t *testing.T) {
 func testMetadata(t *testing.T, rawLeaves UseRawLeaves) {
 	nbytes := 3 * chunker.DefaultBlockSize
 	buf := new(bytes.Buffer)
-	_, err := io.CopyN(buf, random.NewRand(), nbytes)
+	_, err := io.CopyN(buf, random.New(), nbytes)
 	if err != nil {
 		t.Fatal(err)
 	}

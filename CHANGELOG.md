@@ -17,16 +17,74 @@ The following emojis are used to highlight certain changes:
 ### Added
 
 - `namesys`: DNS resolution can report the TXT record TTL. `WithDNSResolver` uses it automatically when the resolver implements [`madns.TXTWithTTLResolver`](https://github.com/multiformats/go-multiaddr-dns/pull/75), and `NewDNSResolverWithTTL`, `WithDNSResolverWithTTL`, and `LookupTXTWithTTLFunc` take a TTL-aware lookup directly. A gateway can then set `Cache-Control: max-age` for DNSLink (`/ipns/<dnslink-host>`) responses from the real DNS TTL instead of a static value. `NewDNSResolver` and `LookupTXTFunc` keep their signatures and report an unknown TTL (0). [#329](https://github.com/ipfs/boxo/issues/329)
+- `gateway`: `GET`/`HEAD /ipfs/bafkqaaa?format=raw` now always returns `200` with an empty body, so probing clients keep marking the gateway as functional even when its backend cannot serve identity CIDs. `bitswap/network/httpnet` sends this [trustless gateway probe](https://specs.ipfs.tech/http-gateways/trustless-gateway/#dedicated-probe-paths) to check providers, and a failed probe drops the provider. Exported as `gateway.EmptyIdentityCID`. [#1179](https://github.com/ipfs/boxo/pull/1179)
+- `path`: added `NewPathFromURI`, which accepts native IPFS URIs (`ipfs://cid`, `ipns://name`, `ipld://cid`, and the schemeless `ipfs:`/`ipns:`/`ipld:` forms) and rewrites them to canonical content paths, so values copied from browsers and other tools parse as-is. `NewPath` stays strict and still rejects URI-shaped input, leaving untrusted parsing such as DNSLink records unchanged. [#1182](https://github.com/ipfs/boxo/pull/1182)
+- `blockstore`: `CachedBlockstore` now returns a value implementing the
+exported `BloomCacheStatus` interface (`Wait`/`BloomActive`/`Rebuild`) when a
+Bloom filter is configured, so callers can wait for and observe the result of
+the asynchronous filter build (previously these methods were unreachable on the
+unexported cache type), and retry a failed build with `Rebuild`. While a
+rebuild runs the filter is inactive (lookups fall through to the underlying
+blockstore, so results stay correct but unaccelerated) and it is activated
+again only on a complete enumeration. A new optional `AllKeysChanWithErrer`
+capability lets a `Blockstore` report an error that truncates `AllKeysChan`
+enumeration. [#1184](https://github.com/ipfs/boxo/pull/1184)
+- `mfs`: added `WithFetchTimeout`, a time limit on how long MFS waits when it has to fetch part of a tree from the network. MFS can hold a tree whose contents are pulled in on demand, for example a reference made with `ipfs files cp /ipfs/<cid>`. If a needed part is unavailable, MFS would otherwise wait for it forever, freezing every MFS operation and blocking a clean shutdown; with a timeout the wait ends in an error instead. On by default at a generous `DefaultFetchTimeout` (5 minutes) that only affects unreachable data; pass `WithFetchTimeout(0)` to disable. [#1185](https://github.com/ipfs/boxo/pull/1185)
 
 ### Changed
 
 - `namesys`: a resolved name's TTL is the shortest across all of its hops, so a DNSLink or recursive IPNS name is not cached past its earliest-expiring link. Hops with an unknown TTL (0) are ignored, leaving single-hop and current DNSLink results unaffected. [#329](https://github.com/ipfs/boxo/issues/329)
 - `namesys`: `WithMaxCacheTTL` now also caps the TTL reported in resolution results, and results served from the internal cache report the entry's remaining lifetime instead of its original TTL. A gateway deriving `Cache-Control: max-age` from the result can no longer advertise freshness past the operator's cap or past the moment the cache re-resolves the name. [#329](https://github.com/ipfs/boxo/issues/329)
+- 🛠 `mfs`: `File.Open` now takes a `context.Context`. Writing to a file whose data has to be fetched from the network (for example, a lazy reference created with `ipfs files cp`) now uses that context, so the write stops when the context is cancelled, such as on a client timeout or when MFS shuts down, instead of waiting forever for a block that never arrives. Callers must add a context argument; pass the request's context to let a timeout cancel the write. [#1185](https://github.com/ipfs/boxo/pull/1185)
+- 🧪 `testing`: tests now use `go-test` v0.4.0 and `math/rand/v2`. `go-test/random` no longer has a global seed or a global sequence, so one test can no longer change the values another test expects to generate deterministically, a class of failure that showed up as an intermittent break in an unrelated test. A generator can also be reused now, instead of being rebuilt for every value. [#1187](https://github.com/ipfs/boxo/pull/1187)
+- upgrade to `go-libp2p-kad-dht` [v0.41.0](https://github.com/libp2p/go-libp2p-kad-dht/releases/tag/v0.41.0)
+- upgrade to `go-unixfsnode` [v1.10.5](https://github.com/ipfs/go-unixfsnode/releases/tag/v1.10.5)
+- upgrade to `go-cid` [v0.6.2](https://github.com/ipfs/go-cid/releases/tag/v0.6.2)
 
 ### Removed
 
+- 🛠 `util`: removed the deprecated `NewSeededRand` and `NewTimeSeededRand`. Use [`go-test/random`](https://github.com/ipfs/go-test) instead. [#1187](https://github.com/ipfs/boxo/pull/1187)
+
 ### Fixed
 
+- `gateway`: fixed a data race in the remote blockstore, CAR fetcher, and value store. Each picked a gateway URL out of its list using a per-instance `*rand.Rand`, which is not safe to use from more than one goroutine, so a gateway serving requests in parallel was racing on every request. They now use the top-level `math/rand/v2` functions, which are safe to share. [#1187](https://github.com/ipfs/boxo/pull/1187)
+- `blockstore`: the Bloom filter cache no longer activates after an incomplete
+build. Previously, if `AllKeysChan` enumeration was truncated by a
+mid-iteration datastore error (which was only logged, never propagated) or by a
+cancelled context, the cache treated the closed channel as a complete build and
+activated a Bloom filter holding only a subset of the stored CIDs. It then
+answered "not present" conclusively for blocks that exist but were never
+indexed, reporting present blocks as missing (`Has` returns false,
+`Get`/`GetSize`/`View` return not-found, `DeleteBlock` becomes a silent no-op).
+The build now activates the filter only when enumeration is known to have
+completed; otherwise it records the error (observable via
+`BloomCacheStatus.Wait`) and the cache degrades to correct pass-through. This
+also fixes a race where a cancelled build could still mark the filter active.
+[#1183](https://github.com/ipfs/boxo/pull/1183)
+
+### Security
+
+
+## [v0.41.0]
+
+### Added
+
+- `ipld/merkledag/traverse`: added the `Visited` interface and `Options.Visited` field, so callers can plug in their own set for skipping duplicates when `SkipDuplicates` is on. `*go-cid.Set` already works as one; a bounded or disk-backed set keeps memory low on very large DAGs.
+
+### Changed
+
+- upgrade to `go-ipld-prime` [v0.24.0](https://github.com/ipld/go-ipld-prime/releases/tag/v0.24.0)
+- upgrade to `polydawn/refmt` [v0.90.0](https://github.com/polydawn/refmt/releases/tag/v0.90.0)
+- upgrade to `go-car/v2` [v2.17.0](https://github.com/ipld/go-car/releases/tag/v2.17.0)
+- upgrade to `go.opentelemetry.io` to [v1.44.0](https://github.com/open-telemetry/opentelemetry-go/releases/tag/v1.44.0)(includes [v1.43.0](https://github.com/open-telemetry/opentelemetry-go/releases/tag/v1.43.0))
+
+### Fixed
+
+- `routing/http/server`: `GET /routing/v1/ipns/{name}` no longer gives a cache a window that outlasts the record. It caps `max-age` to the record's remaining validity and sizes the stale window (`stale-while-revalidate`/`stale-if-error`) to the time left after it, so the two never cross the record's EOL. An expired record, or one whose `ValidityType` is not EOL (unknown expiration), returns `Cache-Control: no-store`, and a negative TTL no longer yields a negative `max-age`. [#1166](https://github.com/ipfs/boxo/pull/1166)
+- `gateway`: serving a raw IPNS record (`GET /ipns/{name}?format=ipns-record`) now caps `max-age` to the record's remaining validity and never lets it go negative, so a cache cannot reuse the record past its EOL. [#1166](https://github.com/ipfs/boxo/pull/1166)
+- `namesys`: the IPNS resolver now floors a negative record TTL at zero, so a malformed record can no longer surface a negative TTL through `Result.TTL`. [#1166](https://github.com/ipfs/boxo/pull/1166)
+- `namesys`: a cache hit now reports the TTL remaining in the cache entry rather than the record's original TTL, so a late hit near a record's EOL can no longer advertise a freshness lifetime that outlives the record. [#1166](https://github.com/ipfs/boxo/pull/1166)
+- `ipns`: `NewRecord` floors a negative TTL at zero and `Validate` rejects records carrying one. [#1166](https://github.com/ipfs/boxo/pull/1166)
 - `bitswap/network/bsnet`: stop marking a peer unresponsive on a single failed send attempt. `send()` is retried by `multiAttempt()`, which already marks the peer once all retries are exhausted; marking on the first failure could permanently sideline a peer that had just reconnected (the disconnect notification being suppressed), hanging fetches from it until it fully disconnected. [#1164](https://github.com/ipfs/boxo/pull/1164)
 
 ### Security

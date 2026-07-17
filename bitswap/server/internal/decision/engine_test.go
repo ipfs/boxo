@@ -5,7 +5,6 @@ package decision
 import (
 	"bytes"
 	"context"
-	"crypto/rand"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -1656,7 +1655,7 @@ func TestIgnoresCidsAboveLimit(t *testing.T) {
 		hash = binary.AppendUvarint(hash, cidLimit)
 		startOfDigest := len(hash)
 		hash = append(hash, make(mh.Multihash, cidLimit)...)
-		rand.Read(hash[startOfDigest:])
+		random.New().Read(hash[startOfDigest:])
 		return cid.NewCidV1(cid.Raw, hash)
 	}
 
@@ -1777,7 +1776,7 @@ func TestIgnoresIdentityCid(t *testing.T) {
 		hash = binary.AppendUvarint(hash, digestSize)
 		startOfDigest := len(hash)
 		hash = append(hash, make(mh.Multihash, digestSize)...)
-		rand.Read(hash[startOfDigest:])
+		random.New().Read(hash[startOfDigest:])
 		return cid.NewCidV1(cid.Raw, hash)
 	}
 

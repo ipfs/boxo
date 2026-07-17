@@ -74,6 +74,11 @@ func Validate(rec *Record, pk ic.PubKey) error {
 		return ErrExpiredRecord
 	}
 
+	// The TTL is a non-negative cache hint per the spec; reject a negative one.
+	if ttl, err := rec.TTL(); err == nil && ttl < 0 {
+		return fmt.Errorf("%w: negative TTL", ErrInvalidRecord)
+	}
+
 	return nil
 }
 

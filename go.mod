@@ -16,28 +16,28 @@ require (
 	github.com/hashicorp/golang-lru/v2 v2.0.7
 	github.com/ipfs/bbloom v0.1.0
 	github.com/ipfs/go-bitfield v1.1.0
-	github.com/ipfs/go-block-format v0.2.3
-	github.com/ipfs/go-cid v0.6.1
-	github.com/ipfs/go-cidutil v0.1.1
-	github.com/ipfs/go-datastore v0.9.1
+	github.com/ipfs/go-block-format v0.2.4
+	github.com/ipfs/go-cid v0.6.2
+	github.com/ipfs/go-cidutil v0.1.2
+	github.com/ipfs/go-datastore v0.9.2
 	github.com/ipfs/go-detect-race v0.0.1
 	github.com/ipfs/go-dsqueue v0.2.0
 	github.com/ipfs/go-ipfs-delay v0.0.1
 	github.com/ipfs/go-ipfs-redirects-file v0.1.2
-	github.com/ipfs/go-ipld-format v0.6.3
+	github.com/ipfs/go-ipld-format v0.6.4
 	github.com/ipfs/go-ipld-legacy v0.3.0
 	github.com/ipfs/go-log/v2 v2.9.2
 	github.com/ipfs/go-metrics-interface v0.3.0
 	github.com/ipfs/go-peertaskqueue v0.8.3
-	github.com/ipfs/go-test v0.3.0
-	github.com/ipfs/go-unixfsnode v1.10.4
-	github.com/ipld/go-car/v2 v2.16.0
+	github.com/ipfs/go-test v0.4.1
+	github.com/ipfs/go-unixfsnode v1.10.5
+	github.com/ipld/go-car/v2 v2.17.0
 	github.com/ipld/go-codec-dagpb v1.7.0
-	github.com/ipld/go-ipld-prime v0.23.0
+	github.com/ipld/go-ipld-prime v0.24.0
 	github.com/libp2p/go-buffer-pool v0.1.0
 	github.com/libp2p/go-doh-resolver v0.5.1-0.20260603151746-4e7758ec9748
 	github.com/libp2p/go-libp2p v0.48.0
-	github.com/libp2p/go-libp2p-kad-dht v0.40.0
+	github.com/libp2p/go-libp2p-kad-dht v0.41.0
 	github.com/libp2p/go-libp2p-record v0.3.1
 	github.com/libp2p/go-libp2p-routing-helpers v0.7.5
 	github.com/libp2p/go-libp2p-testing v0.12.0
@@ -51,7 +51,7 @@ require (
 	github.com/multiformats/go-multicodec v0.10.0
 	github.com/multiformats/go-multihash v0.2.3
 	github.com/multiformats/go-multistream v0.6.1
-	github.com/polydawn/refmt v0.89.1-0.20231129105047-37766d95467a
+	github.com/polydawn/refmt v0.90.0
 	github.com/prometheus/client_golang v1.23.2
 	github.com/prometheus/client_model v0.6.2
 	github.com/slok/go-http-metrics v0.13.0
@@ -60,18 +60,18 @@ require (
 	github.com/whyrusleeping/base32 v0.0.0-20170828182744-c30ac30633cc
 	github.com/whyrusleeping/chunker v0.0.0-20181014151217-fe64bd25879f
 	go.opencensus.io v0.24.0
-	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.68.0
-	go.opentelemetry.io/otel v1.43.0
-	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.43.0
-	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp v1.43.0
-	go.opentelemetry.io/otel/exporters/stdout/stdouttrace v1.43.0
-	go.opentelemetry.io/otel/sdk v1.43.0
-	go.opentelemetry.io/otel/trace v1.43.0
+	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.69.0
+	go.opentelemetry.io/otel v1.44.0
+	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.44.0
+	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp v1.44.0
+	go.opentelemetry.io/otel/exporters/stdout/stdouttrace v1.44.0
+	go.opentelemetry.io/otel/sdk v1.44.0
+	go.opentelemetry.io/otel/trace v1.44.0
 	go.uber.org/zap v1.28.0
-	golang.org/x/exp v0.0.0-20260508232706-74f9aab9d74a
+	golang.org/x/exp v0.0.0-20260611194520-c48552f49976
 	golang.org/x/oauth2 v0.36.0
-	golang.org/x/sync v0.20.0
-	golang.org/x/sys v0.45.0
+	golang.org/x/sync v0.22.0
+	golang.org/x/sys v0.47.0
 	google.golang.org/protobuf v1.36.11
 )
 
@@ -93,7 +93,7 @@ require (
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/google/gopacket v1.1.19 // indirect
 	github.com/gorilla/websocket v1.5.3 // indirect
-	github.com/grpc-ecosystem/grpc-gateway/v2 v2.28.0 // indirect
+	github.com/grpc-ecosystem/grpc-gateway/v2 v2.29.0 // indirect
 	github.com/hashicorp/golang-lru v1.0.2 // indirect
 	github.com/huin/goupnp v1.3.0 // indirect
 	github.com/ipfs/go-ipfs-pq v0.0.4 // indirect
@@ -141,7 +141,7 @@ require (
 	github.com/prometheus/common v0.67.5 // indirect
 	github.com/prometheus/procfs v0.20.1 // indirect
 	github.com/quic-go/qpack v0.6.0 // indirect
-	github.com/quic-go/quic-go v0.59.0 // indirect
+	github.com/quic-go/quic-go v0.59.1 // indirect
 	github.com/quic-go/webtransport-go v0.10.0 // indirect
 	github.com/stretchr/objx v0.5.2 // indirect
 	github.com/ucarion/urlpath v0.0.0-20200424170820-7ccc79b76bbb // indirect
@@ -150,26 +150,26 @@ require (
 	github.com/whyrusleeping/go-keyspace v0.0.0-20160322163242-5b898ac5add1 // indirect
 	github.com/wlynxg/anet v0.0.5 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
-	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.43.0 // indirect
-	go.opentelemetry.io/otel/metric v1.43.0 // indirect
+	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.44.0 // indirect
+	go.opentelemetry.io/otel/metric v1.44.0 // indirect
 	go.opentelemetry.io/proto/otlp v1.10.0 // indirect
 	go.uber.org/dig v1.19.0 // indirect
 	go.uber.org/fx v1.24.0 // indirect
 	go.uber.org/mock v0.5.2 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	go.yaml.in/yaml/v2 v2.4.4 // indirect
-	golang.org/x/crypto v0.51.0 // indirect
-	golang.org/x/mod v0.36.0 // indirect
-	golang.org/x/net v0.54.0 // indirect
-	golang.org/x/telemetry v0.0.0-20260508192327-42602be52be6 // indirect
-	golang.org/x/text v0.37.0 // indirect
+	golang.org/x/crypto v0.53.0 // indirect
+	golang.org/x/mod v0.37.0 // indirect
+	golang.org/x/net v0.56.0 // indirect
+	golang.org/x/telemetry v0.0.0-20260610154732-fb80ec83bdd9 // indirect
+	golang.org/x/text v0.38.0 // indirect
 	golang.org/x/time v0.12.0 // indirect
-	golang.org/x/tools v0.45.0 // indirect
+	golang.org/x/tools v0.46.0 // indirect
 	golang.org/x/xerrors v0.0.0-20240903120638-7835f813f4da // indirect
 	gonum.org/v1/gonum v0.17.0 // indirect
-	google.golang.org/genproto/googleapis/api v0.0.0-20260401024825-9d38bb4040a9 // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20260401024825-9d38bb4040a9 // indirect
-	google.golang.org/grpc v1.80.0 // indirect
+	google.golang.org/genproto/googleapis/api v0.0.0-20260526163538-3dc84a4a5aaa // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20260526163538-3dc84a4a5aaa // indirect
+	google.golang.org/grpc v1.81.1 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	lukechampine.com/blake3 v1.4.1 // indirect
 )

@@ -391,7 +391,7 @@ func (bb *BlocksBackend) Head(ctx context.Context, path path.ImmutablePath) (Con
 // emptyRoot is a CAR root with the empty identity CID. CAR files are recommended
 // to always include a CID in their root, even if it's just the empty CID.
 // https://ipld.io/specs/transport/car/carv1/#number-of-roots
-var emptyRoot = []cid.Cid{cid.MustParse("bafkqaaa")}
+var emptyRoot = []cid.Cid{EmptyIdentityCID}
 
 func (bb *BlocksBackend) GetCAR(ctx context.Context, p path.ImmutablePath, params CarParams) (ContentPathMetadata, io.ReadCloser, error) {
 	pathMetadata, resolveErr := bb.ResolvePath(ctx, p)

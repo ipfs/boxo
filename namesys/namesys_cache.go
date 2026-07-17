@@ -31,12 +31,14 @@ func (ns *namesys) cacheGet(name string) (path.Path, time.Duration, time.Time, b
 		return nil, 0, time.Now(), false
 	}
 
-	// The TTL of a cache hit is the entry's remaining lifetime: it starts at
-	// the entry TTL capped by maxCacheTTL and shrinks as the entry ages, so a
-	// caller (and any Cache-Control max-age derived from this) never holds the
-	// value past the moment this cache re-resolves it.
+	// The TTL of a cache hit is the entry's remaining cache lifetime, capped
+	// to the entry TTL: it starts at the entry TTL bounded by maxCacheTTL and
+	// shrinks as the entry ages, so a caller (and any Cache-Control max-age
+	// derived from this) never holds the value past the moment this cache
+	// re-resolves it. The clock is read once so a hit racing entry expiry
+	// cannot report a negative TTL.
 	if remaining := time.Until(entry.cacheEOL); remaining > 0 {
-		return entry.val, remaining, entry.lastMod, true
+		return entry.val, min(entry.ttl, remaining), entry.lastMod, true
 	}
 
 	// We do not delete the entry from the cache. Removals are handled by the
