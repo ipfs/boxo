@@ -67,8 +67,13 @@ func (ns *namesys) cacheSet(name string, val path.Path, ttl time.Duration, lastM
 	}
 
 	// The cache TTL is capped at the configured maxCacheTTL. If not
-	// configured, the entry TTL will always be used.
-	cacheEOL := time.Now().Add(ns.capTTL(ttl))
+	// configured, the entry TTL will always be used. A non-positive cap
+	// disables retention entirely (kubo's offline node passes 0 for this).
+	cacheTTL := ttl
+	if ns.maxCacheTTL != nil {
+		cacheTTL = min(cacheTTL, max(0, *ns.maxCacheTTL))
+	}
+	cacheEOL := time.Now().Add(cacheTTL)
 
 	// Add automatically evicts previous entry, so it works for updating.
 	ns.cache.Add(name, cacheEntry{
@@ -81,10 +86,12 @@ func (ns *namesys) cacheSet(name string, val path.Path, ttl time.Duration, lastM
 
 // capTTL bounds a TTL to the configured maximum cache TTL, so an operator
 // capping cache staleness caps the TTL reported to callers the same way. A
-// negative cap behaves like 0: nothing is cached and the TTL reads as unknown.
+// non-positive cap only disables the cache (callers such as kubo's offline
+// node pass 0 to mean exactly that) and leaves the reported TTL untouched:
+// the record's validity is a property of the record, not of local caching.
 func (ns *namesys) capTTL(ttl time.Duration) time.Duration {
-	if ns.maxCacheTTL != nil && ttl > *ns.maxCacheTTL {
-		return max(0, *ns.maxCacheTTL)
+	if ns.maxCacheTTL != nil && *ns.maxCacheTTL > 0 && ttl > *ns.maxCacheTTL {
+		return *ns.maxCacheTTL
 	}
 	return ttl
 }

@@ -201,10 +201,16 @@ func TestResolveMaxCacheTTLCapsResultTTL(t *testing.T) {
 	nsNoCap := &namesys{dnsResolver: NewDNSResolverWithTTL(lookup)}
 	testResolution(t, nsNoCap, "/ipns/example.com", DefaultDepthLimit, expectedPath, recordTTL, nil)
 
-	// a nonsensical negative cap is never emitted; it reads as unknown (0)
+	// a non-positive cap disables the cache but must not touch the reported
+	// TTL: kubo's offline node passes 0 and still expects Cache-Control
+	// max-age derived from the record TTL
+	zeroTTL := time.Duration(0)
+	nsZero := &namesys{dnsResolver: NewDNSResolverWithTTL(lookup), maxCacheTTL: &zeroTTL}
+	testResolution(t, nsZero, "/ipns/example.com", DefaultDepthLimit, expectedPath, recordTTL, nil)
+
 	negTTL := -time.Second
 	nsNeg := &namesys{dnsResolver: NewDNSResolverWithTTL(lookup), maxCacheTTL: &negTTL}
-	testResolution(t, nsNeg, "/ipns/example.com", DefaultDepthLimit, expectedPath, 0, nil)
+	testResolution(t, nsNeg, "/ipns/example.com", DefaultDepthLimit, expectedPath, recordTTL, nil)
 }
 
 func TestCacheGetReportsRemainingTTL(t *testing.T) {
@@ -247,6 +253,15 @@ func TestCacheGetReportsRemainingTTL(t *testing.T) {
 	require.True(t, ok)
 	require.Greater(t, ttl, time.Duration(0))
 	require.LessOrEqual(t, ttl, maxTTL)
+
+	// a cap of 0 disables retention: nothing is served from the cache
+	zeroTTL := time.Duration(0)
+	nsZero := &namesys{maxCacheTTL: &zeroTTL}
+	require.NoError(t, WithCache(128)(nsZero))
+	nsZero.cacheSet(name, p, entryTTL, time.Now())
+
+	_, _, _, ok = nsZero.cacheGet(name)
+	require.False(t, ok)
 }
 
 func TestCacheGetClampsTTLToCacheEOL(t *testing.T) {

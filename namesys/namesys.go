@@ -79,9 +79,10 @@ func WithCache(size int) Option {
 
 // WithMaxCacheTTL configures the maximum cache TTL. By default, if the cache is
 // enabled, the entry TTL will be used for caching. By setting this option, you
-// can limit how long that TTL is. The same cap applies to the TTL reported in
-// resolution results, so a gateway deriving Cache-Control max-age from it
-// stays within the configured bound.
+// can limit how long that TTL is. A positive cap also applies to the TTL
+// reported in resolution results, so a gateway deriving Cache-Control max-age
+// from it stays within the configured bound. A cap of 0 or less only disables
+// the cache; the reported TTL still comes from the record.
 //
 // For example, if you configure a maximum cache TTL of 1 minute:
 //   - Entry TTL is 5 minutes -> Cache TTL is 1 minute
