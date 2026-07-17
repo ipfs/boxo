@@ -21,6 +21,7 @@ The following emojis are used to highlight certain changes:
 ### Changed
 
 - `namesys`: a resolved name's TTL is the shortest across all of its hops, so a DNSLink or recursive IPNS name is not cached past its earliest-expiring link. Hops with an unknown TTL (0) are ignored, leaving single-hop and current DNSLink results unaffected. [#329](https://github.com/ipfs/boxo/issues/329)
+- `namesys`: `WithMaxCacheTTL` now also caps the TTL reported in resolution results, and results served from the internal cache report the entry's remaining lifetime instead of its original TTL. A gateway deriving `Cache-Control: max-age` from the result can no longer advertise freshness past the operator's cap or past the moment the cache re-resolves the name. [#329](https://github.com/ipfs/boxo/issues/329)
 
 ### Removed
 

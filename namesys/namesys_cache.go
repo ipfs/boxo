@@ -31,8 +31,12 @@ func (ns *namesys) cacheGet(name string) (path.Path, time.Duration, time.Time, b
 		return nil, 0, time.Now(), false
 	}
 
-	if time.Now().Before(entry.cacheEOL) {
-		return entry.val, entry.ttl, entry.lastMod, true
+	// The TTL of a cache hit is the entry's remaining lifetime: it starts at
+	// the entry TTL capped by maxCacheTTL and shrinks as the entry ages, so a
+	// caller (and any Cache-Control max-age derived from this) never holds the
+	// value past the moment this cache re-resolves it.
+	if remaining := time.Until(entry.cacheEOL); remaining > 0 {
+		return entry.val, remaining, entry.lastMod, true
 	}
 
 	// We do not delete the entry from the cache. Removals are handled by the
@@ -62,11 +66,7 @@ func (ns *namesys) cacheSet(name string, val path.Path, ttl time.Duration, lastM
 
 	// The cache TTL is capped at the configured maxCacheTTL. If not
 	// configured, the entry TTL will always be used.
-	cacheTTL := ttl
-	if ns.maxCacheTTL != nil && cacheTTL > *ns.maxCacheTTL {
-		cacheTTL = *ns.maxCacheTTL
-	}
-	cacheEOL := time.Now().Add(cacheTTL)
+	cacheEOL := time.Now().Add(ns.capTTL(ttl))
 
 	// Add automatically evicts previous entry, so it works for updating.
 	ns.cache.Add(name, cacheEntry{
@@ -75,6 +75,16 @@ func (ns *namesys) cacheSet(name string, val path.Path, ttl time.Duration, lastM
 		lastMod:  lastMod,
 		cacheEOL: cacheEOL,
 	})
+}
+
+// capTTL bounds a TTL to the configured maximum cache TTL, so an operator
+// capping cache staleness caps the TTL reported to callers the same way. A
+// negative cap behaves like 0: nothing is cached and the TTL reads as unknown.
+func (ns *namesys) capTTL(ttl time.Duration) time.Duration {
+	if ns.maxCacheTTL != nil && ttl > *ns.maxCacheTTL {
+		return max(0, *ns.maxCacheTTL)
+	}
+	return ttl
 }
 
 func (ns *namesys) cacheInvalidate(name string) {

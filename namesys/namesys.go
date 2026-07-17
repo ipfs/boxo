@@ -79,7 +79,9 @@ func WithCache(size int) Option {
 
 // WithMaxCacheTTL configures the maximum cache TTL. By default, if the cache is
 // enabled, the entry TTL will be used for caching. By setting this option, you
-// can limit how long that TTL is.
+// can limit how long that TTL is. The same cap applies to the TTL reported in
+// resolution results, so a gateway deriving Cache-Control max-age from it
+// stays within the configured bound.
 //
 // For example, if you configure a maximum cache TTL of 1 minute:
 //   - Entry TTL is 5 minutes -> Cache TTL is 1 minute
@@ -266,7 +268,7 @@ func (ns *namesys) resolveOnceAsync(ctx context.Context, p path.Path, options Re
 					res.Err = errors.Join(err, res.Err)
 				}
 
-				emitOnceResult(ctx, out, AsyncResult{Path: p, TTL: res.TTL, LastMod: res.LastMod, Err: res.Err})
+				emitOnceResult(ctx, out, AsyncResult{Path: p, TTL: ns.capTTL(res.TTL), LastMod: res.LastMod, Err: res.Err})
 			case <-ctx.Done():
 				return
 			}
