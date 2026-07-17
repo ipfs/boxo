@@ -3,10 +3,11 @@ package resolver_test
 import (
 	"bytes"
 	"context"
-	"math/rand"
+	crand "crypto/rand"
+	"io"
+	"math/rand/v2"
 	"strings"
 	"testing"
-	"time"
 
 	bsfetcher "github.com/ipfs/boxo/fetcher/impl/blockservice"
 	merkledag "github.com/ipfs/boxo/ipld/merkledag"
@@ -28,10 +29,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func randNode() *merkledag.ProtoNode {
+func randNode(r io.Reader) *merkledag.ProtoNode {
 	node := new(merkledag.ProtoNode)
 	node.SetData(make([]byte, 32))
-	r := rand.New(rand.NewSource(time.Now().UnixNano()))
 	r.Read(node.Data())
 	return node
 }
@@ -40,9 +40,13 @@ func TestRecursivePathResolution(t *testing.T) {
 	ctx := context.Background()
 	bsrv := dagmock.Bserv()
 
-	a := randNode()
-	b := randNode()
-	c := randNode()
+	var seed [32]byte
+	_, _ = crand.Read(seed[:])
+	cc8 := rand.NewChaCha8(seed)
+
+	a := randNode(cc8)
+	b := randNode(cc8)
+	c := randNode(cc8)
 
 	err := b.AddNodeLink("grandchild", c)
 	require.NoError(t, err)
@@ -97,9 +101,13 @@ func TestResolveToLastNode_ErrNoLink(t *testing.T) {
 	ctx := context.Background()
 	bsrv := dagmock.Bserv()
 
-	a := randNode()
-	b := randNode()
-	c := randNode()
+	var seed [32]byte
+	_, _ = crand.Read(seed[:])
+	cc8 := rand.NewChaCha8(seed)
+
+	a := randNode(cc8)
+	b := randNode(cc8)
+	c := randNode(cc8)
 
 	err := b.AddNodeLink("grandchild", c)
 	require.NoError(t, err)
@@ -150,8 +158,12 @@ func TestResolveToLastNode_NoUnnecessaryFetching(t *testing.T) {
 	ctx := context.Background()
 	bsrv := dagmock.Bserv()
 
-	a := randNode()
-	b := randNode()
+	var seed [32]byte
+	_, _ = crand.Read(seed[:])
+	cc8 := rand.NewChaCha8(seed)
+
+	a := randNode(cc8)
+	b := randNode(cc8)
 
 	err := a.AddNodeLink("child", b)
 	require.NoError(t, err)
@@ -226,7 +238,11 @@ func TestResolveToLastNode_MixedSegmentTypes(t *testing.T) {
 	ctx := t.Context()
 
 	bsrv := dagmock.Bserv()
-	a := randNode()
+	var seed [32]byte
+	_, _ = crand.Read(seed[:])
+	cc8 := rand.NewChaCha8(seed)
+
+	a := randNode(cc8)
 	err := bsrv.AddBlock(ctx, a)
 	require.NoError(t, err)
 
@@ -275,9 +291,13 @@ func TestResolveToLastNode_MixedSegmentTypes(t *testing.T) {
 func TestRetrievalStatePropagation(t *testing.T) {
 	bsrv := dagmock.Bserv()
 
-	root := randNode()
-	mid := randNode()
-	leaf := randNode()
+	var seed [32]byte
+	_, _ = crand.Read(seed[:])
+	cc8 := rand.NewChaCha8(seed)
+
+	root := randNode(cc8)
+	mid := randNode(cc8)
+	leaf := randNode(cc8)
 	require.NoError(t, mid.AddNodeLink("grandchild", leaf))
 	require.NoError(t, root.AddNodeLink("child", mid))
 	for _, n := range []*merkledag.ProtoNode{root, mid, leaf} {

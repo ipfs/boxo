@@ -1,7 +1,7 @@
 package bitswap
 
 import (
-	"math/rand"
+	"github.com/ipfs/go-test/random"
 )
 
 type fixedRateLimitGenerator struct {
@@ -21,11 +21,11 @@ func (rateLimitGenerator *fixedRateLimitGenerator) NextRateLimit() float64 {
 type variableRateLimitGenerator struct {
 	rateLimit float64
 	std       float64
-	rng       *rand.Rand
+	rng       *random.Random
 }
 
 // VariableRateLimitGenerator makes rate limites that following a normal distribution.
-func VariableRateLimitGenerator(rateLimit float64, std float64, rng *rand.Rand) RateLimitGenerator {
+func VariableRateLimitGenerator(rateLimit float64, std float64, rng *random.Random) RateLimitGenerator {
 	if rng == nil {
 		rng = sharedRNG
 	}

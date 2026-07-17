@@ -13,14 +13,7 @@ import (
 func TestRabinChunking(t *testing.T) {
 	t.Parallel()
 
-	data := make([]byte, 1024*1024*16)
-	n, err := random.NewRand().Read(data)
-	if n < len(data) {
-		t.Fatalf("expected %d bytes, got %d", len(data), n)
-	}
-	if err != nil {
-		t.Fatal(err)
-	}
+	data := random.Bytes(1024 * 1024 * 16)
 
 	r := NewRabin(bytes.NewReader(data), 1024*256)
 
@@ -72,12 +65,9 @@ func testReuse(t *testing.T, cr newSplitter) {
 	t.Parallel()
 
 	data := make([]byte, 1024*1024*16)
-	n, err := random.NewRand().Read(data)
+	n, _ := random.New().Read(data)
 	if n < len(data) {
 		t.Fatalf("expected %d bytes, got %d", len(data), n)
-	}
-	if err != nil {
-		t.Fatal(err)
 	}
 
 	ch1 := chunkData(t, cr, data[1000:])

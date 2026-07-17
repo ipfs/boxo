@@ -41,7 +41,7 @@ func (f *fakeLogger) Errorf(format string, args ...any) {
 
 func randNode() (*mdag.ProtoNode, cid.Cid) {
 	nd := new(mdag.ProtoNode)
-	nd.SetData(random.Bytes(32))
+	nd.SetData(random.New().Bytes(32))
 	return nd, nd.Cid()
 }
 

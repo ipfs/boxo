@@ -1,12 +1,14 @@
-package util
+package util_test
 
 import (
 	"testing"
 	"time"
+
+	"github.com/ipfs/boxo/util"
 )
 
 func TestTimeFormatParseInversion(t *testing.T) {
-	v, err := ParseRFC3339(FormatRFC3339(time.Now()))
+	v, err := util.ParseRFC3339(util.FormatRFC3339(time.Now()))
 	if err != nil {
 		t.Fatal(err)
 	}

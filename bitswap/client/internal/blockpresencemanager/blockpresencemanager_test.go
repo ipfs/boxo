@@ -19,8 +19,9 @@ const (
 func TestBlockPresenceManager(t *testing.T) {
 	bpm := New()
 
-	p := random.Peers(1)[0]
-	cids := random.Cids(2)
+	rnd := random.New()
+	p := rnd.Peers(1)[0]
+	cids := rnd.Cids(2)
 	c0 := cids[0]
 	c1 := cids[1]
 
@@ -81,10 +82,11 @@ func TestBlockPresenceManager(t *testing.T) {
 func TestAddRemoveMulti(t *testing.T) {
 	bpm := New()
 
-	peers := random.Peers(2)
+	rnd := random.New()
+	peers := rnd.Peers(2)
 	p0 := peers[0]
 	p1 := peers[1]
-	cids := random.Cids(3)
+	cids := rnd.Cids(3)
 	c0 := cids[0]
 	c1 := cids[1]
 	c2 := cids[2]
@@ -132,12 +134,13 @@ func TestAddRemoveMulti(t *testing.T) {
 func TestAllPeersDoNotHaveBlock(t *testing.T) {
 	bpm := New()
 
-	peers := random.Peers(3)
+	rnd := random.New()
+	peers := rnd.Peers(3)
 	p0 := peers[0]
 	p1 := peers[1]
 	p2 := peers[2]
 
-	cids := random.Cids(3)
+	cids := rnd.Cids(3)
 	c0 := cids[0]
 	c1 := cids[1]
 	c2 := cids[2]

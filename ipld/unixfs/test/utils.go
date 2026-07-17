@@ -84,7 +84,7 @@ func GetEmptyNode(t testing.TB, dserv ipld.DAGService, opts NodeOpts) ipld.Node 
 
 // GetRandomNode returns a random unixfs file node.
 func GetRandomNode(t testing.TB, dserv ipld.DAGService, size int64, opts NodeOpts) ([]byte, ipld.Node) {
-	buf := random.Bytes(int(size))
+	buf := random.New().Bytes(size)
 	return buf, GetNode(t, dserv, buf, opts)
 }
 

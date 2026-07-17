@@ -77,10 +77,11 @@ func TestEmpty(t *testing.T) {
 func TestPWMBroadcastWantHaves(t *testing.T) {
 	pwm := newPeerWantManager(&gauge{}, &gauge{}, bcastAlways)
 
-	peers := random.Peers(3)
-	cids := random.Cids(2)
-	cids2 := random.Cids(2)
-	cids3 := random.Cids(2)
+	rnd := random.New()
+	peers := rnd.Peers(3)
+	cids := rnd.Cids(2)
+	cids2 := rnd.Cids(2)
+	cids3 := rnd.Cids(2)
 
 	peerQueues := make(map[peer.ID]PeerQueue)
 	for _, p := range peers[:2] {
@@ -127,7 +128,7 @@ func TestPWMBroadcastWantHaves(t *testing.T) {
 
 	// Sending want-block for a cid should prevent broadcast to that peer
 	clearSent(peerQueues)
-	cids4 := random.Cids(4)
+	cids4 := rnd.Cids(4)
 	wantBlocks := []cid.Cid{cids4[0], cids4[2]}
 	p0 := peers[0]
 	p1 := peers[1]
@@ -163,11 +164,12 @@ func TestPWMBroadcastWantHaves(t *testing.T) {
 func TestPWMSendWants(t *testing.T) {
 	pwm := newPeerWantManager(&gauge{}, &gauge{}, bcastAlways)
 
-	peers := random.Peers(2)
+	rnd := random.New()
+	peers := rnd.Peers(2)
 	p0 := peers[0]
 	p1 := peers[1]
-	cids := random.Cids(2)
-	cids2 := random.Cids(2)
+	cids := rnd.Cids(2)
+	cids2 := rnd.Cids(2)
 
 	peerQueues := make(map[peer.ID]PeerQueue)
 	for _, p := range peers[:2] {
@@ -188,15 +190,15 @@ func TestPWMSendWants(t *testing.T) {
 	// - 1 old want-block and 2 new want-blocks
 	// - 1 old want-have  and 2 new want-haves
 	clearSent(peerQueues)
-	cids3 := random.Cids(2)
-	cids4 := random.Cids(2)
+	cids3 := rnd.Cids(2)
+	cids4 := rnd.Cids(2)
 	pwm.sendWants(p0, append(cids3, cids[0]), append(cids4, cids2[0]))
 	require.ElementsMatch(t, pq0.wbs, cids3, "Expected 2 want-blocks")
 	require.ElementsMatch(t, pq0.whs, cids4, "Expected 2 want-haves")
 
 	// Send to p0 as want-blocks: 1 new want-block, 1 old want-have
 	clearSent(peerQueues)
-	cids5 := random.Cids(1)
+	cids5 := rnd.Cids(1)
 	newWantBlockOldWantHave := append(cids5, cids2[0])
 	pwm.sendWants(p0, newWantBlockOldWantHave, []cid.Cid{})
 	// If a want was sent as a want-have, it should be ok to now send it as a
@@ -206,7 +208,7 @@ func TestPWMSendWants(t *testing.T) {
 
 	// Send to p0 as want-haves: 1 new want-have, 1 old want-block
 	clearSent(peerQueues)
-	cids6 := random.Cids(1)
+	cids6 := rnd.Cids(1)
 	newWantHaveOldWantBlock := append(cids6, cids[0])
 	pwm.sendWants(p0, []cid.Cid{}, newWantHaveOldWantBlock)
 	// If a want was previously sent as a want-block, it should not be
@@ -223,13 +225,14 @@ func TestPWMSendWants(t *testing.T) {
 func TestPWMSendCancels(t *testing.T) {
 	pwm := newPeerWantManager(&gauge{}, &gauge{}, bcastAlways)
 
-	peers := random.Peers(2)
+	rnd := random.New()
+	peers := rnd.Peers(2)
 	p0 := peers[0]
 	p1 := peers[1]
-	wb1 := random.Cids(2)
-	wh1 := random.Cids(2)
-	wb2 := random.Cids(2)
-	wh2 := random.Cids(2)
+	wb1 := rnd.Cids(2)
+	wh1 := rnd.Cids(2)
+	wb2 := rnd.Cids(2)
+	wh2 := rnd.Cids(2)
 	allwb := append(wb1, wb2...)
 	allwh := append(wh1, wh2...)
 
@@ -281,11 +284,12 @@ func TestStats(t *testing.T) {
 	wbg := &gauge{}
 	pwm := newPeerWantManager(g, wbg, bcastAlways)
 
-	peers := random.Peers(2)
+	rnd := random.New()
+	peers := rnd.Peers(2)
 	p0 := peers[0]
 	p1 := peers[1]
-	cids := random.Cids(2)
-	cids2 := random.Cids(2)
+	cids := rnd.Cids(2)
+	cids2 := rnd.Cids(2)
 
 	peerQueues := make(map[peer.ID]PeerQueue)
 	pq := &mockPQ{}
@@ -299,14 +303,14 @@ func TestStats(t *testing.T) {
 	require.Equal(t, 2, wbg.count, "Expected 2 want-blocks")
 
 	// Send 1 old want-block and 2 new want-blocks to p0
-	cids3 := random.Cids(2)
+	cids3 := rnd.Cids(2)
 	pwm.sendWants(p0, append(cids3, cids[0]), []cid.Cid{})
 
 	require.Equal(t, 6, g.count, "Expected 6 wants")
 	require.Equal(t, 4, wbg.count, "Expected 4 want-blocks")
 
 	// Broadcast 1 old want-have and 2 new want-haves
-	cids4 := random.Cids(2)
+	cids4 := rnd.Cids(2)
 	pwm.broadcastWantHaves(append(cids4, cids2[0]))
 	require.Equal(t, 8, g.count, "Expected 8 wants")
 	require.Equal(t, 4, wbg.count, "Expected 4 want-blocks")
@@ -319,7 +323,7 @@ func TestStats(t *testing.T) {
 
 	// Cancel 1 want-block that was sent to p0
 	// and 1 want-block that was not sent
-	cids5 := random.Cids(1)
+	cids5 := rnd.Cids(1)
 	pwm.sendCancels(append(cids5, cids[0]))
 
 	require.Equal(t, 7, g.count, "Expected 7 wants")
@@ -350,11 +354,12 @@ func TestStatsOverlappingWantBlockWantHave(t *testing.T) {
 	wbg := &gauge{}
 	pwm := newPeerWantManager(g, wbg, bcastAlways)
 
-	peers := random.Peers(2)
+	rnd := random.New()
+	peers := rnd.Peers(2)
 	p0 := peers[0]
 	p1 := peers[1]
-	cids := random.Cids(2)
-	cids2 := random.Cids(2)
+	cids := rnd.Cids(2)
+	cids2 := rnd.Cids(2)
 
 	pwm.addPeer(&mockPQ{}, p0)
 	pwm.addPeer(&mockPQ{}, p1)
@@ -381,11 +386,12 @@ func TestStatsRemovePeerOverlappingWantBlockWantHave(t *testing.T) {
 	wbg := &gauge{}
 	pwm := newPeerWantManager(g, wbg, bcastAlways)
 
-	peers := random.Peers(2)
+	rnd := random.New()
+	peers := rnd.Peers(2)
 	p0 := peers[0]
 	p1 := peers[1]
-	cids := random.Cids(2)
-	cids2 := random.Cids(2)
+	cids := rnd.Cids(2)
+	cids2 := rnd.Cids(2)
 
 	pwm.addPeer(&mockPQ{}, p0)
 	pwm.addPeer(&mockPQ{}, p1)

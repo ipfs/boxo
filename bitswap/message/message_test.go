@@ -17,7 +17,10 @@ import (
 )
 
 func mkFakeCid(s string) cid.Cid {
-	return random.Cids(1)[0]
+	var seed [32]byte
+	copy(seed[:], s)
+	rnd := random.NewSeeded(seed)
+	return rnd.Cids(1)[0]
 }
 
 func TestAppendWanted(t *testing.T) {

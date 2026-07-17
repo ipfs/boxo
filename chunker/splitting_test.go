@@ -9,12 +9,8 @@ import (
 	"github.com/ipfs/go-test/random"
 )
 
-func randBuf(t *testing.T, size int) []byte {
-	buf := make([]byte, size)
-	if _, err := random.NewRand().Read(buf); err != nil {
-		t.Fatal("failed to read enough randomness")
-	}
-	return buf
+func randBuf(t *testing.T, size int64) []byte {
+	return random.Bytes(size)
 }
 
 func copyBuf(buf []byte) []byte {

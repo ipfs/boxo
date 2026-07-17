@@ -29,12 +29,13 @@ func TestGetBlocks(t *testing.T) {
 	ex := Exchange(store)
 
 	expected := random.BlocksOfSize(2, blockSize)
+	ctx := t.Context()
 
 	for _, b := range expected {
-		if err := store.Put(context.Background(), b); err != nil {
+		if err := store.Put(ctx, b); err != nil {
 			t.Fatal(err)
 		}
-		if err := ex.NotifyNewBlocks(context.Background(), b); err != nil {
+		if err := ex.NotifyNewBlocks(ctx, b); err != nil {
 			t.Fail()
 		}
 	}
@@ -48,7 +49,7 @@ func TestGetBlocks(t *testing.T) {
 		return ks
 	}()
 
-	received, err := ex.GetBlocks(context.Background(), request)
+	received, err := ex.GetBlocks(ctx, request)
 	if err != nil {
 		t.Fatal(err)
 	}

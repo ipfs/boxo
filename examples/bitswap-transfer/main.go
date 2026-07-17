@@ -4,11 +4,12 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"encoding/binary"
 	"flag"
 	"fmt"
 	"io"
 	"log"
-	mrand "math/rand"
+	mrand "math/rand/v2"
 	"strconv"
 	"strings"
 
@@ -90,7 +91,9 @@ func makeHost(listenPort int, randseed int64) (host.Host, error) {
 	if randseed == 0 {
 		r = rand.Reader
 	} else {
-		r = mrand.New(mrand.NewSource(randseed))
+		var seed [32]byte
+		binary.BigEndian.PutUint64(seed[:], uint64(randseed))
+		r = mrand.NewChaCha8(seed)
 	}
 
 	// Generate a key pair for this host. We will use it at least

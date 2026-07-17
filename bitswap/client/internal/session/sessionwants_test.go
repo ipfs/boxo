@@ -30,8 +30,9 @@ func TestEmptySessionWants(t *testing.T) {
 
 func TestSessionWants(t *testing.T) {
 	sw := newSessionWants(5)
-	cids := random.Cids(10)
-	others := random.Cids(1)
+	rnd := random.New()
+	cids := rnd.Cids(10)
+	others := rnd.Cids(1)
 
 	// Add 10 new wants
 	//  toFetch    Live

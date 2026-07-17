@@ -26,8 +26,9 @@ func TestBasic(t *testing.T) {
 
 	const ses1 = 1
 	const ses2 = 2
-	cids1 := random.Cids(2)
-	cids2 := append(random.Cids(1), cids1[1])
+	rnd := random.New()
+	cids1 := rnd.Cids(2)
+	cids2 := append(rnd.Cids(1), cids1[1])
 	sim.RecordSessionInterest(ses1, cids1)
 
 	res := sim.FilterSessionInterested(ses1, cids1)
@@ -88,8 +89,9 @@ func TestRemoveSession(t *testing.T) {
 
 	const ses1 = 1
 	const ses2 = 2
-	cids1 := random.Cids(2)
-	cids2 := append(random.Cids(1), cids1[1])
+	rnd := random.New()
+	cids1 := rnd.Cids(2)
+	cids2 := append(rnd.Cids(1), cids1[1])
 	sim.RecordSessionInterest(ses1, cids1)
 	sim.RecordSessionInterest(ses2, cids2)
 	sim.RemoveSession(ses1)
@@ -116,8 +118,9 @@ func TestRemoveSessionInterested(t *testing.T) {
 
 	const ses1 = uint64(1)
 	const ses2 = uint64(2)
-	cids1 := random.Cids(2)
-	cids2 := append(random.Cids(1), cids1[1])
+	rnd := random.New()
+	cids1 := rnd.Cids(2)
+	cids2 := append(rnd.Cids(1), cids1[1])
 	sim.RecordSessionInterest(ses1, cids1)
 	sim.RecordSessionInterest(ses2, cids2)
 
