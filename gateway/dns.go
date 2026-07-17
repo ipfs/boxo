@@ -38,6 +38,12 @@ func newResolver(url string, opts ...doh.Option) (madns.BasicResolver, error) {
 //   - Custom resolver for ENS:          "eth." → "https://eth.link/dns-query"
 //   - Override the default OS resolver: "."    → "https://doh.applied-privacy.net/query"
 //
+// Domains matched by a DoH entry report the DNS TTL of DNSLink TXT records,
+// which the gateway turns into Cache-Control max-age. Domains that fall
+// through to the OS resolver cannot report TTLs (Go's [net.Resolver] returns
+// only record values); add a "." entry to route every lookup through DoH and
+// cover all DNSLink domains.
+//
 // [FQDNs]: https://en.wikipedia.org/wiki/Fully_qualified_domain_name
 // [DoH]: https://en.wikipedia.org/wiki/DNS_over_HTTPS
 func NewDNSResolver(resolvers map[string]string, dohOpts ...doh.Option) (*madns.Resolver, error) {

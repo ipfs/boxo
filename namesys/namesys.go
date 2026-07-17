@@ -97,6 +97,13 @@ func WithMaxCacheTTL(dur time.Duration) Option {
 // WithDNSResolver sets a custom DNS resolver in place of the system default. If
 // that resolver also implements [madns.TXTWithTTLResolver], its TXT TTLs flow
 // into resolved results, and from there into the gateway's Cache-Control header.
+//
+// The OS resolver cannot report TTLs: Go's [net.Resolver] returns only record
+// values, and [madns.DefaultResolver] wraps it. TTLs flow only for domains
+// routed through a resolver that can report them, such as a DNS-over-HTTPS
+// resolver (go-doh-resolver). A [madns.Resolver] mixing DoH with the OS
+// default reports real TTLs only for the DoH-covered domains; make DoH the
+// default resolver to cover every domain.
 func WithDNSResolver(rslv madns.BasicResolver) Option {
 	return func(ns *namesys) error {
 		// A resolver that reports TXT TTLs (such as a DoH resolver via
