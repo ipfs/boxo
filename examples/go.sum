@@ -178,8 +178,8 @@ github.com/libp2p/go-buffer-pool v0.1.0 h1:oK4mSFcQz7cTQIfqbe4MIj9gLW+mnanjyFtc6
 github.com/libp2p/go-buffer-pool v0.1.0/go.mod h1:N+vh8gMqimBzdKkSMVuydVDq+UV5QTWy5HSiZacSbPg=
 github.com/libp2p/go-cidranger v1.1.0 h1:ewPN8EZ0dd1LSnrtuwd4709PXVcITVeuwbag38yPW7c=
 github.com/libp2p/go-cidranger v1.1.0/go.mod h1:KWZTfSr+r9qEo9OkI9/SIEeAtw+NNoU0dXIXt15Okic=
-github.com/libp2p/go-doh-resolver v0.5.1-0.20260603151746-4e7758ec9748 h1:oHfW49Wd7aQckSbLeURGHKCuqaxxazQKtOYO0a3qHBo=
-github.com/libp2p/go-doh-resolver v0.5.1-0.20260603151746-4e7758ec9748/go.mod h1:ORKldXV7t2tneaa5J3KjuDN3IQqgGPVouLA4wzavwRU=
+github.com/libp2p/go-doh-resolver v0.6.0 h1:/UjWsDZ7CtF5WxojsgcWXNKa0uY1H9qnGO0cwbNF3N4=
+github.com/libp2p/go-doh-resolver v0.6.0/go.mod h1:C/HWNVB7j7tC6VsiGKe5Mi+m1/nfRK+dKAivZQDqeww=
 github.com/libp2p/go-flow-metrics v0.3.0 h1:q31zcHUvHnwDO0SHaukewPYgwOBSxtt830uJtUx6784=
 github.com/libp2p/go-flow-metrics v0.3.0/go.mod h1:nuhlreIwEguM1IvHAew3ij7A8BMlyHQJ279ao24eZZo=
 github.com/libp2p/go-libp2p v0.48.0 h1:h2BrLAgrj7X8bEN05K7qmrjpNHYA+6tnsGRdprjTnvo=
@@ -232,8 +232,8 @@ github.com/multiformats/go-base36 v0.2.0/go.mod h1:qvnKE++v+2MWCfePClUEjE78Z7P2a
 github.com/multiformats/go-multiaddr v0.1.1/go.mod h1:aMKBKNEYmzmDmxfX88/vz+J5IU55txyt0p4aiWVohjo=
 github.com/multiformats/go-multiaddr v0.16.1 h1:fgJ0Pitow+wWXzN9do+1b8Pyjmo8m5WhGfzpL82MpCw=
 github.com/multiformats/go-multiaddr v0.16.1/go.mod h1:JSVUmXDjsVFiW7RjIFMP7+Ev+h1DTbiJgVeTV/tcmP0=
-github.com/multiformats/go-multiaddr-dns v0.5.1-0.20260603161026-e8eb3c2de127 h1:SjNba11B5BQXxoeE9qYN83CwmsHi/TApsC/0EDv3FPA=
-github.com/multiformats/go-multiaddr-dns v0.5.1-0.20260603161026-e8eb3c2de127/go.mod h1:dwIQwdORZfnNQCeS7xLXyn+7626oRmMsVP30Uronhf0=
+github.com/multiformats/go-multiaddr-dns v0.6.0 h1:yKIW08WJHSPJ8bDAT2O/5fypCaUu9Bjl8r/1eJ4XAW8=
+github.com/multiformats/go-multiaddr-dns v0.6.0/go.mod h1:dwIQwdORZfnNQCeS7xLXyn+7626oRmMsVP30Uronhf0=
 github.com/multiformats/go-multiaddr-fmt v0.1.0 h1:WLEFClPycPkp4fnIzoFoV9FVd49/eQsuaL3/CWe167E=
 github.com/multiformats/go-multiaddr-fmt v0.1.0/go.mod h1:hGtDIW4PU4BqJ50gW2quDuPVjyWNZxToGUh/HwTZYJo=
 github.com/multiformats/go-multibase v0.3.0 h1:8helZD2+4Db7NNWFiktk2NePbF0boolBe6bDQvM4r68=
