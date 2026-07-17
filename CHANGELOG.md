@@ -50,6 +50,7 @@ enumeration. [#1184](https://github.com/ipfs/boxo/pull/1184)
 
 ### Fixed
 
+- `gateway`: `304 Not Modified` responses to `If-None-Match` and `If-Modified-Since` now carry `Etag` and the `Cache-Control` their `200` counterpart sends, so a client cache renews its freshness window when it revalidates. A bare 304 left the stored response expired, forcing a revalidation round-trip on every request after the first expiry even when the gateway had just confirmed the content is unchanged. Together with the DNSLink TTL work above, this addresses [#329](https://github.com/ipfs/boxo/issues/329) for web content; CAR and IPNS-record downloads keep their format-specific `Etag` handling.
 - `gateway`: fixed a data race in the remote blockstore, CAR fetcher, and value store. Each picked a gateway URL out of its list using a per-instance `*rand.Rand`, which is not safe to use from more than one goroutine, so a gateway serving requests in parallel was racing on every request. They now use the top-level `math/rand/v2` functions, which are safe to share. [#1187](https://github.com/ipfs/boxo/pull/1187)
 - `blockstore`: the Bloom filter cache no longer activates after an incomplete
 build. Previously, if `AllKeysChan` enumeration was truncated by a
