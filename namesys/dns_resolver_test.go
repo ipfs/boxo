@@ -4,6 +4,7 @@ import (
 	"context"
 	"net"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -152,7 +153,7 @@ func newMockDNS() *mockDNS {
 
 func TestDNSResolution(t *testing.T) {
 	t.Parallel()
-	r := &DNSResolver{lookupTXT: newMockDNS().lookupTXT}
+	r := NewDNSResolver(newMockDNS().lookupTXT)
 
 	for _, testCase := range []struct {
 		name          string
@@ -204,5 +205,49 @@ func TestDNSResolution(t *testing.T) {
 		t.Run(testCase.name, func(t *testing.T) {
 			testResolution(t, r, testCase.name, (testCase.depth), testCase.expectedPath, 0, testCase.expectedError)
 		})
+	}
+}
+
+func TestDNSResolutionWithTTL(t *testing.T) {
+	t.Parallel()
+
+	const ttl = 42 * time.Second
+	lookup := func(ctx context.Context, name string) ([]string, time.Duration, error) {
+		if name == "_dnslink.ttl.example.com." {
+			return []string{"dnslink=/ipfs/QmY3hE8xgFCjGcz6PHgnvJz5HZi1BaKRfPkn1ghZUcYMjD"}, ttl, nil
+		}
+		return nil, 0, &net.DNSError{IsNotFound: true}
+	}
+
+	// the TTL-aware resolver propagates the record TTL to the resolved result
+	r := NewDNSResolverWithTTL(lookup)
+	testResolution(t, r, "/ipns/ttl.example.com", DefaultDepthLimit, "/ipfs/QmY3hE8xgFCjGcz6PHgnvJz5HZi1BaKRfPkn1ghZUcYMjD", ttl, nil)
+
+	// the legacy constructor reports an unknown TTL (0) for the same lookup
+	rNoTTL := NewDNSResolver(func(ctx context.Context, name string) ([]string, error) {
+		txt, _, err := lookup(ctx, name)
+		return txt, err
+	})
+	testResolution(t, rNoTTL, "/ipns/ttl.example.com", DefaultDepthLimit, "/ipfs/QmY3hE8xgFCjGcz6PHgnvJz5HZi1BaKRfPkn1ghZUcYMjD", 0, nil)
+}
+
+func TestMinNonZeroTTL(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		a, b, want time.Duration
+	}{
+		{0, 0, 0},                                            // both unknown -> unknown
+		{0, 5 * time.Second, 5 * time.Second},                // one unknown -> the other
+		{5 * time.Second, 0, 5 * time.Second},                // one unknown -> the other
+		{3 * time.Second, 5 * time.Second, 3 * time.Second},  // both known -> min
+		{5 * time.Second, 3 * time.Second, 3 * time.Second},  // both known -> min
+		{-1 * time.Second, 5 * time.Second, 5 * time.Second}, // negative ignored -> the other
+		{-3 * time.Second, -5 * time.Second, 0},              // both negative -> never negative
+		{-1 * time.Second, 0, 0},                             // negative and unknown -> never negative
+	} {
+		if got := minNonZeroTTL(tc.a, tc.b); got != tc.want {
+			t.Fatalf("minNonZeroTTL(%s, %s) = %s; want %s", tc.a, tc.b, got, tc.want)
+		}
 	}
 }

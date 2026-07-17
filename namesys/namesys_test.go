@@ -183,6 +183,87 @@ func TestPublishWithTTL(t *testing.T) {
 	})
 }
 
+func TestResolveMaxCacheTTLCapsResultTTL(t *testing.T) {
+	t.Parallel()
+
+	const recordTTL = time.Hour
+	const expectedPath = "/ipfs/Qmcqtw8FfrVSBaRmbWwHxt3AuySBhJLcvmFYi3Lbc4xnwj"
+	lookup := func(ctx context.Context, name string) ([]string, time.Duration, error) {
+		return []string{"dnslink=" + expectedPath}, recordTTL, nil
+	}
+
+	// fresh resolutions report the TTL capped by WithMaxCacheTTL
+	maxTTL := 30 * time.Second
+	ns := &namesys{dnsResolver: NewDNSResolverWithTTL(lookup), maxCacheTTL: &maxTTL}
+	testResolution(t, ns, "/ipns/example.com", DefaultDepthLimit, expectedPath, maxTTL, nil)
+
+	// without the cap the record TTL flows through
+	nsNoCap := &namesys{dnsResolver: NewDNSResolverWithTTL(lookup)}
+	testResolution(t, nsNoCap, "/ipns/example.com", DefaultDepthLimit, expectedPath, recordTTL, nil)
+
+	// a non-positive cap disables the cache but must not touch the reported
+	// TTL: kubo's offline node passes 0 and still expects Cache-Control
+	// max-age derived from the record TTL
+	zeroTTL := time.Duration(0)
+	nsZero := &namesys{dnsResolver: NewDNSResolverWithTTL(lookup), maxCacheTTL: &zeroTTL}
+	testResolution(t, nsZero, "/ipns/example.com", DefaultDepthLimit, expectedPath, recordTTL, nil)
+
+	negTTL := -time.Second
+	nsNeg := &namesys{dnsResolver: NewDNSResolverWithTTL(lookup), maxCacheTTL: &negTTL}
+	testResolution(t, nsNeg, "/ipns/example.com", DefaultDepthLimit, expectedPath, recordTTL, nil)
+}
+
+func TestCacheGetReportsRemainingTTL(t *testing.T) {
+	t.Parallel()
+
+	p, err := path.NewPath("/ipfs/Qmcqtw8FfrVSBaRmbWwHxt3AuySBhJLcvmFYi3Lbc4xnwj")
+	require.NoError(t, err)
+
+	const name = "/ipns/example.com"
+	const entryTTL = 5 * time.Minute
+
+	ns := &namesys{}
+	require.NoError(t, WithCache(128)(ns))
+	ns.cacheSet(name, p, entryTTL, time.Now())
+
+	// a hit reports the entry's remaining lifetime, never more than its TTL
+	_, ttl, _, ok := ns.cacheGet(name)
+	require.True(t, ok)
+	require.Greater(t, ttl, time.Duration(0))
+	require.LessOrEqual(t, ttl, entryTTL)
+
+	// age the entry artificially and confirm the reported TTL shrinks with it
+	entry, ok := ns.cache.Get(name)
+	require.True(t, ok)
+	entry.cacheEOL = time.Now().Add(5 * time.Second)
+	ns.cache.Add(name, entry)
+
+	_, ttl, _, ok = ns.cacheGet(name)
+	require.True(t, ok)
+	require.Greater(t, ttl, time.Duration(0))
+	require.LessOrEqual(t, ttl, 5*time.Second)
+
+	// a cap set via WithMaxCacheTTL bounds the reported TTL as well
+	maxTTL := 30 * time.Second
+	nsCapped := &namesys{maxCacheTTL: &maxTTL}
+	require.NoError(t, WithCache(128)(nsCapped))
+	nsCapped.cacheSet(name, p, entryTTL, time.Now())
+
+	_, ttl, _, ok = nsCapped.cacheGet(name)
+	require.True(t, ok)
+	require.Greater(t, ttl, time.Duration(0))
+	require.LessOrEqual(t, ttl, maxTTL)
+
+	// a cap of 0 disables retention: nothing is served from the cache
+	zeroTTL := time.Duration(0)
+	nsZero := &namesys{maxCacheTTL: &zeroTTL}
+	require.NoError(t, WithCache(128)(nsZero))
+	nsZero.cacheSet(name, p, entryTTL, time.Now())
+
+	_, _, _, ok = nsZero.cacheGet(name)
+	require.False(t, ok)
+}
+
 func TestCacheGetClampsTTLToCacheEOL(t *testing.T) {
 	t.Parallel()
 
