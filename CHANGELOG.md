@@ -41,7 +41,7 @@ enumeration. [#1184](https://github.com/ipfs/boxo/pull/1184)
 - 🛠 `mfs`: `File.Open` now takes a `context.Context`. Writing to a file whose data has to be fetched from the network (for example, a lazy reference created with `ipfs files cp`) now uses that context, so the write stops when the context is cancelled, such as on a client timeout or when MFS shuts down, instead of waiting forever for a block that never arrives. Callers must add a context argument; pass the request's context to let a timeout cancel the write. [#1185](https://github.com/ipfs/boxo/pull/1185)
 - 🧪 `testing`: tests now use `go-test` v0.4.0 and `math/rand/v2`. `go-test/random` no longer has a global seed or a global sequence, so one test can no longer change the values another test expects to generate deterministically, a class of failure that showed up as an intermittent break in an unrelated test. A generator can also be reused now, instead of being rebuilt for every value. [#1187](https://github.com/ipfs/boxo/pull/1187)
 - 🛠 `routing/offline`: the offline router now stores value records in the same datastore layout as the go-libp2p-kad-dht value store (v0.42.0+), so a node sharing one datastore between the offline router and a DHT resolves records offline that were published online and vice versa. That interop previously relied on both sides coincidentally using the same key derivation, which the kad-dht v0.42.0 layout change broke. Records written in the old layout (root-level base32 keys) are no longer read; `GetValue` also returns `routing.ErrNotFound` instead of leaking `datastore.ErrNotFound` for missing records, and re-validates stored records on read so expired records (e.g. IPNS past its EOL) are no longer returned. [#1189](https://github.com/ipfs/boxo/pull/1189)
-- upgrade to `go-libp2p-kad-dht` [v0.42.0](https://github.com/libp2p/go-libp2p-kad-dht/releases/tag/v0.42.0)+ (pre-release pin including the [local record validation fix](https://github.com/libp2p/go-libp2p-kad-dht/pull/1285)) [#1189](https://github.com/ipfs/boxo/pull/1189)
+- upgrade to `go-libp2p-kad-dht` [v0.42.1](https://github.com/libp2p/go-libp2p-kad-dht/releases/tag/v0.42.1), which includes a [local record validation fix](https://github.com/libp2p/go-libp2p-kad-dht/pull/1285) [#1189](https://github.com/ipfs/boxo/pull/1189)
 - upgrade to `go-unixfsnode` [v1.10.5](https://github.com/ipfs/go-unixfsnode/releases/tag/v1.10.5)
 - upgrade to `go-cid` [v0.6.2](https://github.com/ipfs/go-cid/releases/tag/v0.6.2)
 
@@ -50,6 +50,8 @@ enumeration. [#1184](https://github.com/ipfs/boxo/pull/1184)
 - 🛠 `util`: removed the deprecated `NewSeededRand` and `NewTimeSeededRand`. Use [`go-test/random`](https://github.com/ipfs/go-test) instead. [#1187](https://github.com/ipfs/boxo/pull/1187)
 
 ### Fixed
+
+- `namesys`: a custom sequence number of 0 is now rejected with `ErrInvalidSequence` also when the name has no existing record, matching the documented behavior that an explicitly supplied sequence must be at least 1.
 
 - `gateway`: fixed a data race in the remote blockstore, CAR fetcher, and value store. Each picked a gateway URL out of its list using a per-instance `*rand.Rand`, which is not safe to use from more than one goroutine, so a gateway serving requests in parallel was racing on every request. They now use the top-level `math/rand/v2` functions, which are safe to share. [#1187](https://github.com/ipfs/boxo/pull/1187)
 - `blockstore`: the Bloom filter cache no longer activates after an incomplete
