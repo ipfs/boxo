@@ -8,26 +8,32 @@ import (
 	"errors"
 	"time"
 
-	dshelp "github.com/ipfs/boxo/datastore/dshelp"
 	"github.com/ipfs/go-cid"
 	ds "github.com/ipfs/go-datastore"
+	"github.com/libp2p/go-libp2p-kad-dht/amino"
+	"github.com/libp2p/go-libp2p-kad-dht/records"
 	record "github.com/libp2p/go-libp2p-record"
-	pb "github.com/libp2p/go-libp2p-record/pb"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/routing"
-	"google.golang.org/protobuf/proto"
 )
 
 // ErrOffline is returned when trying to perform operations that
 // require connectivity.
 var ErrOffline = errors.New("routing system in offline mode")
 
-// NewOfflineRouter returns an Routing implementation which only performs
+// NewOfflineRouter returns a Routing implementation which only performs
 // offline operations. It allows to Put and Get signed dht
 // records to and from the local datastore.
+//
+// Records are stored in the same datastore layout as the
+// go-libp2p-kad-dht value store (go-libp2p-kad-dht v0.42.0 and later),
+// so a node that shares dstore between this router and a DHT instance
+// can resolve records offline that were published online and vice
+// versa. Records stored by earlier versions of this package (root-level
+// base32 keys, the pre-v0.42.0 kad-dht layout) are not read anymore.
 func NewOfflineRouter(dstore ds.Datastore, validator record.Validator) routing.Routing {
 	return &offlineRouting{
-		datastore: dstore,
+		vs:        records.NewValueStore(dstore, validator, amino.DefaultMaxRecordAge),
 		validator: validator,
 	}
 }
@@ -36,53 +42,36 @@ func NewOfflineRouter(dstore ds.Datastore, validator record.Validator) routing.R
 // but only provides the capability to Put and Get signed dht
 // records to and from the local datastore.
 type offlineRouting struct {
-	datastore ds.Datastore
+	vs        *records.ValueStore
 	validator record.Validator
 }
 
 func (c *offlineRouting) PutValue(ctx context.Context, key string, val []byte, _ ...routing.Option) error {
-	if err := c.validator.Validate(key, val); err != nil {
-		return err
-	}
-	if old, err := c.GetValue(ctx, key); err == nil {
+	rec := record.MakePutRecord(key, val)
+	err := c.vs.Put(ctx, key, rec)
+	if errors.Is(err, records.ErrOldRecord) {
 		// be idempotent to be nice.
-		if bytes.Equal(old, val) {
+		if stored, gerr := c.vs.Get(ctx, key); gerr == nil && stored != nil && bytes.Equal(stored.GetValue(), val) {
 			return nil
 		}
-		// check to see if the older record is better
-		i, err := c.validator.Select(key, [][]byte{val, old})
-		if err != nil {
-			// this shouldn't happen for validated records.
-			return err
-		}
-		if i != 0 {
-			return errors.New("can't replace a newer record with an older one")
-		}
 	}
-	rec := record.MakePutRecord(key, val)
-	data, err := proto.Marshal(rec)
-	if err != nil {
-		return err
-	}
-
-	return c.datastore.Put(ctx, dshelp.NewKeyFromBinary([]byte(key)), data)
+	return err
 }
 
 func (c *offlineRouting) GetValue(ctx context.Context, key string, _ ...routing.Option) ([]byte, error) {
-	buf, err := c.datastore.Get(ctx, dshelp.NewKeyFromBinary([]byte(key)))
+	rec, err := c.vs.Get(ctx, key)
 	if err != nil {
 		return nil, err
+	}
+	if rec == nil {
+		return nil, routing.ErrNotFound
 	}
 
-	rec := new(pb.Record)
-	err = proto.Unmarshal(buf, rec)
-	if err != nil {
-		return nil, err
-	}
 	val := rec.GetValue()
-
-	err = c.validator.Validate(key, val)
-	if err != nil {
+	// The value store only age-checks records on read; run the validator
+	// so callers never see records that are expired by their own rules
+	// (e.g. IPNS EOL).
+	if err := c.validator.Validate(key, val); err != nil {
 		return nil, err
 	}
 	return val, nil

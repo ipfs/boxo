@@ -6,15 +6,17 @@ import (
 	"testing"
 	"time"
 
-	dshelp "github.com/ipfs/boxo/datastore/dshelp"
 	"github.com/ipfs/boxo/ipns"
 	"github.com/ipfs/boxo/path"
 	mockrouting "github.com/ipfs/boxo/routing/mock"
 	ds "github.com/ipfs/go-datastore"
 	dssync "github.com/ipfs/go-datastore/sync"
+	"github.com/libp2p/go-libp2p-kad-dht/amino"
+	"github.com/libp2p/go-libp2p-kad-dht/records"
 	testutil "github.com/libp2p/go-libp2p-testing/net"
 	ci "github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/libp2p/go-libp2p/core/routing"
 	"github.com/stretchr/testify/require"
 )
 
@@ -50,10 +52,10 @@ func TestIPNSPublisher(t *testing.T) {
 		_, err = r.GetValue(ctx, string(ipns.NameFromPeer(pid).RoutingKey()))
 		require.NoError(t, err)
 
-		key := dshelp.NewKeyFromBinary(ipns.NameFromPeer(pid).RoutingKey())
-		exists, err := dstore.Has(ctx, key)
+		vs := records.NewValueStore(dstore, mockrouting.MockValidator{}, amino.DefaultMaxRecordAge)
+		storedRec, err := vs.Get(ctx, string(ipns.NameFromPeer(pid).RoutingKey()))
 		require.NoError(t, err)
-		require.True(t, exists)
+		require.NotNil(t, storedRec)
 
 		// Check for Public Key is stored in value store
 		pkRoutingKey := PkRoutingKey(pid)
@@ -61,10 +63,9 @@ func TestIPNSPublisher(t *testing.T) {
 		require.ErrorIs(t, err, expectedErr)
 
 		// Check if Public Key is in data store for completeness
-		key = dshelp.NewKeyFromBinary([]byte(pkRoutingKey))
-		exists, err = dstore.Has(ctx, key)
+		storedRec, err = vs.Get(ctx, pkRoutingKey)
 		require.NoError(t, err)
-		require.Equal(t, expectedExistence, exists)
+		require.Equal(t, expectedExistence, storedRec != nil)
 	}
 
 	t.Run("RSA", func(t *testing.T) {
@@ -74,7 +75,7 @@ func TestIPNSPublisher(t *testing.T) {
 
 	t.Run("Ed22519", func(t *testing.T) {
 		t.Parallel()
-		test(t, ci.Ed25519, ds.ErrNotFound, false)
+		test(t, ci.Ed25519, routing.ErrNotFound, false)
 	})
 }
 
