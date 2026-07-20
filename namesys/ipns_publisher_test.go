@@ -143,8 +143,16 @@ func TestCustomSequenceValidation(t *testing.T) {
 	value2, err := path.NewPath("/ipfs/bafkreihzrqy23ynilblgil62wy7gv22o4gklv2frcsgbwntnhptmzcq5tq")
 	require.NoError(t, err)
 
+	t.Run("custom sequence zero with no existing record", func(t *testing.T) {
+		// Sequence 0 is never a valid custom sequence, even on a fresh name:
+		// it is what a default first publish uses and can never be newer
+		// than an existing record.
+		err := publisher.Publish(ctx, privKey, value1, PublishWithSequence(0))
+		require.ErrorIs(t, err, ErrInvalidSequence)
+	})
+
 	t.Run("custom sequence with no existing record", func(t *testing.T) {
-		// Should work with any sequence number when no previous record exists
+		// Should work with any sequence number >= 1 when no previous record exists
 		err := publisher.Publish(ctx, privKey, value1, PublishWithSequence(42))
 		require.NoError(t, err)
 
