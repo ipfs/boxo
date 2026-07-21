@@ -10,7 +10,6 @@ import (
 
 	"github.com/ipfs/go-cid"
 	ds "github.com/ipfs/go-datastore"
-	"github.com/libp2p/go-libp2p-kad-dht/amino"
 	"github.com/libp2p/go-libp2p-kad-dht/records"
 	record "github.com/libp2p/go-libp2p-record"
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -20,6 +19,27 @@ import (
 // ErrOffline is returned when trying to perform operations that
 // require connectivity.
 var ErrOffline = errors.New("routing system in offline mode")
+
+// Option configures a router returned by NewOfflineRouter.
+type Option func(*offlineRouting)
+
+// WithMaxRecordAge caps how long a stored value record is served, measured from
+// the time the record was stored: once a record is older than age it is treated
+// as absent and dropped on the next read. This is independent of the record's
+// own validity, an IPNS record is dropped once it passes its EOL regardless of
+// this setting.
+//
+// The default is no cap: records are served for as long as they stay valid.
+// This fits the offline router's role as a local store of the node's own
+// records, which have no republisher to refresh their stored timestamps. Set a
+// cap to mirror the go-libp2p-kad-dht value store (amino.DefaultMaxRecordAge)
+// or to bound a datastore that nothing else garbage-collects. A value <= 0
+// keeps the no-cap default.
+func WithMaxRecordAge(age time.Duration) Option {
+	return func(r *offlineRouting) {
+		r.maxRecordAge = age
+	}
+}
 
 // NewOfflineRouter returns a Routing implementation which only performs
 // offline operations. It allows to Put and Get signed dht
@@ -31,19 +51,27 @@ var ErrOffline = errors.New("routing system in offline mode")
 // can resolve records offline that were published online and vice
 // versa. Records stored by earlier versions of this package (root-level
 // base32 keys, the pre-v0.42.0 kad-dht layout) are not read anymore.
-func NewOfflineRouter(dstore ds.Datastore, validator record.Validator) routing.Routing {
-	return &offlineRouting{
-		vs:        records.NewValueStore(dstore, validator, amino.DefaultMaxRecordAge),
+//
+// A stored record is served for as long as it stays valid (for IPNS, until its
+// EOL); see WithMaxRecordAge to also cap retention by store age.
+func NewOfflineRouter(dstore ds.Datastore, validator record.Validator, opts ...Option) routing.Routing {
+	r := &offlineRouting{
 		validator: validator,
 	}
+	for _, opt := range opts {
+		opt(r)
+	}
+	r.vs = records.NewValueStore(dstore, validator, r.maxRecordAge)
+	return r
 }
 
 // offlineRouting implements the Routing interface,
 // but only provides the capability to Put and Get signed dht
 // records to and from the local datastore.
 type offlineRouting struct {
-	vs        *records.ValueStore
-	validator record.Validator
+	vs           *records.ValueStore
+	validator    record.Validator
+	maxRecordAge time.Duration
 }
 
 func (c *offlineRouting) PutValue(ctx context.Context, key string, val []byte, _ ...routing.Option) error {

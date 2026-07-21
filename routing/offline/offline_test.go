@@ -5,6 +5,8 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"testing/synctest"
+	"time"
 
 	cid "github.com/ipfs/go-cid"
 	ds "github.com/ipfs/go-datastore"
@@ -128,6 +130,55 @@ func TestOfflineRouterSharesDHTLayout(t *testing.T) {
 	if !bytes.Equal(val, []byte("b")) {
 		t.Fatal("offline router does not see DHT-published record")
 	}
+}
+
+// TestOfflineRouterMaxRecordAge checks record retention: with no option a
+// stored record is served indefinitely (retention is left to the record's own
+// validity), while WithMaxRecordAge caps it by store age. Time is faked with
+// synctest so the test does not wait for real hours to pass.
+func TestOfflineRouterMaxRecordAge(t *testing.T) {
+	t.Run("no cap by default", func(t *testing.T) {
+		synctest.Test(t, func(t *testing.T) {
+			ctx := context.Background()
+			r := NewOfflineRouter(ds.NewMapDatastore(), blankValidator{})
+
+			if err := r.PutValue(ctx, "/v/key", []byte("v")); err != nil {
+				t.Fatal(err)
+			}
+			time.Sleep(90 * 24 * time.Hour)
+			val, err := r.GetValue(ctx, "/v/key")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(val, []byte("v")) {
+				t.Fatalf("got %q, want %q", val, "v")
+			}
+		})
+	})
+
+	t.Run("WithMaxRecordAge caps retention", func(t *testing.T) {
+		synctest.Test(t, func(t *testing.T) {
+			ctx := context.Background()
+			maxAge := 48 * time.Hour
+			r := NewOfflineRouter(ds.NewMapDatastore(), blankValidator{}, WithMaxRecordAge(maxAge))
+
+			if err := r.PutValue(ctx, "/v/key", []byte("v")); err != nil {
+				t.Fatal(err)
+			}
+			val, err := r.GetValue(ctx, "/v/key")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(val, []byte("v")) {
+				t.Fatalf("got %q, want %q", val, "v")
+			}
+
+			time.Sleep(maxAge + time.Minute)
+			if _, err := r.GetValue(ctx, "/v/key"); !errors.Is(err, routing.ErrNotFound) {
+				t.Fatalf("want ErrNotFound after max record age, got %v", err)
+			}
+		})
+	})
 }
 
 func TestOfflineRouterLocal(t *testing.T) {
