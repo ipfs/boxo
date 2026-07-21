@@ -44,6 +44,7 @@ enumeration. [#1184](https://github.com/ipfs/boxo/pull/1184)
 - upgrade to `go-libp2p-kad-dht` [v0.42.1](https://github.com/libp2p/go-libp2p-kad-dht/releases/tag/v0.42.1), which includes a [local record validation fix](https://github.com/libp2p/go-libp2p-kad-dht/pull/1285) [#1189](https://github.com/ipfs/boxo/pull/1189)
 - upgrade to `go-unixfsnode` [v1.10.5](https://github.com/ipfs/go-unixfsnode/releases/tag/v1.10.5)
 - upgrade to `go-cid` [v0.6.2](https://github.com/ipfs/go-cid/releases/tag/v0.6.2)
+- upgrade to `go-libp2p` [v0.48.1-0.20260709142922-ec408fcc60c9](https://github.com/libp2p/go-libp2p/commits/master/?since=2026-03-30&until=2026-07-21) to get security and other fixes.
 
 ### Removed
 
