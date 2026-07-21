@@ -452,7 +452,6 @@ func addCacheControlHeaders(w http.ResponseWriter, r *http.Request, contentPath 
 			// or the last time DNSLink / IPNS Record was modified / resoved or cache
 			modtime = lastMod
 		}
-
 	} else {
 		if lastMod.IsZero() {
 			// (noop) skip Last-Modified on immutable response
