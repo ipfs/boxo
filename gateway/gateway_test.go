@@ -602,6 +602,94 @@ func TestHeaders(t *testing.T) {
 	})
 }
 
+func TestNotModifiedHeaders(t *testing.T) {
+	t.Parallel()
+
+	ts, backend, root := newTestServerAndNode(t, "headers-test.car")
+
+	const ttl = 42 * time.Minute
+	backend.namesys["/ipns/ttl.example.com"] = newMockNamesysItem(path.FromCid(root), ttl)
+
+	revalidate := func(t *testing.T, urlPath, accept string) (etag200, cacheControl200 string, res304 *http.Response) {
+		t.Helper()
+
+		req := mustNewRequest(t, http.MethodGet, ts.URL+urlPath, nil)
+		if accept != "" {
+			req.Header.Add("Accept", accept)
+		}
+		res := mustDoWithoutRedirect(t, req)
+		_, err := io.Copy(io.Discard, res.Body)
+		require.NoError(t, err)
+		defer res.Body.Close()
+		require.Equal(t, http.StatusOK, res.StatusCode)
+		etag200 = res.Header.Get("Etag")
+		require.NotEmpty(t, etag200)
+		cacheControl200 = res.Header.Get("Cache-Control")
+
+		req = mustNewRequest(t, http.MethodGet, ts.URL+urlPath, nil)
+		if accept != "" {
+			req.Header.Add("Accept", accept)
+		}
+		req.Header.Add("If-None-Match", etag200)
+		res304 = mustDoWithoutRedirect(t, req)
+		_, err = io.Copy(io.Discard, res304.Body)
+		require.NoError(t, err)
+		defer res304.Body.Close()
+		require.Equal(t, http.StatusNotModified, res304.StatusCode)
+		return etag200, cacheControl200, res304
+	}
+
+	// A 304 must echo the validator the client matched and the Cache-Control
+	// its 200 counterpart sends (RFC 9110, section 15.4.5), so a client cache
+	// renews its stored response (RFC 9111, section 4.3.4) instead of
+	// revalidating every subsequent request.
+
+	t.Run("304 for immutable /ipfs/ file carries Etag and Cache-Control", func(t *testing.T) {
+		t.Parallel()
+		etag, cc200, res := revalidate(t, "/ipfs/"+root.String()+"/subdir/fnord", "")
+		assert.Equal(t, etag, res.Header.Get("Etag"))
+		assert.Equal(t, immutableCacheControl, res.Header.Get("Cache-Control"))
+		assert.Equal(t, cc200, res.Header.Get("Cache-Control"))
+	})
+
+	t.Run("304 for /ipfs/ dir listing keeps the bounded dir policy", func(t *testing.T) {
+		t.Parallel()
+		// generated HTML changes between boxo versions, so its 304 must not
+		// upgrade the listing to the immutable profile
+		etag, cc200, res := revalidate(t, "/ipfs/"+root.String()+"/subdir/", "")
+		assert.Contains(t, etag, "DirIndex")
+		assert.Equal(t, etag, res.Header.Get("Etag"))
+		assert.Equal(t, "public, max-age=604800, stale-while-revalidate=2678400", res.Header.Get("Cache-Control"))
+		assert.Equal(t, cc200, res.Header.Get("Cache-Control"))
+	})
+
+	t.Run("304 for dag index HTML omits Cache-Control like its 200", func(t *testing.T) {
+		t.Parallel()
+		etag, cc200, res := revalidate(t, "/ipfs/"+root.String()+"/subdir/dag-cbor-document/", "text/html")
+		assert.Contains(t, etag, "DagIndex")
+		assert.Equal(t, etag, res.Header.Get("Etag"))
+		assert.Empty(t, cc200)
+		assert.Empty(t, res.Header.Get("Cache-Control"))
+	})
+
+	t.Run("304 for mutable /ipns/ file carries max-age from the TTL", func(t *testing.T) {
+		t.Parallel()
+		etag, cc200, res := revalidate(t, "/ipns/ttl.example.com/subdir/fnord", "")
+		assert.Equal(t, etag, res.Header.Get("Etag"))
+		assert.Equal(t, fmt.Sprintf("public, max-age=%d", int(ttl.Seconds())), res.Header.Get("Cache-Control"))
+		assert.Equal(t, cc200, res.Header.Get("Cache-Control"))
+	})
+
+	t.Run("304 for mutable /ipns/ dir listing keeps stale-while-revalidate", func(t *testing.T) {
+		t.Parallel()
+		etag, cc200, res := revalidate(t, "/ipns/ttl.example.com/subdir/", "")
+		assert.Contains(t, etag, "DirIndex")
+		assert.Equal(t, etag, res.Header.Get("Etag"))
+		assert.Equal(t, fmt.Sprintf("public, max-age=%d, stale-while-revalidate=2678400", int(ttl.Seconds())), res.Header.Get("Cache-Control"))
+		assert.Equal(t, cc200, res.Header.Get("Cache-Control"))
+	})
+}
+
 // Testing a DAG with (optional) UnixFS1.5 modification time
 func TestHeadersUnixFSModeModTime(t *testing.T) {
 	t.Parallel()
@@ -650,8 +738,14 @@ func TestHeadersUnixFSModeModTime(t *testing.T) {
 				require.NoError(t, err)
 				defer res.Body.Close()
 				if supported {
-					// 304 on exact match, can skip body
+					// 304 on exact match, can skip body. The 304 carries the
+					// validator and freshness a cache needs to renew its
+					// stored response; Last-Modified is omitted because the
+					// Etag is the stronger validator (stdlib behavior).
 					assert.Equal(t, http.StatusNotModified, res.StatusCode)
+					assert.NotEmpty(t, res.Header.Get("Etag"))
+					assert.Empty(t, res.Header.Get("Last-Modified"))
+					assert.Equal(t, immutableCacheControl, res.Header.Get("Cache-Control"))
 				} else {
 					assert.Equal(t, http.StatusOK, res.StatusCode)
 				}
