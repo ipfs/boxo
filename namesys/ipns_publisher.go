@@ -192,7 +192,13 @@ func (p *IPNSPublisher) updateRecord(ctx context.Context, k crypto.PrivKey, valu
 			}
 		}
 	} else if opts.Sequence != nil {
-		// No existing record, custom sequence provided
+		// No existing record, custom sequence provided. It must still be at
+		// least 1: sequence 0 is what a default first publish uses, and a
+		// caller supplying a sequence explicitly asks for a record newer
+		// than any existing one, which 0 can never be.
+		if *opts.Sequence == 0 {
+			return nil, ErrInvalidSequence
+		}
 		seq = *opts.Sequence
 	}
 	// If no existing record and no custom sequence, seq remains 0
