@@ -49,6 +49,7 @@ enumeration. [#1184](https://github.com/ipfs/boxo/pull/1184)
 ### Removed
 
 - 🛠 `util`: removed the deprecated `NewSeededRand` and `NewTimeSeededRand`. Use [`go-test/random`](https://github.com/ipfs/go-test) instead. [#1187](https://github.com/ipfs/boxo/pull/1187)
+- Remove dependency on `whyrusleeping/base32` so that boxo only depends on one base32 package, `multiformats/go-base32`.
 
 ### Fixed
 
