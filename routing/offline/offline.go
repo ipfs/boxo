@@ -61,7 +61,7 @@ func NewOfflineRouter(dstore ds.Datastore, validator record.Validator, opts ...O
 	for _, opt := range opts {
 		opt(r)
 	}
-	r.vs = records.NewValueStore(dstore, validator, r.maxRecordAge)
+	r.valstore = records.NewValueStore(dstore, validator, r.maxRecordAge)
 	return r
 }
 
@@ -69,17 +69,18 @@ func NewOfflineRouter(dstore ds.Datastore, validator record.Validator, opts ...O
 // but only provides the capability to Put and Get signed dht
 // records to and from the local datastore.
 type offlineRouting struct {
-	vs           *records.ValueStore
+	valstore     *records.ValueStore
 	validator    record.Validator
 	maxRecordAge time.Duration
 }
 
 func (c *offlineRouting) PutValue(ctx context.Context, key string, val []byte, _ ...routing.Option) error {
 	rec := record.MakePutRecord(key, val)
-	err := c.vs.Put(ctx, key, rec)
+	// Validate and store the record.
+	err := c.valstore.Put(ctx, key, rec)
 	if errors.Is(err, records.ErrOldRecord) {
 		// be idempotent to be nice.
-		if stored, gerr := c.vs.Get(ctx, key); gerr == nil && stored != nil && bytes.Equal(stored.GetValue(), val) {
+		if stored, gerr := c.valstore.Get(ctx, key); gerr == nil && stored != nil && bytes.Equal(stored.GetValue(), val) {
 			return nil
 		}
 	}
@@ -87,7 +88,7 @@ func (c *offlineRouting) PutValue(ctx context.Context, key string, val []byte, _
 }
 
 func (c *offlineRouting) GetValue(ctx context.Context, key string, _ ...routing.Option) ([]byte, error) {
-	rec, err := c.vs.Get(ctx, key)
+	rec, err := c.valstore.Get(ctx, key)
 	if err != nil {
 		return nil, err
 	}
