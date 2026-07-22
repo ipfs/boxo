@@ -16,6 +16,18 @@ The following emojis are used to highlight certain changes:
 
 ### Added
 
+### Changed
+
+### Removed
+
+### Fixed
+
+### Security
+
+## [v0.42.0]
+
+### Added
+
 - `namesys`: DNSLink lookups now return the DNS TXT record's TTL, and the gateway uses it as `Cache-Control: max-age` for `/ipns/<dnslink-host>` responses. Clients cache a DNSLink website for exactly as long as its DNS record allows and fetch updates once it expires, instead of relying on a static default. [#329](https://github.com/ipfs/boxo/issues/329)
   - Requires a resolver that reports TTLs, such as DNS-over-HTTPS via [`go-doh-resolver` v0.6.0](https://github.com/libp2p/go-doh-resolver/releases/tag/v0.6.0). The OS resolver cannot report TTLs: Go's standard library `net.Resolver` returns only record values, and libp2p's default DNS wiring (`madns.DefaultResolver`) wraps it, so domains it serves keep the old behavior. In Kubo, a `DNS.Resolvers` entry for `.` covers all domains.
   - `WithDNSResolver` detects TTL support automatically. `NewDNSResolverWithTTL`, `WithDNSResolverWithTTL`, and `LookupTXTWithTTLFunc` take a TTL-aware lookup directly. `NewDNSResolver` and `LookupTXTFunc` are unchanged and report an unknown TTL (0).
@@ -54,7 +66,6 @@ enumeration. [#1184](https://github.com/ipfs/boxo/pull/1184)
 ### Fixed
 
 - `namesys`: a custom sequence number of 0 is now rejected with `ErrInvalidSequence` also when the name has no existing record, matching the documented behavior that an explicitly supplied sequence must be at least 1.
-
 - `gateway`: `304 Not Modified` responses to `If-None-Match` and `If-Modified-Since` now carry `Etag` and the `Cache-Control` their `200` counterpart sends, so a client cache renews its freshness window when it revalidates. A bare 304 left the stored response expired, forcing a revalidation round-trip on every request after the first expiry even when the gateway had just confirmed the content is unchanged. Together with the DNSLink TTL work above, this addresses [#329](https://github.com/ipfs/boxo/issues/329) for web content; CAR and IPNS-record downloads keep their format-specific `Etag` handling.
 - `gateway`: fixed a data race in the remote blockstore, CAR fetcher, and value store. Each picked a gateway URL out of its list using a per-instance `*rand.Rand`, which is not safe to use from more than one goroutine, so a gateway serving requests in parallel was racing on every request. They now use the top-level `math/rand/v2` functions, which are safe to share. [#1187](https://github.com/ipfs/boxo/pull/1187)
 - `blockstore`: the Bloom filter cache no longer activates after an incomplete
@@ -73,6 +84,11 @@ also fixes a race where a cancelled build could still mark the filter active.
 
 ### Security
 
+- `go-libp2p` update contains security enhancements for DoS/hardening
+  - [3501](https://github.com/libp2p/go-libp2p/pull/3501) bounds protocols accepted per peer in identify (a peer could plant 1800+ protocol entries in your peerstore via chunked identify)
+  - [3486](https://github.com/libp2p/go-libp2p/pull/3486) caps unconnected addrs per peer (stops DHT gossip flooding the peerstore with stale addrs; relevant to us)
+  - [3500](https://github.com/libp2p/go-libp2p/pull/3500) caps webrtc remote addrs per ufrag
+  - [3487](https://github.com/libp2p/go-libp2p/pull/3487) evicts stale certified addrs when a newer signed peer record drops them (an address a peer once advertised no longer lingers after removal)
 
 ## [v0.41.0]
 
