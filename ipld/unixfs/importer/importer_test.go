@@ -16,7 +16,7 @@ import (
 
 func getBalancedDag(t testing.TB, size int64, blksize int64) (ipld.Node, ipld.DAGService) {
 	ds := mdtest.Mock()
-	r := io.LimitReader(random.NewRand(), size)
+	r := io.LimitReader(random.New(), size)
 	nd, err := BuildDagFromReader(ds, chunker.NewSizeSplitter(r, blksize))
 	if err != nil {
 		t.Fatal(err)
@@ -26,7 +26,7 @@ func getBalancedDag(t testing.TB, size int64, blksize int64) (ipld.Node, ipld.DA
 
 func getTrickleDag(t testing.TB, size int64, blksize int64) (ipld.Node, ipld.DAGService) {
 	ds := mdtest.Mock()
-	r := io.LimitReader(random.NewRand(), size)
+	r := io.LimitReader(random.New(), size)
 	nd, err := BuildTrickleDagFromReader(ds, chunker.NewSizeSplitter(r, blksize))
 	if err != nil {
 		t.Fatal(err)
@@ -37,7 +37,8 @@ func getTrickleDag(t testing.TB, size int64, blksize int64) (ipld.Node, ipld.DAG
 func TestStableCid(t *testing.T) {
 	ds := mdtest.Mock()
 	buf := make([]byte, 10*1024*1024)
-	random.NewSeededRand(0xdeadbeef).Read(buf)
+	seed := [32]byte([]byte("abcdefghijklmnopqrstuvwxyz012345"))
+	random.NewSeeded(seed).Read(buf)
 	r := bytes.NewReader(buf)
 
 	nd, err := BuildDagFromReader(ds, chunker.DefaultSplitter(r))
@@ -45,7 +46,7 @@ func TestStableCid(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	expected, err := cid.Decode("QmPu94p2EkpSpgKdyz8eWomA7edAQN6maztoBycMZFixyz")
+	expected, err := cid.Decode("QmPpSdhVHqJwoQoiudm4H43xDc2ayJJM37DDFDyzHSVAKL")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -71,7 +72,7 @@ func TestStableCid(t *testing.T) {
 func TestBalancedDag(t *testing.T) {
 	ds := mdtest.Mock()
 	buf := make([]byte, 10000)
-	random.NewRand().Read(buf)
+	random.New().Read(buf)
 	r := bytes.NewReader(buf)
 
 	nd, err := BuildDagFromReader(ds, chunker.DefaultSplitter(r))

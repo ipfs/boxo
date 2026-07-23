@@ -1,12 +1,11 @@
 package hamt
 
 import (
-	"context"
+	crand "crypto/rand"
 	"fmt"
-	"math/rand"
+	"math/rand/v2"
 	"os"
 	"testing"
-	"time"
 
 	mdtest "github.com/ipfs/boxo/ipld/merkledag/test"
 	ft "github.com/ipfs/boxo/ipld/unixfs"
@@ -36,8 +35,9 @@ type testOp struct {
 // ending directory (same set of entries at the end) and execute each of them
 // in turn, then compare to ensure the output is the same on each.
 func TestOrderConsistency(t *testing.T) {
-	seed := time.Now().UnixNano()
-	t.Logf("using seed = %d", seed)
+	var seed [32]byte
+	_, _ = crand.Read(seed[:])
+	t.Logf("using seed = %x", seed)
 	ds := mdtest.Mock()
 
 	shardWidth := 1024
@@ -56,7 +56,8 @@ func TestOrderConsistency(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	ops2 := genOpSet(seed+1000, keep, temp)
+	rand.NewChaCha8(seed).Read(seed[:])
+	ops2 := genOpSet(seed, keep, temp)
 	s2, err := executeOpSet(t, ds, shardWidth, ops2)
 	if err != nil {
 		t.Fatal(err)
@@ -86,7 +87,7 @@ func TestOrderConsistency(t *testing.T) {
 }
 
 func validateOpSetCompletion(t *testing.T, s *Shard, keep, temp []string) error {
-	ctx := context.TODO()
+	ctx := t.Context()
 	for _, n := range keep {
 		_, err := s.Find(ctx, n)
 		if err != nil {
@@ -105,7 +106,7 @@ func validateOpSetCompletion(t *testing.T, s *Shard, keep, temp []string) error 
 }
 
 func executeOpSet(t *testing.T, ds ipld.DAGService, width int, ops []testOp) (*Shard, error) {
-	ctx := context.TODO()
+	ctx := t.Context()
 	s, err := NewShard(ds, width)
 	if err != nil {
 		return nil, err
@@ -137,7 +138,7 @@ func executeOpSet(t *testing.T, ds ipld.DAGService, width int, ops []testOp) (*S
 	return s, nil
 }
 
-func genOpSet(seed int64, keep, temp []string) []testOp {
+func genOpSet(seed [32]byte, keep, temp []string) []testOp {
 	tempSet := make(map[string]struct{}, len(temp))
 	for _, s := range temp {
 		tempSet[s] = struct{}{}
@@ -156,7 +157,7 @@ func genOpSet(seed int64, keep, temp []string) []testOp {
 			return ops
 		}
 
-		rn := rand.Intn(n)
+		rn := rand.IntN(n)
 
 		if rn < len(allnames) {
 			next := allnames[0]
@@ -170,7 +171,8 @@ func genOpSet(seed int64, keep, temp []string) []testOp {
 				todel = append(todel, next)
 			}
 		} else {
-			shuffle(seed+100, todel)
+			rand.NewChaCha8(seed).Read(seed[:])
+			shuffle(seed, todel)
 			next := todel[0]
 			todel = todel[1:]
 

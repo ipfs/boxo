@@ -39,7 +39,7 @@ func getMockNode(t *testing.T, ctx context.Context) *mockNode {
 	h, err := libp2p.New(
 		libp2p.ListenAddrStrings("/ip4/0.0.0.0/tcp/0"),
 		libp2p.Routing(func(h host.Host) (routing.PeerRouting, error) {
-			rt, err := dht.New(ctx, h, dht.Mode(dht.ModeServer))
+			rt, err := dht.New(h, dht.Mode(dht.ModeServer))
 			idht = rt
 			return rt, err
 		}),

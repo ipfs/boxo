@@ -2,7 +2,7 @@ package mockrouting
 
 import (
 	"context"
-	"math/rand"
+	"math/rand/v2"
 	"sync"
 	"time"
 
@@ -71,7 +71,7 @@ func (rs *s) Providers(c cid.Cid) []peer.AddrInfo {
 	}
 
 	for i := range ret {
-		j := rand.Intn(i + 1)
+		j := rand.IntN(i + 1)
 		ret[i], ret[j] = ret[j], ret[i]
 	}
 	return ret

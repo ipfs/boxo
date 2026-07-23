@@ -3,16 +3,15 @@ package blockstore
 import (
 	"context"
 	"io"
-	"math/rand"
 	"sync/atomic"
 	"testing"
-	"time"
 
 	blocks "github.com/ipfs/go-block-format"
 	cid "github.com/ipfs/go-cid"
 	ds "github.com/ipfs/go-datastore"
 	syncds "github.com/ipfs/go-datastore/sync"
 	ipld "github.com/ipfs/go-ipld-format"
+	"github.com/ipfs/go-test/random"
 )
 
 var exampleBlock = blocks.NewBlock([]byte("foo"))
@@ -293,7 +292,7 @@ func BenchmarkTwoQueueCacheConcurrentOps(b *testing.B) {
 
 	{
 		// scope dummyRand to prevent its unsafe concurrent use below
-		dummyRand := rand.New(rand.NewSource(time.Now().UnixNano()))
+		dummyRand := random.New()
 		for i := range dummyBlocks {
 			dummy := make([]byte, 32)
 			if _, err := io.ReadFull(dummyRand, dummy); err != nil {
@@ -358,9 +357,9 @@ func BenchmarkTwoQueueCacheConcurrentOps(b *testing.B) {
 			b.ReportAllocs()
 
 			b.RunParallel(func(pb *testing.PB) {
-				rnd := rand.New(rand.NewSource(time.Now().UnixNano()))
+				rnd := random.New()
 				for pb.Next() {
-					n := rnd.Int63()
+					n := rnd.Int64()
 					blockIdx := n % numBlocks         // lower bits decide the block
 					opIdx := (n / numBlocks) % numOps // higher bits decide what operation
 

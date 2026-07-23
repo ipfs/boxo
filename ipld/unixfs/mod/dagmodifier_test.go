@@ -23,7 +23,7 @@ import (
 
 func testModWrite(t *testing.T, beg, size uint64, orig []byte, dm *DagModifier, opts testu.NodeOpts) []byte {
 	newdata := make([]byte, size)
-	random.NewRand().Read(newdata)
+	random.New().Read(newdata)
 
 	if size+beg > uint64(len(orig)) {
 		orig = append(orig, make([]byte, (size+beg)-uint64(len(orig)))...)
@@ -165,7 +165,7 @@ func testMultiWrite(t *testing.T, opts testu.NodeOpts) {
 	}
 
 	data := make([]byte, 4000)
-	random.NewRand().Read(data)
+	random.New().Read(data)
 
 	for i := range data {
 		n, err := dagmod.WriteAt(data[i:i+1], int64(i))
@@ -209,7 +209,7 @@ func testMultiWriteAndFlush(t *testing.T, opts testu.NodeOpts) {
 	}
 
 	data := make([]byte, 20)
-	random.NewRand().Read(data)
+	random.New().Read(data)
 
 	for i := range data {
 		n, err := dagmod.WriteAt(data[i:i+1], int64(i))
@@ -248,7 +248,7 @@ func testWriteNewFile(t *testing.T, opts testu.NodeOpts) {
 	}
 
 	towrite := make([]byte, 2000)
-	random.NewRand().Read(towrite)
+	random.New().Read(towrite)
 
 	nw, err := dagmod.Write(towrite)
 	if err != nil {
@@ -281,7 +281,7 @@ func testMultiWriteCoal(t *testing.T, opts testu.NodeOpts) {
 	}
 
 	data := make([]byte, 1000)
-	random.NewRand().Read(data)
+	random.New().Read(data)
 
 	for i := range data {
 		n, err := dagmod.WriteAt(data[:i+1], 0)
@@ -321,7 +321,7 @@ func testLargeWriteChunks(t *testing.T, opts testu.NodeOpts) {
 	const datasize = 10000000
 	data := make([]byte, datasize)
 
-	random.NewRand().Read(data)
+	random.New().Read(data)
 
 	for i := range datasize / wrsize {
 		n, err := dagmod.WriteAt(data[i*wrsize:(i+1)*wrsize], int64(i*wrsize))
@@ -535,7 +535,7 @@ func testSparseWrite(t *testing.T, opts testu.NodeOpts) {
 	}
 
 	buf := make([]byte, 5000)
-	random.NewRand().Read(buf[2500:])
+	random.New().Read(buf[2500:])
 
 	wrote, err := dagmod.WriteAt(buf[2500:], 2500)
 	if err != nil {
@@ -580,7 +580,7 @@ func testSeekPastEndWrite(t *testing.T, opts testu.NodeOpts) {
 	}
 
 	buf := make([]byte, 5000)
-	random.NewRand().Read(buf[2500:])
+	random.New().Read(buf[2500:])
 
 	nseek, err := dagmod.Seek(2500, io.SeekStart)
 	if err != nil {
@@ -923,7 +923,7 @@ func BenchmarkDagmodWrite(b *testing.B) {
 	}
 
 	buf := make([]byte, b.N*wrsize)
-	random.NewRand().Read(buf)
+	random.New().Read(buf)
 	b.StartTimer()
 	b.SetBytes(int64(wrsize))
 	for i := 0; i < b.N; i++ {

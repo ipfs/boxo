@@ -3,10 +3,20 @@ name: Gateway Sharness
 on:
   workflow_dispatch:
   pull_request:
-    paths: ['gateway/**']
+    paths:
+      - 'gateway/**'
+      - 'namesys/**'
+      - 'ipns/**'
+      - 'path/**'
+      - '.github/workflows/gateway-sharness.yml'
   push:
     branches: ['main']
-    paths: ['gateway/**']
+    paths:
+      - 'gateway/**'
+      - 'namesys/**'
+      - 'ipns/**'
+      - 'path/**'
+      - '.github/workflows/gateway-sharness.yml'
 
 jobs:
   sharness:

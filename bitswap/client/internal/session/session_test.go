@@ -21,6 +21,12 @@ import (
 
 const blockSize = 4
 
+var testSeq *random.Sequence
+
+func init() {
+	testSeq = random.NewSequence()
+}
+
 type mockSessionMgr struct {
 	lk            sync.Mutex
 	sim           *bssim.SessionInterestManager
@@ -165,11 +171,12 @@ func TestSessionGetBlocks(t *testing.T) {
 	bpm := bsbpm.New()
 	notif := notifications.New(false)
 	defer notif.Shutdown()
-	id := random.SequenceNext()
+	id := testSeq.Next()
 	sm := newMockSessionMgr(sim)
 	session := New(ctx, sm, id, fspm, fpf, sim, fpm, bpm, notif, time.Second, time.Minute, "", nil)
 	defer session.Close()
-	blks := random.BlocksOfSize(broadcastLiveWantsLimit*2, blockSize)
+	rnd := random.New()
+	blks := rnd.BlocksOfSize(broadcastLiveWantsLimit*2, blockSize)
 	var cids []cid.Cid
 	for _, block := range blks {
 		cids = append(cids, block.Cid())
@@ -189,7 +196,7 @@ func TestSessionGetBlocks(t *testing.T) {
 	require.Len(t, receivedWantReq.cids, broadcastLiveWantsLimit, "did not enqueue correct initial number of wants")
 
 	// Simulate receiving HAVEs from several peers
-	peers := random.Peers(5)
+	peers := rnd.Peers(5)
 	for i, p := range peers {
 		blkIndex := slices.IndexFunc(blks, func(blk blocks.Block) bool {
 			return blk.Cid() == receivedWantReq.cids[i]
@@ -247,12 +254,13 @@ func TestSessionFindMorePeers(t *testing.T) {
 	bpm := bsbpm.New()
 	notif := notifications.New(false)
 	defer notif.Shutdown()
-	id := random.SequenceNext()
+	id := testSeq.Next()
 	sm := newMockSessionMgr(sim)
 	session := New(ctx, sm, id, fspm, fpf, sim, fpm, bpm, notif, time.Second, time.Minute, "", nil)
 	defer session.Close()
 	session.SetBaseTickDelay(200 * time.Microsecond)
-	blks := random.BlocksOfSize(broadcastLiveWantsLimit*2, blockSize)
+	rnd := random.New()
+	blks := rnd.BlocksOfSize(broadcastLiveWantsLimit*2, blockSize)
 	var cids []cid.Cid
 	for _, block := range blks {
 		cids = append(cids, block.Cid())
@@ -272,7 +280,7 @@ func TestSessionFindMorePeers(t *testing.T) {
 	time.Sleep(20 * time.Millisecond) // need to make sure some latency registers
 	// or there will be no tick set -- time precision on Windows in go is in the
 	// millisecond range
-	p := random.Peers(1)[0]
+	p := rnd.Peers(1)[0]
 
 	blk := blks[0]
 	session.ReceiveFrom(p, []cid.Cid{blk.Cid()}, []cid.Cid{}, []cid.Cid{})
@@ -319,7 +327,7 @@ func TestSessionOnPeersExhausted(t *testing.T) {
 	bpm := bsbpm.New()
 	notif := notifications.New(false)
 	defer notif.Shutdown()
-	id := random.SequenceNext()
+	id := testSeq.Next()
 	sm := newMockSessionMgr(sim)
 	session := New(ctx, sm, id, fspm, fpf, sim, fpm, bpm, notif, time.Second, time.Minute, "", nil)
 	defer session.Close()
@@ -358,7 +366,7 @@ func TestSessionFailingToGetFirstBlock(t *testing.T) {
 	bpm := bsbpm.New()
 	notif := notifications.New(false)
 	defer notif.Shutdown()
-	id := random.SequenceNext()
+	id := testSeq.Next()
 	sm := newMockSessionMgr(sim)
 	session := New(ctx, sm, id, fspm, fpf, sim, fpm, bpm, notif, 10*time.Millisecond, 100*time.Millisecond, "", nil)
 	defer session.Close()
@@ -458,7 +466,7 @@ func TestSessionCtxCancelClosesGetBlocksChannel(t *testing.T) {
 	bpm := bsbpm.New()
 	notif := notifications.New(false)
 	defer notif.Shutdown()
-	id := random.SequenceNext()
+	id := testSeq.Next()
 	sm := newMockSessionMgr(sim)
 
 	// Create a new session with its own context
@@ -505,7 +513,7 @@ func TestSessionOnShutdownCalled(t *testing.T) {
 	bpm := bsbpm.New()
 	notif := notifications.New(false)
 	defer notif.Shutdown()
-	id := random.SequenceNext()
+	id := testSeq.Next()
 	sm := newMockSessionMgr(sim)
 
 	// Create a new session
@@ -531,12 +539,13 @@ func TestSessionReceiveMessageAfterClose(t *testing.T) {
 	bpm := bsbpm.New()
 	notif := notifications.New(false)
 	defer notif.Shutdown()
-	id := random.SequenceNext()
+	id := testSeq.Next()
 	sm := newMockSessionMgr(sim)
 	session := New(ctx, sm, id, fspm, fpf, sim, fpm, bpm, notif, time.Second, time.Minute, "", nil)
 	defer session.Close()
 
-	blks := random.BlocksOfSize(2, blockSize)
+	rnd := random.New()
+	blks := rnd.BlocksOfSize(2, blockSize)
 	cids := []cid.Cid{blks[0].Cid(), blks[1].Cid()}
 
 	_, err := session.GetBlocks(ctx, cids)
@@ -549,7 +558,7 @@ func TestSessionReceiveMessageAfterClose(t *testing.T) {
 	session.Close()
 
 	// Simulate receiving block for a CID
-	peer := random.Peers(1)[0]
+	peer := rnd.Peers(1)[0]
 	session.ReceiveFrom(peer, []cid.Cid{blks[0].Cid()}, []cid.Cid{}, []cid.Cid{})
 
 	time.Sleep(5 * time.Millisecond)

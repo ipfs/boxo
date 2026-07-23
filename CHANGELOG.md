@@ -16,6 +16,21 @@ The following emojis are used to highlight certain changes:
 
 ### Added
 
+### Changed
+
+### Removed
+
+### Fixed
+
+### Security
+
+## [v0.42.0]
+
+### Added
+
+- `namesys`: DNSLink lookups now return the DNS TXT record's TTL, and the gateway uses it as `Cache-Control: max-age` for `/ipns/<dnslink-host>` responses. Clients cache a DNSLink website for exactly as long as its DNS record allows and fetch updates once it expires, instead of relying on a static default. [#329](https://github.com/ipfs/boxo/issues/329)
+  - Requires a resolver that reports TTLs, such as DNS-over-HTTPS via [`go-doh-resolver` v0.6.0](https://github.com/libp2p/go-doh-resolver/releases/tag/v0.6.0). The OS resolver cannot report TTLs: Go's standard library `net.Resolver` returns only record values, and libp2p's default DNS wiring (`madns.DefaultResolver`) wraps it, so domains it serves keep the old behavior. In Kubo, a `DNS.Resolvers` entry for `.` covers all domains.
+  - `WithDNSResolver` detects TTL support automatically. `NewDNSResolverWithTTL`, `WithDNSResolverWithTTL`, and `LookupTXTWithTTLFunc` take a TTL-aware lookup directly. `NewDNSResolver` and `LookupTXTFunc` are unchanged and report an unknown TTL (0).
 - `gateway`: `GET`/`HEAD /ipfs/bafkqaaa?format=raw` now always returns `200` with an empty body, so probing clients keep marking the gateway as functional even when its backend cannot serve identity CIDs. `bitswap/network/httpnet` sends this [trustless gateway probe](https://specs.ipfs.tech/http-gateways/trustless-gateway/#dedicated-probe-paths) to check providers, and a failed probe drops the provider. Exported as `gateway.EmptyIdentityCID`. [#1179](https://github.com/ipfs/boxo/pull/1179)
 - `path`: added `NewPathFromURI`, which accepts native IPFS URIs (`ipfs://cid`, `ipns://name`, `ipld://cid`, and the schemeless `ipfs:`/`ipns:`/`ipld:` forms) and rewrites them to canonical content paths, so values copied from browsers and other tools parse as-is. `NewPath` stays strict and still rejects URI-shaped input, leaving untrusted parsing such as DNSLink records unchanged. [#1182](https://github.com/ipfs/boxo/pull/1182)
 - `blockstore`: `CachedBlockstore` now returns a value implementing the
@@ -28,15 +43,32 @@ blockstore, so results stay correct but unaccelerated) and it is activated
 again only on a complete enumeration. A new optional `AllKeysChanWithErrer`
 capability lets a `Blockstore` report an error that truncates `AllKeysChan`
 enumeration. [#1184](https://github.com/ipfs/boxo/pull/1184)
+- `mfs`: added `WithFetchTimeout`, a time limit on how long MFS waits when it has to fetch part of a tree from the network. MFS can hold a tree whose contents are pulled in on demand, for example a reference made with `ipfs files cp /ipfs/<cid>`. If a needed part is unavailable, MFS would otherwise wait for it forever, freezing every MFS operation and blocking a clean shutdown; with a timeout the wait ends in an error instead. On by default at a generous `DefaultFetchTimeout` (5 minutes) that only affects unreachable data; pass `WithFetchTimeout(0)` to disable. [#1185](https://github.com/ipfs/boxo/pull/1185)
 
 ### Changed
 
 - `provider`: legacy re/provider uses file-backed queue (cascadeq) instead of datastore-backed queue (go-dsqueue). This ensures, regardless of datastore implementation, that ordered retrieval of queued items is efficient and does not require reading all items into memory to sort them, which is possible if the datastore implementation does not provide efficient native ordered queries.
+- `namesys`: a name that resolves through several hops (a DNSLink pointing at an IPNS name, or an IPNS chain) now uses the shortest TTL among them, so an update to any link in the chain reaches clients on time. Hops with an unknown TTL (0) are ignored; single-hop results are unchanged. [#329](https://github.com/ipfs/boxo/issues/329)
+- `namesys`: TTLs in results now respect the operator's cap. `WithMaxCacheTTL` (in Kubo: `Ipns.MaxCacheTTL`) bounds the reported TTL, so `Cache-Control: max-age` never promises freshness past it. Cached results report their remaining lifetime instead of the original TTL, so a late cache hit no longer restarts the full caching period on clients. A cap of 0 still means "no local cache" and leaves the reported TTL alone. [#329](https://github.com/ipfs/boxo/issues/329)
+- upgrade to `go-multiaddr-dns` [v0.6.0](https://github.com/multiformats/go-multiaddr-dns/releases/tag/v0.6.0) and `go-doh-resolver` [v0.6.0](https://github.com/libp2p/go-doh-resolver/releases/tag/v0.6.0), which add DNS TXT TTL reporting and turn on the DNSLink `Cache-Control` behavior above for DoH-backed setups.
+- 🛠 `mfs`: `File.Open` now takes a `context.Context`. Writing to a file whose data has to be fetched from the network (for example, a lazy reference created with `ipfs files cp`) now uses that context, so the write stops when the context is cancelled, such as on a client timeout or when MFS shuts down, instead of waiting forever for a block that never arrives. Callers must add a context argument; pass the request's context to let a timeout cancel the write. [#1185](https://github.com/ipfs/boxo/pull/1185)
+- 🧪 `testing`: tests now use `go-test` v0.4.0 and `math/rand/v2`. `go-test/random` no longer has a global seed or a global sequence, so one test can no longer change the values another test expects to generate deterministically, a class of failure that showed up as an intermittent break in an unrelated test. A generator can also be reused now, instead of being rebuilt for every value. [#1187](https://github.com/ipfs/boxo/pull/1187)
+- 🛠 `routing/offline`: the offline router now stores value records in the same datastore layout as the go-libp2p-kad-dht value store (v0.42.0+), so a node sharing one datastore between the offline router and a DHT resolves records offline that were published online and vice versa. That interop previously relied on both sides coincidentally using the same key derivation, which the kad-dht v0.42.0 layout change broke. Records written in the old layout (root-level base32 keys) are no longer read; `GetValue` also returns `routing.ErrNotFound` instead of leaking `datastore.ErrNotFound` for missing records, and re-validates stored records on read so expired records (e.g. IPNS past its EOL) are no longer returned. By default a stored record is served until it stops being valid (for IPNS, its EOL), unchanged from before; the new `WithMaxRecordAge` option adds an optional store-age cap. Retention also depends on what else uses the datastore: when a `go-libp2p-kad-dht` instance shares it (via `dht.ValueDatastore`), that DHT's value store drops records older than `amino.DefaultMaxRecordAge` on read and sweeps them in the background, regardless of this router's setting. So a node that also runs a DHT follows the DHT's age cap, while an offline-only node keeps records until their EOL. [#1189](https://github.com/ipfs/boxo/pull/1189)
+- upgrade to `go-libp2p-kad-dht` [v0.42.1](https://github.com/libp2p/go-libp2p-kad-dht/releases/tag/v0.42.1), which includes a [local record validation fix](https://github.com/libp2p/go-libp2p-kad-dht/pull/1285) [#1189](https://github.com/ipfs/boxo/pull/1189)
+- upgrade to `go-unixfsnode` [v1.10.5](https://github.com/ipfs/go-unixfsnode/releases/tag/v1.10.5)
+- upgrade to `go-cid` [v0.6.2](https://github.com/ipfs/go-cid/releases/tag/v0.6.2)
+- upgrade to `go-libp2p` [v0.48.1-0.20260709142922-ec408fcc60c9](https://github.com/libp2p/go-libp2p/commits/master/?since=2026-03-30&until=2026-07-21) to get security and other fixes.
 
 ### Removed
 
+- 🛠 `util`: removed the deprecated `NewSeededRand` and `NewTimeSeededRand`. Use [`go-test/random`](https://github.com/ipfs/go-test) instead. [#1187](https://github.com/ipfs/boxo/pull/1187)
+- Remove dependency on `whyrusleeping/base32` so that boxo only depends on one base32 package, `multiformats/go-base32`.
+
 ### Fixed
 
+- `namesys`: a custom sequence number of 0 is now rejected with `ErrInvalidSequence` also when the name has no existing record, matching the documented behavior that an explicitly supplied sequence must be at least 1.
+- `gateway`: `304 Not Modified` responses to `If-None-Match` and `If-Modified-Since` now carry `Etag` and the `Cache-Control` their `200` counterpart sends, so a client cache renews its freshness window when it revalidates. A bare 304 left the stored response expired, forcing a revalidation round-trip on every request after the first expiry even when the gateway had just confirmed the content is unchanged. Together with the DNSLink TTL work above, this addresses [#329](https://github.com/ipfs/boxo/issues/329) for web content; CAR and IPNS-record downloads keep their format-specific `Etag` handling.
+- `gateway`: fixed a data race in the remote blockstore, CAR fetcher, and value store. Each picked a gateway URL out of its list using a per-instance `*rand.Rand`, which is not safe to use from more than one goroutine, so a gateway serving requests in parallel was racing on every request. They now use the top-level `math/rand/v2` functions, which are safe to share. [#1187](https://github.com/ipfs/boxo/pull/1187)
 - `blockstore`: the Bloom filter cache no longer activates after an incomplete
 build. Previously, if `AllKeysChan` enumeration was truncated by a
 mid-iteration datastore error (which was only logged, never propagated) or by a
@@ -53,6 +85,11 @@ also fixes a race where a cancelled build could still mark the filter active.
 
 ### Security
 
+- `go-libp2p` update contains security enhancements for DoS/hardening
+  - [3501](https://github.com/libp2p/go-libp2p/pull/3501) bounds protocols accepted per peer in identify (a peer could plant 1800+ protocol entries in your peerstore via chunked identify)
+  - [3486](https://github.com/libp2p/go-libp2p/pull/3486) caps unconnected addrs per peer (stops DHT gossip flooding the peerstore with stale addrs; relevant to us)
+  - [3500](https://github.com/libp2p/go-libp2p/pull/3500) caps webrtc remote addrs per ufrag
+  - [3487](https://github.com/libp2p/go-libp2p/pull/3487) evicts stale certified addrs when a newer signed peer record drops them (an address a peer once advertised no longer lingers after removal)
 
 ## [v0.41.0]
 

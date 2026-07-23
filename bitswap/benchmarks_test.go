@@ -5,9 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
-	"math/rand"
 	"os"
-	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -135,6 +133,7 @@ func BenchmarkFetchFromOldBitswap(b *testing.B) {
 	fixedDelay := delay.Fixed(10 * time.Millisecond)
 	bstoreLatency := time.Duration(0)
 	router := mockrouting.NewServer()
+	rnd := random.New()
 
 	for _, bch := range mixedBenches {
 		b.Run(bch.name, func(b *testing.B) {
@@ -169,8 +168,8 @@ func BenchmarkFetchFromOldBitswap(b *testing.B) {
 			testinstance.ConnectInstances(instances)
 
 			// Generate blocks, with a smaller root block
-			rootBlock := random.BlocksOfSize(1, rootBlockSize)
-			blocks := random.BlocksOfSize(bch.blockCount, stdBlockSize)
+			rootBlock := rnd.BlocksOfSize(1, rootBlockSize)
+			blocks := rnd.BlocksOfSize(bch.blockCount, stdBlockSize)
 			blocks[0] = rootBlock[0]
 
 			// Run the distribution
@@ -209,10 +208,10 @@ const (
 
 func BenchmarkRealWorld(b *testing.B) {
 	benchmarkLog = nil
-	benchmarkSeed, err := strconv.ParseInt(os.Getenv("BENCHMARK_SEED"), 10, 64)
-	var randomGen *rand.Rand = nil
-	if err == nil {
-		randomGen = rand.New(rand.NewSource(benchmarkSeed))
+	var randomGen *random.Random
+	seed := os.Getenv("BENCHMARK_SEED")
+	if seed != "" {
+		randomGen = random.NewSeeded(random.StringToSeed(seed))
 	}
 
 	fastNetworkDelayGenerator := tn.InternetLatencyDelayGenerator(
@@ -248,10 +247,10 @@ func BenchmarkRealWorld(b *testing.B) {
 
 func BenchmarkDatacenter(b *testing.B) {
 	benchmarkLog = nil
-	benchmarkSeed, err := strconv.ParseInt(os.Getenv("BENCHMARK_SEED"), 10, 64)
-	var randomGen *rand.Rand = nil
-	if err == nil {
-		randomGen = rand.New(rand.NewSource(benchmarkSeed))
+	var randomGen *random.Random
+	seed := os.Getenv("BENCHMARK_SEED")
+	if seed != "" {
+		randomGen = random.NewSeeded(random.StringToSeed(seed))
 	}
 
 	datacenterNetworkDelayGenerator := tn.InternetLatencyDelayGenerator(
@@ -271,10 +270,10 @@ func BenchmarkDatacenter(b *testing.B) {
 
 func BenchmarkDatacenterMultiLeechMultiSeed(b *testing.B) {
 	benchmarkLog = nil
-	benchmarkSeed, err := strconv.ParseInt(os.Getenv("BENCHMARK_SEED"), 10, 64)
-	var randomGen *rand.Rand = nil
-	if err == nil {
-		randomGen = rand.New(rand.NewSource(benchmarkSeed))
+	var randomGen *random.Random
+	seed := os.Getenv("BENCHMARK_SEED")
+	if seed != "" {
+		randomGen = random.NewSeeded(random.StringToSeed(seed))
 	}
 
 	datacenterNetworkDelayGenerator := tn.InternetLatencyDelayGenerator(
@@ -292,6 +291,7 @@ func BenchmarkDatacenterMultiLeechMultiSeed(b *testing.B) {
 		ff := unixfsFileFetchLarge
 		numnodes := 6
 		numblks := 1000
+		rnd := random.New()
 
 		for i := 0; i < b.N; i++ {
 			net := tn.RateLimitedVirtualNetwork(d, rateLimitGenerator)
@@ -301,7 +301,7 @@ func BenchmarkDatacenterMultiLeechMultiSeed(b *testing.B) {
 			defer ig.Close()
 
 			instances := ig.Instances(numnodes)
-			blocks := random.BlocksOfSize(numblks, int(blockSize))
+			blocks := rnd.BlocksOfSize(numblks, blockSize)
 			runDistributionMulti(b, instances[:3], instances[3:], blocks, bstoreLatency, df, ff)
 		}
 	})
@@ -312,14 +312,15 @@ func BenchmarkDatacenterMultiLeechMultiSeed(b *testing.B) {
 }
 
 func subtestDistributeAndFetch(b *testing.B, numnodes, numblks int, d delay.D, bstoreLatency time.Duration, df distFunc, ff fetchFunc) {
+	rnd := random.New()
 	for i := 0; i < b.N; i++ {
 		net := tn.VirtualNetwork(d)
 		router := mockrouting.NewServer()
 		ig := testinstance.NewTestInstanceGenerator(net, router, nil, nil)
 
 		instances := ig.Instances(numnodes)
-		rootBlock := random.BlocksOfSize(1, rootBlockSize)
-		blocks := random.BlocksOfSize(numblks, stdBlockSize)
+		rootBlock := rnd.BlocksOfSize(1, rootBlockSize)
+		blocks := rnd.BlocksOfSize(numblks, stdBlockSize)
 		blocks[0] = rootBlock[0]
 		runDistribution(b, instances, blocks, bstoreLatency, df, ff)
 		ig.Close()
@@ -327,6 +328,7 @@ func subtestDistributeAndFetch(b *testing.B, numnodes, numblks int, d delay.D, b
 }
 
 func subtestDistributeAndFetchRateLimited(b *testing.B, numnodes, numblks int, d delay.D, rateLimitGenerator tn.RateLimitGenerator, blockSize int64, bstoreLatency time.Duration, df distFunc, ff fetchFunc) {
+	rnd := random.New()
 	for i := 0; i < b.N; i++ {
 		net := tn.RateLimitedVirtualNetwork(d, rateLimitGenerator)
 		router := mockrouting.NewServer()
@@ -334,8 +336,8 @@ func subtestDistributeAndFetchRateLimited(b *testing.B, numnodes, numblks int, d
 		defer ig.Close()
 
 		instances := ig.Instances(numnodes)
-		rootBlock := random.BlocksOfSize(1, rootBlockSize)
-		blocks := random.BlocksOfSize(numblks, int(blockSize))
+		rootBlock := rnd.BlocksOfSize(1, rootBlockSize)
+		blocks := rnd.BlocksOfSize(numblks, blockSize)
 		blocks[0] = rootBlock[0]
 		runDistribution(b, instances, blocks, bstoreLatency, df, ff)
 	}
@@ -490,8 +492,9 @@ func overlap2(b *testing.B, provs []testinstance.Instance, blks []blocks.Block) 
 // with this layout, we shouldnt actually ever see any duplicate blocks
 // but we're mostly just testing performance of the sync algorithm
 func onePeerPerBlock(b *testing.B, provs []testinstance.Instance, blks []blocks.Block) {
+	rnd := random.New()
 	for _, blk := range blks {
-		err := provs[rand.Intn(len(provs))].Blockstore.Put(context.Background(), blk)
+		err := provs[rnd.IntN(len(provs))].Blockstore.Put(context.Background(), blk)
 		if err != nil {
 			b.Fatal(err)
 		}

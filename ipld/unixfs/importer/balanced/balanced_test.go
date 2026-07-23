@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	mrand "math/rand"
 	"testing"
 	"time"
 
@@ -45,7 +44,7 @@ func buildTestDagWithParams(spl chunker.Splitter, dbp h.DagBuilderParams) (*dag.
 
 func getTestDag(t *testing.T, ds ipld.DAGService, size int64, blksize int64) (*dag.ProtoNode, []byte) {
 	data := make([]byte, size)
-	random.NewRand().Read(data)
+	random.New().Read(data)
 	r := bytes.NewReader(data)
 
 	nd, err := buildTestDag(ds, chunker.NewSizeSplitter(r, blksize))
@@ -272,14 +271,15 @@ func TestSeekingStress(t *testing.T) {
 	ds := mdtest.Mock()
 	nd, should := getTestDag(t, ds, nbytes, 1000)
 
-	rs, err := uio.NewDagReader(context.Background(), nd, ds)
+	rs, err := uio.NewDagReader(t.Context(), nd, ds)
 	if err != nil {
 		t.Fatal(err)
 	}
 
+	rnd := random.New()
 	testbuf := make([]byte, nbytes)
 	for range 50 {
-		offset := mrand.Intn(int(nbytes))
+		offset := rnd.IntN(int(nbytes))
 		l := int(nbytes) - offset
 		n, err := rs.Seek(int64(offset), io.SeekStart)
 		if err != nil {
@@ -347,7 +347,7 @@ func TestMetadataNoData(t *testing.T) {
 func TestMetadata(t *testing.T) {
 	nbytes := 3 * chunker.DefaultBlockSize
 	buf := new(bytes.Buffer)
-	_, err := io.CopyN(buf, random.NewRand(), nbytes)
+	_, err := io.CopyN(buf, random.New(), nbytes)
 	if err != nil {
 		t.Fatal(err)
 	}

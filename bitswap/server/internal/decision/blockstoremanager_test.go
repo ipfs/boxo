@@ -2,7 +2,6 @@ package decision
 
 import (
 	"context"
-	"crypto/rand"
 	"sync"
 	"testing"
 	"time"
@@ -33,7 +32,7 @@ func newBlockstoreManagerForTesting(
 }
 
 func TestBlockstoreManagerNotFoundKey(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	bsdelay := delay.Fixed(3 * time.Millisecond)
 	dstore := ds_sync.MutexWrap(delayed.New(ds.NewMapDatastore(), bsdelay))
 	bstore := blockstore.NewBlockstore(ds_sync.MutexWrap(dstore))
@@ -71,18 +70,18 @@ func TestBlockstoreManagerNotFoundKey(t *testing.T) {
 }
 
 func TestBlockstoreManager(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	bsdelay := delay.Fixed(3 * time.Millisecond)
 	dstore := ds_sync.MutexWrap(delayed.New(ds.NewMapDatastore(), bsdelay))
 	bstore := blockstore.NewBlockstore(ds_sync.MutexWrap(dstore))
 
 	bsm := newBlockstoreManagerForTesting(t, ctx, bstore, 5)
+	rnd := random.New()
 
 	exp := make(map[cid.Cid]blocks.Block)
 	var blks []blocks.Block
 	for i := range 32 {
-		buf := make([]byte, 1024*(i+1))
-		_, _ = rand.Read(buf)
+		buf := rnd.Bytes(int64(1024 * (i + 1)))
 		b := blocks.NewBlock(buf)
 		blks = append(blks, b)
 		exp[b.Cid()] = b
@@ -146,7 +145,7 @@ func TestBlockstoreManager(t *testing.T) {
 }
 
 func TestBlockstoreManagerConcurrency(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	bsdelay := delay.Fixed(3 * time.Millisecond)
 	dstore := ds_sync.MutexWrap(delayed.New(ds.NewMapDatastore(), bsdelay))
 	bstore := blockstore.NewBlockstore(ds_sync.MutexWrap(dstore))
@@ -187,7 +186,7 @@ func TestBlockstoreManagerConcurrency(t *testing.T) {
 }
 
 func TestBlockstoreManagerClose(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	const delayTime = 20 * time.Millisecond
 	bsdelay := delay.Fixed(delayTime)
 	dstore := ds_sync.MutexWrap(delayed.New(ds.NewMapDatastore(), bsdelay))
@@ -228,7 +227,7 @@ func TestBlockstoreManagerCtxDone(t *testing.T) {
 	underlyingBstore := blockstore.NewBlockstore(underlyingDstore)
 	bstore := blockstore.NewBlockstore(dstore)
 
-	ctx := context.Background()
+	ctx := t.Context()
 	bsm := newBlockstoreManagerForTesting(t, ctx, bstore, 3)
 
 	blks := random.BlocksOfSize(100, 128)

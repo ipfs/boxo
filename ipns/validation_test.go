@@ -1,7 +1,7 @@
 package ipns
 
 import (
-	"math/rand"
+	"math/rand/v2"
 	"testing"
 	"time"
 
@@ -18,7 +18,7 @@ import (
 func shuffle[T any](a []T) {
 	for range 5 {
 		for i := range a {
-			j := rand.Intn(len(a))
+			j := rand.IntN(len(a))
 			a[i], a[j] = a[j], a[i]
 		}
 	}

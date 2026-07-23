@@ -2,15 +2,15 @@ package hamt
 
 import (
 	"context"
+	crand "crypto/rand"
 	"errors"
 	"fmt"
-	"math/rand"
+	"math/rand/v2"
 	"os"
 	"slices"
 	"strconv"
 	"strings"
 	"testing"
-	"time"
 
 	dag "github.com/ipfs/boxo/ipld/merkledag"
 	mdtest "github.com/ipfs/boxo/ipld/merkledag/test"
@@ -18,11 +18,11 @@ import (
 	ipld "github.com/ipfs/go-ipld-format"
 )
 
-func shuffle(seed int64, arr []string) {
-	r := rand.New(rand.NewSource(seed))
+func shuffle(seed [32]byte, arr []string) {
+	r := rand.New(rand.NewChaCha8(seed))
 	for range arr {
-		a := r.Intn(len(arr))
-		b := r.Intn(len(arr))
+		a := r.IntN(len(arr))
+		b := r.IntN(len(arr))
 		arr[a], arr[b] = arr[b], arr[a]
 	}
 }
@@ -44,7 +44,9 @@ func makeDirWidth(ds ipld.DAGService, size, width int) ([]string, *Shard, error)
 		dirs = append(dirs, fmt.Sprintf("DIRNAME%d", i))
 	}
 
-	shuffle(time.Now().UnixNano(), dirs)
+	var seed [32]byte
+	_, _ = crand.Read(seed[:])
+	shuffle(seed, dirs)
 
 	for i := 0; i < len(dirs); i++ {
 		nd := ft.EmptyDirNode()
@@ -146,7 +148,7 @@ func TestBasicSet(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			ctx := context.Background()
+			ctx := t.Context()
 
 			for _, d := range names {
 				_, err := s.Find(ctx, d)
@@ -239,7 +241,7 @@ func TestRemoveElems(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ctx := context.Background()
+	ctx := t.Context()
 
 	for range 100 {
 		err := s.Remove(ctx, fmt.Sprintf("NOTEXIST%d", rand.Int()))
@@ -255,7 +257,9 @@ func TestRemoveElems(t *testing.T) {
 		}
 	}
 
-	shuffle(time.Now().UnixNano(), dirs)
+	var seed [32]byte
+	_, _ = crand.Read(seed[:])
+	shuffle(seed, dirs)
 
 	for _, d := range dirs {
 		err := s.Remove(ctx, d)
@@ -295,9 +299,11 @@ func TestRemoveAfterMarshal(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	ctx := context.Background()
+	ctx := t.Context()
 
-	shuffle(time.Now().UnixNano(), dirs)
+	var seed [32]byte
+	_, _ = crand.Read(seed[:])
+	shuffle(seed, dirs)
 
 	for i, d := range dirs {
 		err := s.Remove(ctx, d)
@@ -327,7 +333,7 @@ func TestSetAfterMarshal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ctx := context.Background()
+	ctx := t.Context()
 
 	nd, err := s.Node()
 	if err != nil {
@@ -377,7 +383,7 @@ func TestEnumLinksAsync(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ctx := context.Background()
+	ctx := t.Context()
 
 	nd, err := s.Node()
 	if err != nil {
@@ -415,7 +421,7 @@ func TestDuplicateAddShard(t *testing.T) {
 	ds := mdtest.Mock()
 	dir, _ := NewShard(ds, 256)
 	nd := new(dag.ProtoNode)
-	ctx := context.Background()
+	ctx := t.Context()
 
 	err := dir.Set(ctx, "test", nd)
 	if err != nil {
@@ -460,7 +466,7 @@ func TestSetLink(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	ctx := context.Background()
+	ctx := t.Context()
 
 	err = dir.SetLink(ctx, "test", lnk)
 	if err != nil {
@@ -501,7 +507,7 @@ func TestFindNonExisting(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ctx := context.Background()
+	ctx := t.Context()
 
 	for i := range 200 {
 		_, err := s.Find(ctx, fmt.Sprintf("notfound%d", i))
@@ -517,7 +523,7 @@ func TestRemoveElemsAfterMarshal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ctx := context.Background()
+	ctx := t.Context()
 
 	slices.Sort(dirs)
 
@@ -619,7 +625,7 @@ func TestBitfieldIndexing(t *testing.T) {
 // if improperly implemented, the parent hamt may assume the child is a part of
 // itself.
 func TestSetHamtChild(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 
 	ds := mdtest.Mock()
 	s, _ := NewShard(ds, 256)
@@ -669,7 +675,7 @@ func TestSetHamtChild(t *testing.T) {
 }
 
 func BenchmarkHAMTWalk(b *testing.B) {
-	ctx := context.Background()
+	ctx := b.Context()
 
 	ds := mdtest.Mock()
 	sh, _ := NewShard(ds, 256)
@@ -712,7 +718,7 @@ func BenchmarkHAMTWalk(b *testing.B) {
 }
 
 func BenchmarkHAMTSet(b *testing.B) {
-	ctx := context.Background()
+	ctx := b.Context()
 
 	ds := mdtest.Mock()
 	sh, _ := NewShard(ds, 256)
@@ -733,7 +739,7 @@ func BenchmarkHAMTSet(b *testing.B) {
 			b.Fatal(err)
 		}
 
-		err = s.Set(context.TODO(), strconv.Itoa(i), ft.EmptyDirNode())
+		err = s.Set(ctx, strconv.Itoa(i), ft.EmptyDirNode())
 		if err != nil {
 			b.Fatal(err)
 		}

@@ -13,6 +13,12 @@ var defaultResolvers = map[string]string{
 	"eth.": "https://dns.eth.limo/dns-query",
 }
 
+// The DoH resolvers built here must keep reporting TXT TTLs: namesys detects
+// the capability only at runtime, so without this assertion a signature drift
+// in either dependency would surface as DNSLink Cache-Control silently losing
+// its max-age instead of a compile error.
+var _ madns.TXTWithTTLResolver = (*doh.Resolver)(nil)
+
 func newResolver(url string, opts ...doh.Option) (madns.BasicResolver, error) {
 	if !strings.HasPrefix(url, "https://") && !strings.HasPrefix(url, "http://") {
 		return nil, fmt.Errorf("invalid DoH resolver URL: %s", url)
@@ -31,6 +37,12 @@ func newResolver(url string, opts ...doh.Option) (madns.BasicResolver, error) {
 // Example:
 //   - Custom resolver for ENS:          "eth." → "https://eth.link/dns-query"
 //   - Override the default OS resolver: "."    → "https://doh.applied-privacy.net/query"
+//
+// Domains matched by a DoH entry report the DNS TTL of DNSLink TXT records,
+// which the gateway turns into Cache-Control max-age. Domains that fall
+// through to the OS resolver cannot report TTLs (Go's [net.Resolver] returns
+// only record values); add a "." entry to route every lookup through DoH and
+// cover all DNSLink domains.
 //
 // [FQDNs]: https://en.wikipedia.org/wiki/Fully_qualified_domain_name
 // [DoH]: https://en.wikipedia.org/wiki/DNS_over_HTTPS

@@ -2,9 +2,10 @@ package bitswap
 
 import (
 	"math"
-	"math/rand"
 	"testing"
 	"time"
+
+	"github.com/ipfs/go-test/random"
 )
 
 const testSeed = 99
@@ -23,7 +24,7 @@ func TestInternetLatencyDelayNextWaitTimeDistribution(t *testing.T) {
 		percentMedium,
 		percentLarge,
 		deviation,
-		rand.New(rand.NewSource(testSeed)))
+		random.NewSeeded(random.Uint64ToSeed(testSeed)))
 
 	buckets["fast"] = 0
 	buckets["medium"] = 0
