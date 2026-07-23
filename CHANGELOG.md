@@ -18,6 +18,8 @@ The following emojis are used to highlight certain changes:
 
 ### Changed
 
+- `provider`: legacy re/provider uses file-backed queue (cascadeq) instead of datastore-backed queue (go-dsqueue). This ensures, regardless of datastore implementation, that ordered retrieval of queued items is efficient and does not require reading all items into memory to sort them, which is possible if the datastore implementation does not provide efficient native ordered queries.
+
 ### Removed
 
 ### Fixed
@@ -47,7 +49,6 @@ enumeration. [#1184](https://github.com/ipfs/boxo/pull/1184)
 
 ### Changed
 
-- `provider`: legacy re/provider uses file-backed queue (cascadeq) instead of datastore-backed queue (go-dsqueue). This ensures, regardless of datastore implementation, that ordered retrieval of queued items is efficient and does not require reading all items into memory to sort them, which is possible if the datastore implementation does not provide efficient native ordered queries.
 - `namesys`: a name that resolves through several hops (a DNSLink pointing at an IPNS name, or an IPNS chain) now uses the shortest TTL among them, so an update to any link in the chain reaches clients on time. Hops with an unknown TTL (0) are ignored; single-hop results are unchanged. [#329](https://github.com/ipfs/boxo/issues/329)
 - `namesys`: TTLs in results now respect the operator's cap. `WithMaxCacheTTL` (in Kubo: `Ipns.MaxCacheTTL`) bounds the reported TTL, so `Cache-Control: max-age` never promises freshness past it. Cached results report their remaining lifetime instead of the original TTL, so a late cache hit no longer restarts the full caching period on clients. A cap of 0 still means "no local cache" and leaves the reported TTL alone. [#329](https://github.com/ipfs/boxo/issues/329)
 - upgrade to `go-multiaddr-dns` [v0.6.0](https://github.com/multiformats/go-multiaddr-dns/releases/tag/v0.6.0) and `go-doh-resolver` [v0.6.0](https://github.com/libp2p/go-doh-resolver/releases/tag/v0.6.0), which add DNS TXT TTL reporting and turn on the DNSLink `Cache-Control` behavior above for DoH-backed setups.
