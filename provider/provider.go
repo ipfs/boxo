@@ -41,7 +41,7 @@ type Reprovider interface {
 type System interface {
 	// Clear removes all entries from the provide queue. Returns the number of
 	// CIDs removed from the queue.
-	Clear() int
+	Clear() error
 	Close() error
 	Stat() (ReproviderStats, error)
 	SetKeyProvider(kp KeyChanFunc)
