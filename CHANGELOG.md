@@ -18,6 +18,8 @@ The following emojis are used to highlight certain changes:
 
 ### Changed
 
+- `routing/http/server`: `/routing/v1` responses no longer let caches serve a two day old answer while the origin is healthy. `stale-while-revalidate` is now 10 minutes for responses with results and 1 minute for empty ones, which is enough to cover a background refresh. `stale-if-error` keeps the 48h Amino DHT expiration window for responses with results and drops to 1 hour for empty ones, since it only applies when the origin is failing. `max-age` is unchanged. The peer addresses in routing results come from short-lived sources such as relay reservations, so a stale window measured in days handed clients addresses that stopped working long ago. [#1195](https://github.com/ipfs/boxo/pull/1195)
+
 ### Removed
 
 ### Fixed

@@ -179,9 +179,9 @@ func TestProviders(t *testing.T) {
 		require.Equal(t, "Accept", resp.Header.Get("Vary"))
 
 		if empty {
-			require.Equal(t, "public, max-age=15, stale-while-revalidate=172800, stale-if-error=172800", resp.Header.Get("Cache-Control"))
+			require.Equal(t, "public, max-age=15, stale-while-revalidate=60, stale-if-error=3600", resp.Header.Get("Cache-Control"))
 		} else {
-			require.Equal(t, "public, max-age=300, stale-while-revalidate=172800, stale-if-error=172800", resp.Header.Get("Cache-Control"))
+			require.Equal(t, "public, max-age=300, stale-while-revalidate=600, stale-if-error=172800", resp.Header.Get("Cache-Control"))
 		}
 		requireCloseToNow(t, resp.Header.Get("Last-Modified"))
 
@@ -543,7 +543,7 @@ func TestPeers(t *testing.T) {
 
 		require.Equal(t, mediaTypeJSON, resp.Header.Get("Content-Type"))
 		require.Equal(t, "Accept", resp.Header.Get("Vary"))
-		require.Equal(t, "public, max-age=15, stale-while-revalidate=172800, stale-if-error=172800", resp.Header.Get("Cache-Control"))
+		require.Equal(t, "public, max-age=15, stale-while-revalidate=60, stale-if-error=3600", resp.Header.Get("Cache-Control"))
 
 		requireCloseToNow(t, resp.Header.Get("Last-Modified"))
 
@@ -646,7 +646,7 @@ func TestPeers(t *testing.T) {
 
 		require.Equal(t, mediaTypeJSON, resp.Header.Get("Content-Type"))
 		require.Equal(t, "Accept", resp.Header.Get("Vary"))
-		require.Equal(t, "public, max-age=300, stale-while-revalidate=172800, stale-if-error=172800", resp.Header.Get("Cache-Control"))
+		require.Equal(t, "public, max-age=300, stale-while-revalidate=600, stale-if-error=172800", resp.Header.Get("Cache-Control"))
 
 		requireCloseToNow(t, resp.Header.Get("Last-Modified"))
 
@@ -698,7 +698,7 @@ func TestPeers(t *testing.T) {
 
 		require.Equal(t, mediaTypeJSON, resp.Header.Get("Content-Type"))
 		require.Equal(t, "Accept", resp.Header.Get("Vary"))
-		require.Equal(t, "public, max-age=300, stale-while-revalidate=172800, stale-if-error=172800", resp.Header.Get("Cache-Control"))
+		require.Equal(t, "public, max-age=300, stale-while-revalidate=600, stale-if-error=172800", resp.Header.Get("Cache-Control"))
 
 		requireCloseToNow(t, resp.Header.Get("Last-Modified"))
 
@@ -750,7 +750,7 @@ func TestPeers(t *testing.T) {
 
 		require.Equal(t, mediaTypeJSON, resp.Header.Get("Content-Type"))
 		require.Equal(t, "Accept", resp.Header.Get("Vary"))
-		require.Equal(t, "public, max-age=300, stale-while-revalidate=172800, stale-if-error=172800", resp.Header.Get("Cache-Control"))
+		require.Equal(t, "public, max-age=300, stale-while-revalidate=600, stale-if-error=172800", resp.Header.Get("Cache-Control"))
 
 		requireCloseToNow(t, resp.Header.Get("Last-Modified"))
 
@@ -776,7 +776,7 @@ func TestPeers(t *testing.T) {
 
 		require.Equal(t, mediaTypeNDJSON, resp.Header.Get("Content-Type"))
 		require.Equal(t, "Accept", resp.Header.Get("Vary"))
-		require.Equal(t, "public, max-age=15, stale-while-revalidate=172800, stale-if-error=172800", resp.Header.Get("Cache-Control"))
+		require.Equal(t, "public, max-age=15, stale-while-revalidate=60, stale-if-error=3600", resp.Header.Get("Cache-Control"))
 
 		requireCloseToNow(t, resp.Header.Get("Last-Modified"))
 
@@ -814,7 +814,7 @@ func TestPeers(t *testing.T) {
 
 		require.Equal(t, mediaTypeNDJSON, resp.Header.Get("Content-Type"))
 		require.Equal(t, "Accept", resp.Header.Get("Vary"))
-		require.Equal(t, "public, max-age=300, stale-while-revalidate=172800, stale-if-error=172800", resp.Header.Get("Cache-Control"))
+		require.Equal(t, "public, max-age=300, stale-while-revalidate=600, stale-if-error=172800", resp.Header.Get("Cache-Control"))
 
 		body, err := io.ReadAll(resp.Body)
 		require.NoError(t, err)
@@ -876,7 +876,7 @@ func TestPeers(t *testing.T) {
 
 			require.Equal(t, mediaTypeNDJSON, resp.Header.Get("Content-Type"))
 			require.Equal(t, "Accept", resp.Header.Get("Vary"))
-			require.Equal(t, "public, max-age=300, stale-while-revalidate=172800, stale-if-error=172800", resp.Header.Get("Cache-Control"))
+			require.Equal(t, "public, max-age=300, stale-while-revalidate=600, stale-if-error=172800", resp.Header.Get("Cache-Control"))
 
 			body, err := io.ReadAll(resp.Body)
 			require.NoError(t, err)
@@ -896,7 +896,7 @@ func TestPeers(t *testing.T) {
 
 			require.Equal(t, mediaTypeJSON, resp.Header.Get("Content-Type"))
 			require.Equal(t, "Accept", resp.Header.Get("Vary"))
-			require.Equal(t, "public, max-age=300, stale-while-revalidate=172800, stale-if-error=172800", resp.Header.Get("Cache-Control"))
+			require.Equal(t, "public, max-age=300, stale-while-revalidate=600, stale-if-error=172800", resp.Header.Get("Cache-Control"))
 
 			body, err := io.ReadAll(resp.Body)
 			require.NoError(t, err)
@@ -1020,7 +1020,7 @@ func TestGetClosestPeers(t *testing.T) {
 
 		require.Equal(t, mediaTypeJSON, resp.Header.Get("Content-Type"))
 		require.Equal(t, "Accept", resp.Header.Get("Vary"))
-		require.Equal(t, "public, max-age=15, stale-while-revalidate=172800, stale-if-error=172800", resp.Header.Get("Cache-Control"))
+		require.Equal(t, "public, max-age=15, stale-while-revalidate=60, stale-if-error=3600", resp.Header.Get("Cache-Control"))
 
 		requireCloseToNow(t, resp.Header.Get("Last-Modified"))
 	})
@@ -1106,7 +1106,7 @@ func TestGetClosestPeers(t *testing.T) {
 
 		require.Equal(t, mediaTypeJSON, resp.Header.Get("Content-Type"))
 		require.Equal(t, "Accept", resp.Header.Get("Vary"))
-		require.Equal(t, "public, max-age=300, stale-while-revalidate=172800, stale-if-error=172800", resp.Header.Get("Cache-Control"))
+		require.Equal(t, "public, max-age=300, stale-while-revalidate=600, stale-if-error=172800", resp.Header.Get("Cache-Control"))
 
 		requireCloseToNow(t, resp.Header.Get("Last-Modified"))
 
@@ -1133,7 +1133,7 @@ func TestGetClosestPeers(t *testing.T) {
 
 		require.Equal(t, mediaTypeNDJSON, resp.Header.Get("Content-Type"))
 		require.Equal(t, "Accept", resp.Header.Get("Vary"))
-		require.Equal(t, "public, max-age=15, stale-while-revalidate=172800, stale-if-error=172800", resp.Header.Get("Cache-Control"))
+		require.Equal(t, "public, max-age=15, stale-while-revalidate=60, stale-if-error=3600", resp.Header.Get("Cache-Control"))
 
 		requireCloseToNow(t, resp.Header.Get("Last-Modified"))
 	})
@@ -1166,7 +1166,7 @@ func TestGetClosestPeers(t *testing.T) {
 
 		require.Equal(t, mediaTypeNDJSON, resp.Header.Get("Content-Type"))
 		require.Equal(t, "Accept", resp.Header.Get("Vary"))
-		require.Equal(t, "public, max-age=300, stale-while-revalidate=172800, stale-if-error=172800", resp.Header.Get("Cache-Control"))
+		require.Equal(t, "public, max-age=300, stale-while-revalidate=600, stale-if-error=172800", resp.Header.Get("Cache-Control"))
 
 		body, err := io.ReadAll(resp.Body)
 		require.NoError(t, err)
@@ -1235,7 +1235,7 @@ func TestGetClosestPeers(t *testing.T) {
 
 			require.Equal(t, mediaTypeJSON, resp.Header.Get("Content-Type"))
 			require.Equal(t, "Accept", resp.Header.Get("Vary"))
-			require.Equal(t, "public, max-age=300, stale-while-revalidate=172800, stale-if-error=172800", resp.Header.Get("Cache-Control"))
+			require.Equal(t, "public, max-age=300, stale-while-revalidate=600, stale-if-error=172800", resp.Header.Get("Cache-Control"))
 
 			body, err := io.ReadAll(resp.Body)
 			require.NoError(t, err)

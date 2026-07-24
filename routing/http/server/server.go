@@ -530,7 +530,7 @@ func (s *server) GetIPNS(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		if errors.Is(err, routing.ErrNotFound) {
 			// Per IPIP-0513: Return 200 with text/plain to indicate no record found
-			setCacheControl(w, maxAgeWithoutResults, maxStale)
+			setCacheControlWithoutResults(w)
 			http.Error(w, fmt.Sprintf("delegate error: %s", err), http.StatusOK)
 			return
 		} else {
@@ -686,11 +686,24 @@ func (s *server) getClosestPeersNDJSON(w http.ResponseWriter, peersIter iter.Res
 var (
 	// Rule-of-thumb Cache-Control policy is to work well with caching proxies and load balancers.
 	// If there are any results, cache on the client for longer, and hint any in-between caches to
-	// serve cached result and upddate cache in background as long we have
-	// result that is within Amino DHT expiration window
+	// serve cached result and update cache in background.
 	maxAgeWithResults    = int((5 * time.Minute).Seconds())  // cache >0 results for longer
 	maxAgeWithoutResults = int((15 * time.Second).Seconds()) // cache no results briefly
-	maxStale             = int((48 * time.Hour).Seconds())   // allow stale results as long within Amino DHT  Expiration window
+
+	// stale-while-revalidate is served while the origin is healthy, so it only
+	// needs to cover a background refresh. Routing results churn much faster
+	// than the Amino DHT provider record expiration: the peer addresses in them
+	// come from short-lived sources such as relay reservations, so a window
+	// measured in days hands clients addresses that stopped working long ago.
+	staleWhileRevalidateWithResults    = int((10 * time.Minute).Seconds())
+	staleWhileRevalidateWithoutResults = int((1 * time.Minute).Seconds())
+
+	// stale-if-error only applies when the origin is failing, where a stale
+	// answer beats no answer. Results stay usable as long as they are within the
+	// Amino DHT expiration window. An empty answer is worth little, so it is not
+	// held nearly as long.
+	staleIfErrorWithResults    = int((48 * time.Hour).Seconds())
+	staleIfErrorWithoutResults = int((1 * time.Hour).Seconds())
 )
 
 func parsePeerID(pidStr string) (peer.ID, error) {
@@ -748,8 +761,16 @@ func parseKey(keyStr string) (cid.Cid, error) {
 	return cid.Cid{}, fmt.Errorf("unable to parse as CID or PeerID: %w", errors.Join(cidErr, pidErr))
 }
 
-func setCacheControl(w http.ResponseWriter, maxAge int, stale int) {
-	w.Header().Set("Cache-Control", fmt.Sprintf("public, max-age=%d, stale-while-revalidate=%d, stale-if-error=%d", maxAge, stale, stale))
+func setCacheControl(w http.ResponseWriter, maxAge, staleWhileRevalidate, staleIfError int) {
+	w.Header().Set("Cache-Control", fmt.Sprintf("public, max-age=%d, stale-while-revalidate=%d, stale-if-error=%d", maxAge, staleWhileRevalidate, staleIfError))
+}
+
+func setCacheControlWithResults(w http.ResponseWriter) {
+	setCacheControl(w, maxAgeWithResults, staleWhileRevalidateWithResults, staleIfErrorWithResults)
+}
+
+func setCacheControlWithoutResults(w http.ResponseWriter) {
+	setCacheControl(w, maxAgeWithoutResults, staleWhileRevalidateWithoutResults, staleIfErrorWithoutResults)
 }
 
 // setIPNSCacheControl sets Cache-Control for an IPNS record response. An IPNS
@@ -767,7 +788,8 @@ func setIPNSCacheControl(w http.ResponseWriter, ttl int, remainingValidity int) 
 		return
 	}
 	maxAge := min(max(0, ttl), remainingValidity)
-	setCacheControl(w, maxAge, remainingValidity-maxAge)
+	stale := remainingValidity - maxAge
+	setCacheControl(w, maxAge, stale, stale)
 }
 
 func writeJSONResult(w http.ResponseWriter, method string, val interface{ Length() int }) {
@@ -775,9 +797,9 @@ func writeJSONResult(w http.ResponseWriter, method string, val interface{ Length
 	w.Header().Add("Vary", "Accept")
 
 	if val.Length() > 0 {
-		setCacheControl(w, maxAgeWithResults, maxStale)
+		setCacheControlWithResults(w)
 	} else {
-		setCacheControl(w, maxAgeWithoutResults, maxStale)
+		setCacheControlWithoutResults(w)
 	}
 	w.Header().Set("Last-Modified", time.Now().UTC().Format(http.TimeFormat))
 
@@ -800,7 +822,7 @@ func writeJSONResult(w http.ResponseWriter, method string, val interface{ Length
 
 func writeErr(w http.ResponseWriter, method string, statusCode int, cause error) {
 	if errors.Is(cause, routing.ErrNotFound) {
-		setCacheControl(w, maxAgeWithoutResults, maxStale)
+		setCacheControlWithoutResults(w)
 	}
 
 	w.WriteHeader(statusCode)
@@ -844,7 +866,7 @@ func writeResultsIterNDJSON[T types.Record](w http.ResponseWriter, resultIter it
 		if !hasResults {
 			hasResults = true
 			// There's results, cache useful result for longer
-			setCacheControl(w, maxAgeWithResults, maxStale)
+			setCacheControlWithResults(w)
 		}
 
 		_, err = w.Write(b)
@@ -866,7 +888,7 @@ func writeResultsIterNDJSON[T types.Record](w http.ResponseWriter, resultIter it
 
 	if !hasResults {
 		// There weren't results, cache for shorter but still send 200 per IPIP-0513
-		setCacheControl(w, maxAgeWithoutResults, maxStale)
+		setCacheControlWithoutResults(w)
 		w.WriteHeader(http.StatusOK)
 	}
 }
