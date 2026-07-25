@@ -177,7 +177,37 @@ func TestExtractHTTPAddress(t *testing.T) {
 			maStr: "/ip6/::1/tcp/8080/http",
 			want: &url.URL{
 				Scheme: "http",
-				Host:   "::1:8080",
+				Host:   "[::1]:8080",
+			},
+			expectErr: false,
+		},
+		// IPv6 literals must reach the HTTP client bracketed, both with an
+		// explicit port and with the default one omitted. AutoTLS nodes that
+		// hold a certificate for their own IP announce /ip6/<ip>/tcp/443/tls/http.
+		{
+			name:  "IP6 with tls/http on default port",
+			maStr: "/ip6/2001:db8::1/tcp/443/tls/http",
+			want: &url.URL{
+				Scheme: "https",
+				Host:   "[2001:db8::1]",
+			},
+			expectErr: false,
+		},
+		{
+			name:  "IP6 with tls/http on non-default port",
+			maStr: "/ip6/2001:db8::1/tcp/8443/tls/http",
+			want: &url.URL{
+				Scheme: "https",
+				Host:   "[2001:db8::1]:8443",
+			},
+			expectErr: false,
+		},
+		{
+			name:  "IP6 with https and no tcp component infers port 443",
+			maStr: "/ip6/2001:db8::1/https",
+			want: &url.URL{
+				Scheme: "https",
+				Host:   "[2001:db8::1]",
 			},
 			expectErr: false,
 		},
@@ -221,6 +251,38 @@ func TestExtractHTTPAddress(t *testing.T) {
 
 			if tt.want != nil && (got.URL == nil || got.URL.String() != tt.want.String() || tt.sni != got.SNI) {
 				t.Errorf("ExtractHTTPAddress() = %v (%s), want %v (%s)", got.URL, got.SNI, tt.want, tt.sni)
+			}
+		})
+	}
+}
+
+// The URL an HTTP client dials is only correct if the IPv6 literal survives
+// parsing intact. An unbracketed authority splits at the last colon, so
+// "2001:db8::1" would be dialed as host "2001:db8:" port "1".
+func TestExtractHTTPAddressIPv6RoundTrip(t *testing.T) {
+	for _, tc := range []struct {
+		maStr string
+		host  string
+		port  string
+	}{
+		{"/ip6/2001:db8::1/tcp/443/tls/http", "2001:db8::1", ""},
+		{"/ip6/2001:db8::1/tcp/8443/tls/http", "2001:db8::1", "8443"},
+		{"/ip6/::1/tcp/8080/http", "::1", "8080"},
+	} {
+		t.Run(tc.maStr, func(t *testing.T) {
+			ma, err := multiaddr.NewMultiaddr(tc.maStr)
+			if err != nil {
+				t.Fatalf("failed to create multiaddress: %v", err)
+			}
+			got, err := ExtractHTTPAddress(ma)
+			if err != nil {
+				t.Fatalf("ExtractHTTPAddress() error = %v", err)
+			}
+			if got.URL.Hostname() != tc.host {
+				t.Errorf("Hostname() = %q, want %q", got.URL.Hostname(), tc.host)
+			}
+			if got.URL.Port() != tc.port {
+				t.Errorf("Port() = %q, want %q", got.URL.Port(), tc.port)
 			}
 		})
 	}

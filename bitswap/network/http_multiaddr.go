@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"net/url"
+	"strings"
 
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/multiformats/go-multiaddr"
@@ -82,9 +83,9 @@ func ExtractHTTPAddress(ma multiaddr.Multiaddr) (ParsedURL, error) {
 	// to match when an explicit default port is present.
 	var address string
 	if (schema == "https" && port == "443") || (schema == "http" && port == "80") {
-		address = fmt.Sprintf("%s://%s", schema, host)
+		address = fmt.Sprintf("%s://%s", schema, hostInURL(host))
 	} else {
-		address = fmt.Sprintf("%s://%s:%s", schema, host, port)
+		address = fmt.Sprintf("%s://%s", schema, net.JoinHostPort(host, port))
 	}
 	pURL, err := url.Parse(address)
 	if err != nil {
@@ -108,6 +109,18 @@ func ExtractHTTPAddress(ma multiaddr.Multiaddr) (ParsedURL, error) {
 	}
 
 	return parsedURL, nil
+}
+
+// hostInURL renders host for use in a URL authority that carries no port. An
+// IPv6 literal has to be bracketed there (RFC 3986, section 3.2.2), otherwise
+// its colons read as a port separator: url.Parse rejects the result outright
+// under Go 1.26+, and older parsers silently split the address at the last
+// colon. net.JoinHostPort covers the case where a port is present.
+func hostInURL(host string) string {
+	if strings.Contains(host, ":") {
+		return "[" + host + "]"
+	}
+	return host
 }
 
 // ExtractURLsFromPeer extracts all HTTP schema+host+port addresses as ParsedURL from a peer.AddrInfo object.
