@@ -20,6 +20,8 @@ The following emojis are used to highlight certain changes:
 
 ### Changed
 
+- `gateway`: a CAR response that fails partway through now ends with `[Gateway Error: CAR stream truncated, response is incomplete]`, the same approach `withRetrievalTimeout` already uses when it cuts a response short. `X-Stream-Error` is only set once the body is streaming, so it rarely reaches the client, and a truncated CAR was otherwise indistinguishable from a complete one. The marker makes the trailing bytes invalid CAR, so a reader stops with an error instead of accepting a short DAG. Mostly this is a quality of life improvement for operators: gateways usually sit behind reverse proxies and third-party CDNs, and when a response arrives short it is hard to tell which hop dropped it. Now the response says so itself. [#1197](https://github.com/ipfs/boxo/pull/1197)
+
 ### Removed
 
 ### Fixed
