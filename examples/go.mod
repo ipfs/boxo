@@ -61,7 +61,7 @@ require (
 	github.com/ipfs/go-log/v2 v2.9.2 // indirect
 	github.com/ipfs/go-metrics-interface v0.3.0 // indirect
 	github.com/ipfs/go-peertaskqueue v0.8.3 // indirect
-	github.com/ipfs/go-unixfsnode v1.10.5 // indirect
+	github.com/ipfs/go-unixfsnode v1.10.6-0.20260726230606-70b7b4e8854e // indirect
 	github.com/ipld/go-codec-dagpb v1.7.0 // indirect
 	github.com/ipld/go-ipld-prime v0.24.0 // indirect
 	github.com/jackpal/go-nat-pmp v1.0.2 // indirect
