@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"runtime/debug"
 	"strings"
 
 	"github.com/ipfs/boxo/blockservice"
@@ -438,6 +439,18 @@ func (bb *BlocksBackend) GetCAR(ctx context.Context, p path.ImmutablePath, param
 
 	r, w := io.Pipe()
 	go func() {
+		// Traversal decodes blocks with whatever codec their CID names, so it
+		// runs third-party code this package does not control. The goroutine is
+		// detached from the request, and a panic on it would end the process
+		// rather than the response, so keep it contained here.
+		defer func() {
+			if rec := recover(); rec != nil {
+				log.Errorf("recovered from panic during CAR traversal of %s: %v\n%s", p, rec, debug.Stack())
+				// io.PipeWriter.CloseWithError always returns nil.
+				_ = w.CloseWithError(errors.New("internal error during CAR traversal"))
+			}
+		}()
+
 		cw, err := storage.NewWritable(
 			w,
 			[]cid.Cid{pathMetadata.LastSegment.RootCid()},
