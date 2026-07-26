@@ -504,8 +504,15 @@ func walkGatewaySimpleSelector(ctx context.Context, lastCid cid.Cid, terminalBlk
 	lctx := ipld.LinkContext{Ctx: ctx}
 	pathTerminalCidLink := cidlink.Link{Cid: lastCid}
 
-	// If the scope is the block, now we only need to retrieve the root block of the last element of the path.
+	// If the scope is the block, now we only need to retrieve the root block of
+	// the last element of the path. A caller that already resolved that block
+	// passes it in, and loading it again is not free: a link system reading a
+	// CAR stream in order has moved past it, and asking for it reports the
+	// stream as unexpectedly short even though the response is complete.
 	if params.Scope == DagScopeBlock {
+		if terminalBlk != nil {
+			return nil
+		}
 		_, err := lsys.LoadRaw(lctx, pathTerminalCidLink)
 		return err
 	}
