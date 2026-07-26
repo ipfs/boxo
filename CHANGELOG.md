@@ -16,6 +16,8 @@ The following emojis are used to highlight certain changes:
 
 ### Added
 
+- `gateway`: added `WithMaxTraversalDepth`, bounding how deep `BlocksBackend` descends into a DAG while serving CAR responses. Traversal keeps per-level state, so its cost grows with depth. On by default at `DefaultMaxTraversalDepth` (1024), well above anything UnixFS produces: a file reaches terabytes by depth 4, and HAMT adds about 4 levels per million directory entries. Pass a positive value to set your own limit, or `WithMaxTraversalDepth(0)` to remove it entirely. [#1197](https://github.com/ipfs/boxo/pull/1197)
+
 ### Changed
 
 ### Removed

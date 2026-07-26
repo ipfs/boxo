@@ -48,17 +48,18 @@ import (
 // BlocksBackend is an [IPFSBackend] implementation based on a [blockservice.BlockService].
 type BlocksBackend struct {
 	baseBackend
-	blockStore   blockstore.Blockstore
-	blockService blockservice.BlockService
-	dagService   format.DAGService
-	resolver     resolver.Resolver
+	blockStore        blockstore.Blockstore
+	blockService      blockservice.BlockService
+	dagService        format.DAGService
+	resolver          resolver.Resolver
+	maxTraversalDepth int
 }
 
 var _ IPFSBackend = (*BlocksBackend)(nil)
 
 // NewBlocksBackend creates a new [BlocksBackend] backed by a [blockservice.BlockService].
 func NewBlocksBackend(blockService blockservice.BlockService, opts ...BackendOption) (*BlocksBackend, error) {
-	var compiledOptions backendOptions
+	compiledOptions := backendOptions{maxTraversalDepth: DefaultMaxTraversalDepth}
 	for _, o := range opts {
 		if err := o(&compiledOptions); err != nil {
 			return nil, err
@@ -85,11 +86,12 @@ func NewBlocksBackend(blockService blockservice.BlockService, opts ...BackendOpt
 	}
 
 	return &BlocksBackend{
-		baseBackend:  baseBackend,
-		blockStore:   blockService.Blockstore(),
-		blockService: blockService,
-		dagService:   dagService,
-		resolver:     r,
+		baseBackend:       baseBackend,
+		blockStore:        blockService.Blockstore(),
+		blockService:      blockService,
+		dagService:        dagService,
+		resolver:          r,
+		maxTraversalDepth: compiledOptions.maxTraversalDepth,
 	}, nil
 }
 
@@ -416,7 +418,7 @@ func (bb *BlocksBackend) GetCAR(ctx context.Context, p path.ImmutablePath, param
 		}
 
 		// Setup the UnixFS resolver.
-		f := newNodeGetterFetcherSingleUseFactory(ctx, blockGetter)
+		f := newNodeGetterFetcherSingleUseFactory(ctx, blockGetter, bb.maxTraversalDepth)
 		pathResolver := resolver.NewBasicResolver(f)
 		_, _, err = pathResolver.ResolveToLastNode(ctx, p)
 
@@ -471,12 +473,12 @@ func (bb *BlocksBackend) GetCAR(ctx context.Context, p path.ImmutablePath, param
 		}
 
 		// Setup the UnixFS resolver.
-		f := newNodeGetterFetcherSingleUseFactory(ctx, blockGetter)
+		f := newNodeGetterFetcherSingleUseFactory(ctx, blockGetter, bb.maxTraversalDepth)
 		pathResolver := resolver.NewBasicResolver(f)
 
 		lsys := cidlink.DefaultLinkSystem()
 		unixfsnode.AddUnixFSReificationToLinkSystem(&lsys)
-		lsys.StorageReadOpener = blockOpener(ctx, blockGetter)
+		lsys.StorageReadOpener = blockOpener(ctx, blockGetter, bb.maxTraversalDepth)
 
 		// First resolve the path since we always need to.
 		lastCid, remainder, err := pathResolver.ResolveToLastNode(ctx, p)
@@ -884,10 +886,10 @@ type nodeGetterFetcherSingleUseFactory struct {
 	protoChooser traversal.LinkTargetNodePrototypeChooser
 }
 
-func newNodeGetterFetcherSingleUseFactory(ctx context.Context, ng format.NodeGetter) *nodeGetterFetcherSingleUseFactory {
+func newNodeGetterFetcherSingleUseFactory(ctx context.Context, ng format.NodeGetter, maxDepth int) *nodeGetterFetcherSingleUseFactory {
 	ls := cidlink.DefaultLinkSystem()
 	ls.TrustedStorage = true
-	ls.StorageReadOpener = blockOpener(ctx, ng)
+	ls.StorageReadOpener = blockOpener(ctx, ng, maxDepth)
 	ls.NodeReifier = unixfsnode.Reify
 
 	pc := dagpb.AddSupportToChooser(func(lnk ipld.Link, lnkCtx ipld.LinkContext) (ipld.NodePrototype, error) {
@@ -956,8 +958,26 @@ func (n *nodeGetterFetcherSingleUseFactory) blankProgress(ctx context.Context) t
 	}
 }
 
-func blockOpener(ctx context.Context, ng format.NodeGetter) ipld.BlockReadOpener {
-	return func(_ ipld.LinkContext, lnk ipld.Link) (io.Reader, error) {
+// ErrTraversalTooDeep is returned when a DAG is nested deeper than the
+// backend's configured limit. See [WithMaxTraversalDepth].
+var ErrTraversalTooDeep = errors.New("dag traversal exceeded maximum depth")
+
+// blockOpener loads blocks for a traversal, refusing to descend past maxDepth.
+// A maxDepth of 0 means no limit.
+func blockOpener(ctx context.Context, ng format.NodeGetter, maxDepth int) ipld.BlockReadOpener {
+	return func(lctx ipld.LinkContext, lnk ipld.Link) (io.Reader, error) {
+		// LinkPath is the traversal path this link was reached by, so its
+		// length is the current depth.
+		if maxDepth > 0 && lctx.LinkPath.Len() > maxDepth {
+			// Deliberately without the path: at this depth it is thousands of
+			// segments long, and callers embed this error in their own output.
+			err := fmt.Errorf("%w of %d", ErrTraversalTooDeep, maxDepth)
+			// The response is already streaming by now, so this is the only
+			// place an operator can see why it was cut short.
+			log.Errorw("dag traversal stopped at depth limit", "limit", maxDepth, "link", lnk.String(), "err", err)
+			return nil, err
+		}
+
 		cidLink, ok := lnk.(cidlink.Link)
 		if !ok {
 			return nil, fmt.Errorf("invalid link type for loading: %v", lnk)
