@@ -26,6 +26,8 @@ The following emojis are used to highlight certain changes:
 
 ### Fixed
 
+- `bitswap/network`: `ExtractHTTPAddress` now brackets IPv6 literals when building the provider URL, so peers announcing `/ip6/<addr>/tcp/443/tls/http` are usable as HTTP providers. Without brackets the address either failed to parse (Go 1.26 and later) or was split at the last colon into a bogus host and port.
+
 ### Security
 
 ## [v0.42.0]
