@@ -16,13 +16,18 @@ The following emojis are used to highlight certain changes:
 
 ### Added
 
+- `gateway`: added `WithMaxTraversalDepth`, bounding how deep `BlocksBackend` descends into a DAG while serving CAR responses. Traversal keeps per-level state, so its cost grows with depth. On by default at `DefaultMaxTraversalDepth` (1024), well above anything UnixFS produces: a file reaches terabytes by depth 4, and HAMT adds about 4 levels per million directory entries. Pass a positive value to set your own limit, or `WithMaxTraversalDepth(0)` to remove it entirely. [#1197](https://github.com/ipfs/boxo/pull/1197)
+
 ### Changed
 
+- `gateway`: a CAR response that fails partway through now ends with `[Gateway Error: CAR stream truncated, response is incomplete]`, the same approach `withRetrievalTimeout` already uses when it cuts a response short. `X-Stream-Error` is only set once the body is streaming, so it rarely reaches the client, and a truncated CAR was otherwise indistinguishable from a complete one. The marker makes the trailing bytes invalid CAR, so a reader stops with an error instead of accepting a short DAG. Mostly this is a quality of life improvement for operators: gateways usually sit behind reverse proxies and third-party CDNs, and when a response arrives short it is hard to tell which hop dropped it. Now the response says so itself. [#1197](https://github.com/ipfs/boxo/pull/1197)
 - `routing/http/server`: `/routing/v1` responses no longer let caches serve a two day old answer while the origin is healthy. `stale-while-revalidate` is now 10 minutes for responses with results and 1 minute for empty ones, which is enough to cover a background refresh. `stale-if-error` keeps the 48h Amino DHT expiration window for responses with results and drops to 1 hour for empty ones, since it only applies when the origin is failing. `max-age` is unchanged. The peer addresses in routing results come from short-lived sources such as relay reservations, so a stale window measured in days handed clients addresses that stopped working long ago. [#1195](https://github.com/ipfs/boxo/pull/1195)
 
 ### Removed
 
 ### Fixed
+
+- `bitswap/network`: `ExtractHTTPAddress` now brackets IPv6 literals when building the provider URL, so peers announcing `/ip6/<addr>/tcp/443/tls/http` are usable as HTTP providers. Without brackets the address either failed to parse (Go 1.26 and later) or was split at the last colon into a bogus host and port.
 
 ### Security
 
