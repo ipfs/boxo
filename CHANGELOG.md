@@ -16,17 +16,18 @@ The following emojis are used to highlight certain changes:
 
 ### Added
 
-- `gateway`: added `WithMaxTraversalDepth`, bounding how deep `BlocksBackend` descends into a DAG while serving CAR responses. Traversal keeps per-level state, so its cost grows with depth. On by default at `DefaultMaxTraversalDepth` (1024), well above anything UnixFS produces: a file reaches terabytes by depth 4, and HAMT adds about 4 levels per million directory entries. Pass a positive value to set your own limit, or `WithMaxTraversalDepth(0)` to remove it entirely. [#1197](https://github.com/ipfs/boxo/pull/1197)
+- `gateway`: added `WithMaxTraversalDepth`. It limits how deep `BlocksBackend` descends into a DAG while it serves a CAR response. Traversal keeps per-level state, so its cost grows with depth. The limit is on by default at `DefaultMaxTraversalDepth` (1024), well above anything UnixFS produces. A file reaches terabytes by depth 4, and a HAMT adds about 4 levels per million directory entries. Pass a positive value to set your own limit, or `WithMaxTraversalDepth(0)` to remove the limit. [#1197](https://github.com/ipfs/boxo/pull/1197)
 
 ### Changed
 
-- `gateway`: a CAR response that fails partway through now ends with `[Gateway Error: CAR stream truncated, response is incomplete]`, the same approach `withRetrievalTimeout` already uses when it cuts a response short. `X-Stream-Error` is only set once the body is streaming, so it rarely reaches the client, and a truncated CAR was otherwise indistinguishable from a complete one. The marker makes the trailing bytes invalid CAR, so a reader stops with an error instead of accepting a short DAG. Mostly this is a quality of life improvement for operators: gateways usually sit behind reverse proxies and third-party CDNs, and when a response arrives short it is hard to tell which hop dropped it. Now the response says so itself. [#1197](https://github.com/ipfs/boxo/pull/1197)
+- `gateway`: a CAR response that fails partway through now ends with `[Gateway Error: CAR stream truncated, response is incomplete]`. `withRetrievalTimeout` already uses the same marker when it cuts a response short. The gateway sets `X-Stream-Error` only once the body is streaming, so that header rarely reaches the client. A truncated CAR was otherwise indistinguishable from a complete one. The marker makes the trailing bytes invalid CAR, so a reader stops with an error instead of accepting a short DAG. This mostly helps operators. Gateways usually sit behind reverse proxies and third-party CDNs, so a short response leaves you guessing which hop cut it. Now the response says so itself. [#1197](https://github.com/ipfs/boxo/pull/1197)
+- `routing/http/server`: `/routing/v1` responses no longer let a cache serve a two-day-old answer while the origin is healthy. Peer addresses in routing results come from short-lived sources such as relay reservations. A stale window measured in days handed clients addresses that had stopped working long ago. `stale-while-revalidate` is now 10 minutes for responses with results, and 1 minute for empty ones. That covers a background refresh. `stale-if-error` applies only when the origin is failing, so responses with results keep the 48h Amino DHT expiration window. For empty responses it is 1 hour. `max-age` is unchanged. [#1195](https://github.com/ipfs/boxo/pull/1195)
 
 ### Removed
 
 ### Fixed
 
-- `bitswap/network`: `ExtractHTTPAddress` now brackets IPv6 literals when building the provider URL, so peers announcing `/ip6/<addr>/tcp/443/tls/http` are usable as HTTP providers. Without brackets the address either failed to parse (Go 1.26 and later) or was split at the last colon into a bogus host and port.
+- `bitswap/network`: `ExtractHTTPAddress` now brackets an IPv6 literal when it builds the provider URL. A peer that announces `/ip6/<addr>/tcp/443/tls/http` is now usable as an HTTP provider. Without brackets, `url.Parse` rejected the address under Go 1.26 and later, and the peer was skipped. On earlier versions it parsed, but the authority split at the last colon, so the client dialed a host and port that do not exist. [#1196](https://github.com/ipfs/boxo/pull/1196)
 
 ### Security
 
