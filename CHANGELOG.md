@@ -22,6 +22,7 @@ The following emojis are used to highlight certain changes:
 
 - `gateway`: a CAR response that fails partway through now ends with `[Gateway Error: CAR stream truncated, response is incomplete]`. `withRetrievalTimeout` already uses the same marker when it cuts a response short. The gateway sets `X-Stream-Error` only once the body is streaming, so that header rarely reaches the client. A truncated CAR was otherwise indistinguishable from a complete one. The marker makes the trailing bytes invalid CAR, so a reader stops with an error instead of accepting a short DAG. This mostly helps operators. Gateways usually sit behind reverse proxies and third-party CDNs, so a short response leaves you guessing which hop cut it. Now the response says so itself. [#1197](https://github.com/ipfs/boxo/pull/1197)
 - `routing/http/server`: `/routing/v1` responses no longer let a cache serve a two-day-old answer while the origin is healthy. Peer addresses in routing results come from short-lived sources such as relay reservations. A stale window measured in days handed clients addresses that had stopped working long ago. `stale-while-revalidate` is now 10 minutes for responses with results, and 1 minute for empty ones. That covers a background refresh. `stale-if-error` applies only when the origin is failing, so responses with results keep the 48h Amino DHT expiration window. For empty responses it is 1 hour. `max-age` is unchanged. [#1195](https://github.com/ipfs/boxo/pull/1195)
+- upgrade to `go-libp2p` [v0.49.0](https://github.com/libp2p/go-libp2p/releases/tag/v0.49.0)
 
 ### Removed
 
@@ -30,6 +31,8 @@ The following emojis are used to highlight certain changes:
 - `bitswap/network`: `ExtractHTTPAddress` now brackets an IPv6 literal when it builds the provider URL. A peer that announces `/ip6/<addr>/tcp/443/tls/http` is now usable as an HTTP provider. Without brackets, `url.Parse` rejected the address under Go 1.26 and later, and the peer was skipped. On earlier versions it parsed, but the authority split at the last colon, so the client dialed a host and port that do not exist. [#1196](https://github.com/ipfs/boxo/pull/1196)
 
 ### Security
+
+- The upgrade to boxo v0.49.0 includes a security fix for CVE-2026-57497: https://github.com/advisories/GHSA-g35j-m5xg-vh3q
 
 ## [v0.42.0]
 
