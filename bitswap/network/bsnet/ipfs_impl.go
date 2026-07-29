@@ -445,6 +445,20 @@ func (bsnet *impl) Start(r ...iface.Receiver) {
 		bsnet.host.SetStreamHandler(proto, bsnet.handleNewStream)
 	}
 	bsnet.host.Network().Notify((*netNotifiee)(bsnet))
+
+	// Take stock of the connections that are already open. Notify only reports
+	// what happens from here on, so without this pass a peer connected before
+	// bitswap started stays invisible for the life of that connection: we never
+	// send it a want, and nothing later corrects the record.
+	// Registering the notifiee first means a connection opening right now is
+	// counted twice at worst, which Connected handles.
+	for _, conn := range bsnet.host.Network().Conns() {
+		if conn.Stat().Limited {
+			continue
+		}
+		bsnet.connectEvtMgr.Connected(conn.RemotePeer())
+	}
+
 	bsnet.connectEvtMgr.Start()
 }
 

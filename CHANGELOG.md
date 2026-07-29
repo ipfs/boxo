@@ -22,6 +22,8 @@ The following emojis are used to highlight certain changes:
 
 ### Fixed
 
+- `bitswap/network/bsnet`: peers already connected when Bitswap starts are now recognised. libp2p only reports connections opened after a notifier is registered, so a peer connected during node startup stayed invisible to Bitswap for the life of that connection, and no want was ever sent to it. Nodes with another way to find content usually masked this; nodes relying on an already-connected peer could wait forever.
+
 ### Security
 
 ## [v0.42.1]
