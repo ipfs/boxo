@@ -42,7 +42,7 @@ The following emojis are used to highlight certain changes:
 
 ### Security
 
-- The upgrade to boxo v0.49.0 includes a security fix for CVE-2026-57497: https://github.com/advisories/GHSA-g35j-m5xg-vh3q
+- The upgrade to go-libp2p v0.49.0 includes a security fix for CVE-2026-57497: https://github.com/advisories/GHSA-g35j-m5xg-vh3q
 
 ## [v0.42.0]
 
