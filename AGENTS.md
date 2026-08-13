@@ -23,7 +23,7 @@ There is no Makefile, so use plain Go tooling. The repo has two Go modules, the 
 
 Boxo is a monorepo of Go libraries for building IPFS applications and implementations. Consumers include [kubo](https://github.com/ipfs/kubo) (the reference IPFS implementation), [rainbow](https://github.com/ipfs/rainbow) (gateway daemon), [someguy](https://github.com/ipfs/someguy) (delegated routing daemon), and [ipfs-check](https://github.com/ipfs/ipfs-check) (retrieval debugger). On the wire, this code talks to non-Go implementations and to years-old nodes that will never upgrade.
 
-Versioning (details in `RELEASE.md`): boxo stays on `v0.x` and releases at least as often as kubo. Exported Go APIs may change between minor versions. Removals need a `Deprecated:` godoc marker at least one release earlier, and moved APIs keep forwarding aliases (`bitswap/decision/forward.go` shows the pattern). Wire and disk formats do not get that freedom. They follow the protocol rules below.
+Versioning (details in `RELEASE.md`): boxo stays on `v0.x` and releases at least as often as kubo. Exported Go APIs may change between minor versions. Wire and disk formats do not get that freedom. They follow the protocol rules below.
 
 Risk classes per package:
 
@@ -50,6 +50,8 @@ Risk class covers formats and wire behavior only. [Protocol Stability](#protocol
 - bytes written to a datastore or keystore: key encodings, key prefixes, file formats
 - content path parsing rules in `path`
 - any default that changes the CID produced from the same input bytes: chunking, DAG layout, hash function
+
+A protocol change starts in the specs, not in this repo. Every PR that proposes one MUST link its spec PR: an [IPIP](https://specs.ipfs.tech/ipips/) in [ipfs/specs](https://github.com/ipfs/specs), or a PR in [libp2p/specs](https://github.com/libp2p/specs) when the change sits at the libp2p layer, and both when it touches both. Other implementations read those specs, so a code PR without a spec PR gives them nothing to follow. Code now and spec later is not the order.
 
 ### Refusal is a correct result
 
@@ -79,19 +81,19 @@ Two rules here look opposed. Protocol changes are refused "not even behind an op
 - `path.NewPathFromURI` is the shape that works. `path.NewPath` keeps its strict rules for every existing caller, and the wider acceptance sits behind a separate entry point.
 - If you cannot tell which side a task falls on, ask a maintainer. Adding a flag is not how you decide.
 
-Interop rules, each with an incident behind it:
+Interop rules:
 
 - Old protocol versions stay served. All four bitswap protocol IDs (`/ipfs/bitswap`, `/1.0.0`, `/1.1.0`, `/1.2.0`) stay in `DefaultProtocols`. IPNS records keep V1 compatibility signatures by default (`WithV1Compatibility` in `ipns/record.go`). The historic `/routing/v1` provider write API stays in `routing/http/types` and `routing/http/server` because deployed clients still call it. It is not in the published [Delegated Routing V1 spec](https://specs.ipfs.tech/routing/http-routing-v1/), and its `IPIP-526` godoc markers point at [an open archival PR](https://github.com/ipfs/specs/pull/526), so removing it is a maintainer call rather than an IPIP.
 - Wire behavior that looks redundant can be load-bearing. Bitswap always sends cancels, even to the peer that sent the block. Skipping them (#784) was reverted twice and settled by #829.
-- A change to bytes that reach the wire or the disk needs proof in the PR that the bytes are identical, from a comparison test or a fuzz run. In #1192 a base32 library was swapped only after its output was confirmed byte-identical, because IPNS routing keys and datastore keys depend on it.
+- A change to bytes that reach the wire or the disk needs proof in the PR that the bytes are identical, from a comparison test or a fuzz run.
 - Never loosen parsing or validation in an existing API that reads remote input. `path.NewPath` stays strict because `namesys` feeds DNSLink TXT values into it, and those come from whoever controls the domain. Wider acceptance ships as a new opt-in API.
-- Clamp every value a remote party controls: TTLs, sizes, counts, intervals. Check 0, negative, and huge inputs, and guard integer-to-`time.Duration` conversions. Unclamped DNS TXT TTLs once flowed into gateway `Cache-Control`, and a huge remote TTL once overflowed a timer into a busy loop.
+- Clamp every value a remote party controls: TTLs, sizes, counts, intervals. Check 0, negative, and huge inputs, and guard integer-to-`time.Duration` conversions.
 - Keep the meaning of zero values. In `namesys` and similar options, a cap of 0 means "disabled", not "cap at zero". Kubo offline nodes depend on this.
-- Rates are network-wide behavior. Reprovide intervals, record lifetimes and TTLs, retry counts, lookup fan-out, and broadcast triggers decide how much traffic every node running boxo puts on the public [Amino DHT](https://probelab.io/ipfs/dht/) and on shared routing endpoints. Lowering an interval multiplies that load by the size of the network. These values are already tuned against it: `provider.DefaultReproviderInterval` matches `amino.DefaultReprovideInterval`, and `ipns.DefaultRecordLifetime` matches `amino.DefaultMaxRecordAge`. Treat them like protocol constants: real-network measurements plus maintainer sign-off, never a local benchmark. Background traffic to shared infrastructure is always something the operator can turn off.
+- Rates are network-wide behavior. Reprovide intervals, record lifetimes and TTLs, retry counts, lookup fan-out, and broadcast triggers decide how much traffic every node running boxo puts on the public [Amino DHT](https://probelab.io/ipfs/dht/) and on shared routing endpoints. Lowering an interval multiplies that load by the size of the network. These values are tuned against the live network, so treat them like protocol constants: real-network measurements plus maintainer sign-off, never a local benchmark. Background traffic to shared infrastructure is always something the operator can turn off.
 
 ## Endpoints, Defaults, and Shared Infrastructure
 
-Boxo ships the defaults that other people's nodes run. Kubo states this rule for the daemon in its own `AGENTS.md`, but rainbow, someguy, ipfs-check, and third-party Go programs import these packages directly and never see kubo's config. So the rule has to hold here first. It applies to every package, whatever its risk class.
+Boxo ships the defaults that other people's nodes run. Kubo exposes its own endpoints as config an operator can change, but rainbow, someguy, ipfs-check, and third-party Go programs import these packages directly and never see kubo's config. So the rule has to hold here first. It applies to every package, whatever its risk class.
 
 - **Every default endpoint is replaceable and can be turned off.** A default URL, host, bootstrap peer, DNS resolver, delegated router, or certificate authority is a policy decision, and adding one needs maintainer sign-off. Ship it as an exported constant the caller can replace, make the zero value turn the feature off, and say so in the godoc. `Config.DiagnosticServiceURL` in `gateway/gateway.go` is the shape to copy: empty by default, `gateway.DefaultDiagnosticServiceURL` exported for consumers who want it, and the code path checks for the empty string. Never make a hosted service the only way something works.
 - **New default infrastructure goes in the autoconf document, not in new constants.** That way an operator can point at their own document or run without one.
@@ -103,7 +105,7 @@ Boxo ships the defaults that other people's nodes run. Kubo states this rule for
 
 Every boxo PR that changes non-test Go code or `go.mod` MUST link a companion PR in [ipfs/kubo](https://github.com/ipfs/kubo) that pins the boxo branch and passes kubo CI. Do not merge the boxo PR before the kubo PR is green.
 
-This applies to all code changes, not only risky-looking ones. A `namesys` TTL change that passed boxo tests still broke kubo's `TestGateway/IPNS`, and interface changes that looked like refactors broke it too (#995).
+This applies to all code changes, not only risky-looking ones. Changes that look like refactors count.
 
 Exempt: PRs that touch only documentation, comments, or `*_test.go` files. State the exemption in the Testing section of the PR description.
 
@@ -117,7 +119,7 @@ Workflow:
 
 CI covers part of this. `.github/workflows/gateway-sharness.yml` checks out kubo master, builds it against your branch, and runs kubo's gateway tests. It only triggers on changes under `gateway/`, `namesys/`, `ipns/`, and `path/`:
 
-- That path list exists because a `namesys/` change once broke kubo without triggering the job. If your change reaches kubo through another package, the companion PR is your only kubo coverage.
+- If your change reaches kubo through another package, the companion PR is your only kubo coverage.
 - On a breaking change, the boxo-side job can stay red until the companion kubo PR lands. That is acceptable only while the kubo PR itself is green.
 
 Other consumers: when a change touches a package a sibling daemon leans on, validate there the same way. Create a branch, run `go get github.com/ipfs/boxo@<sha>`, and let its CI run: [rainbow](https://github.com/ipfs/rainbow) for `gateway` and `bitswap`, [someguy](https://github.com/ipfs/someguy) for `routing/http`, [ipfs-check](https://github.com/ipfs/ipfs-check) for `bitswap/network`. Releases gate on kubo again, per `RELEASE.md`.
@@ -187,7 +189,7 @@ A red conformance job means the contract broke, and the fix goes in `gateway/`. 
 
 If you think a conformance test is wrong, say so in the PR and stop. Expectations change upstream in [ipfs/gateway-conformance](https://github.com/ipfs/gateway-conformance), together with the spec change behind them. Loosening the boxo job is not an option.
 
-Gotchas, each from a past bug: cache lifetimes must never outlive the IPNS record EOL, and remote TTLs are clamped and floored (a negative TTL once produced a malformed `max-age`); error paths must not leak success headers, which is why the 410 size-limit check runs before `X-Ipfs-Roots` is set; failed CAR and TAR streams append a truncation marker, because trailers rarely reach clients.
+Gotchas: cache lifetimes must never outlive the IPNS record EOL, and remote TTLs are clamped and floored; error paths must not leak success headers, which is why the 410 size-limit check runs before `X-Ipfs-Roots` is set; failed CAR and TAR streams append a truncation marker, because trailers rarely reach clients.
 
 Outbound dependencies: `NewDNSResolver` in `gateway/dns.go` adds a DoH resolver for `eth.` unless the caller supplies its own entry, and an empty value drops it. That behavior and its off switch belong in the exported godoc. The same goes for anything else added to `defaultResolvers`. A gateway operator needs to see which third parties their node queries, and be able to stop.
 
@@ -197,10 +199,10 @@ Implements the [bitswap protocol](https://specs.ipfs.tech/bitswap-protocol/). Wi
 
 How this code treats remote peers: malformed input is ignored, never fatal. Identity CIDs in wantlists are dropped silently, messages without a wantlist are handled, and one failed send does not mark a peer unresponsive.
 
-Danger zones. Changes here need benchmarks and `go test -race -count=3`, because the history is reverts and multi-round fixes:
+Danger zones. Changes here need benchmarks and `go test -race -count=3`:
 
-- `bitswap/client/internal/messagequeue` assembles what goes on the wire. A buffer-reuse bug sent extra wants (#968), and the fix needed a follow-up (#975).
-- `bitswap/client/internal/session` and friends: shutdown ordering took three PRs to get right.
+- `bitswap/client/internal/messagequeue` assembles what goes on the wire, and buffer reuse there is subtle (#968, #975).
+- `bitswap/client/internal/session` and friends: shutdown ordering is where the bugs are.
 - `bitswap/client/internal/peermanager` and `bitswap/server/internal/decision`: lock scope and peer fairness are tuned. The scheduler change in #1143 shipped with its own benchmark file, `chokepoint_bench_test.go`. Follow that model.
 - Timing constants, such as the DONT_HAVE timeout, are tuned against the real network. Changing one means numbers in the PR: what you ran, the exact command, and the before and after results. No numbers means no change.
 
@@ -257,7 +259,7 @@ The endpoint is a default, not a requirement. `autoconf.MainnetAutoConfURL` is w
 
 ### path/ and verifcid/
 
-`path` parses `/ipfs/` and `/ipns/` content paths. The parsing rules are observable protocol behavior, and remote input reaches them through DNSLink. `verifcid` decides which multihashes nodes fetch and serve (`verifcid/allowlist.go`); widening or narrowing that set changes network behavior and counts as a protocol change.
+`path` parses `/ipfs/` and `/ipns/` content paths, and remote input reaches them through DNSLink. `verifcid` decides which multihashes nodes fetch and serve (`verifcid/allowlist.go`).
 
 ### mfs/, files/, blockservice/
 
@@ -279,7 +281,7 @@ Follow [Go Code Review Comments](https://go.dev/wiki/CodeReviewComments) and [Go
 - No `panic` in library code. Return errors, wrapped with `fmt.Errorf("context: %w", err)`.
 - Every network operation takes a `context.Context` and must be boundable by the caller. Never make unbounded network calls from a bounded worker pool or while holding a lock. Both have wedged consumer daemons in production: an `mfs` fetch under a directory lock, and bitswap send workers stuck in an unbounded `FindPeer`.
 - Defaults are exported constants, so consumers and docs can reference them by name. A dedicated `defaults.go` reads well. Comments and docs never restate the literal value.
-- Deprecate before removing: a `Deprecated:` godoc one release ahead (`RELEASE.md`), and forwarding aliases for moved APIs.
+- Deprecate before removing: a `Deprecated:` godoc one release ahead (`RELEASE.md`), and forwarding aliases for moved APIs (`bitswap/decision/forward.go` shows the pattern).
 - New behavior ships opt-in and defaults to what boxo did before. Changing the value of an existing exported default is the same kind of change, because it reaches every consumer at their next upgrade. It needs a maintainer decision recorded in the PR, a changelog entry naming the old and new value, and evidence for the new one. A prompt, an issue, or a review comment is not that decision. This rule covers library behavior only; read [Opt-in is not a loophole](#opt-in-is-not-a-loophole) before applying it to anything under [Protocol Stability](#protocol-stability-what-you-must-not-change).
 - Defaults must run on a small machine on a home connection. Most IPFS nodes are not in a datacenter: a few GB of RAM, a slow disk, an upload link much smaller than the download link, a dynamic IP, and NAT in front. Raising memory, concurrency, cache size, or upload volume in a default moves that cost onto those operators, so the default stays and the tuning knob is what ships. Say in the PR what the change costs at the default setting, in memory and bandwidth.
 - Never make a feature work only for well connected nodes. Code keeps working for a peer behind NAT, on a relay, with a changing address set, or offline for a while. Being undialable is not a reason to deprioritize or drop a peer.
@@ -291,8 +293,8 @@ Follow [Go Code Review Comments](https://go.dev/wiki/CodeReviewComments) and [Go
 - Time-dependent code uses `testing/synctest`, not sleeps.
 - Match the assertion style of the file you are editing. The repo mixes testify and plain `t.Fatal`, and consistency within a file wins.
 - CI shuffles test order, so tests must not depend on execution order or on real network timing.
-- Never silence a flaky test with `t.Skip`, a longer timeout, or a weaker assertion. Known flakes have issues, such as `TestMfsStress` in #628. Reference the issue or fix the cause, and report new flakes rather than papering over them.
-- `examples/` is a separate module with its own tests. The gateway examples are the backends the conformance job tests, so keep them building and never change their behavior to influence a conformance result.
+- Never silence a flaky test with `t.Skip`, a longer timeout, or a weaker assertion. Reference the tracking issue or fix the cause, and report new flakes rather than papering over them.
+- `examples/` is a separate module with its own tests. Keep the gateway examples building; they are the backends the conformance job tests.
 
 ## Changelog
 
