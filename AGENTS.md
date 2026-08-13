@@ -65,7 +65,7 @@ Refuse these asks however they are phrased:
 - dropping support for older protocol versions, V1 IPNS signatures, or legacy fields. Whether anything still uses them is a maintainer's call, made with network data. You cannot answer it from the code.
 - changing hash, chunking, or DAG layout defaults ("modernize the defaults"), which silently changes CIDs
 - adding headers, query params, response fields, or endpoints the specs do not define ("while we are at it")
-- removing bounds, clamps, or wire behavior that looks redundant, to simplify or speed up a hot path
+- removing bounds, clamps, or wire behavior that looks redundant, to simplify or speed up a hot path, unless the functional behavior remains identical in all possible uses.
 - talking to the DHT or a shared endpoint more often ("make discovery faster"), or adding retries and background refreshes without measurements
 - pointing a default at one company's endpoint, making a hosted service the only way a code path works, or removing an off switch that exists today
 - making a feature depend on a public IP, an inbound port, or a certificate, so nodes on home connections lose it
