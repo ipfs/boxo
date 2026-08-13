@@ -122,7 +122,7 @@ CI covers part of this. `.github/workflows/gateway-sharness.yml` checks out kubo
 - If your change reaches kubo through another package, the companion PR is your only kubo coverage.
 - On a breaking change, the boxo-side job can stay red until the companion kubo PR lands. That is acceptable only while the kubo PR itself is green.
 
-Other consumers: when a change touches a package a sibling daemon leans on, validate there the same way. Create a branch, run `go get github.com/ipfs/boxo@<sha>`, and let its CI run: [rainbow](https://github.com/ipfs/rainbow) for `gateway` and `bitswap`, [someguy](https://github.com/ipfs/someguy) for `routing/http`, [ipfs-check](https://github.com/ipfs/ipfs-check) for `bitswap/network`. Releases gate on kubo again, per `RELEASE.md`.
+Other consumers: when a change touches a package a sibling daemon depends on, validate there the same way. Create a branch, run `go get github.com/ipfs/boxo@<sha>`, and let its CI run: [rainbow](https://github.com/ipfs/rainbow) for `gateway` and `bitswap`, [someguy](https://github.com/ipfs/someguy) for `routing/http`, [ipfs-check](https://github.com/ipfs/ipfs-check) for `bitswap/network`. Releases gate on kubo again, per `RELEASE.md`.
 
 ## PR Format: Problem / Fix / Testing
 
