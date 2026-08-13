@@ -31,20 +31,18 @@ type BroadcastControl struct {
 	// is no limit.
 	MaxPeers int
 	// LocalPeers enables or disables broadcast control for peers on the local
-	// network. If false, than always broadcast to peers on the local network.
+	// network. If false, then always broadcast to peers on the local network.
 	// If true, apply broadcast reduction to local peers.
 	LocalPeers bool
 	// PeeredPeers enables or disables broadcast reduction for peers configured
-	// for peering. If false, than always broadcast to peers configured for
+	// for peering. If false, then always broadcast to peers configured for
 	// peering. If true, apply broadcast reduction to peered peers.
-	// false (always broadcast to peered peers).
 	PeeredPeers bool
 	// MaxRandomPeers is the number of peers to broadcast to anyway, even
 	// though broadcast reduction logic has determined that they are not
-	// broadcast targets. Setting this to a non-zero value ensures at least
-	// this number of random peers receives a broadcast. This may be helpful in
-	// cases where peers that are not receiving broadcasts may have wanted
-	// blocks.
+	// broadcast targets. Setting this to a non-zero value sends a broadcast
+	// to up to this number of random peers. This may be helpful in cases
+	// where peers that are not receiving broadcasts may have wanted blocks.
 	MaxRandomPeers int
 	// SendToPendingPeers, when true, sends broadcasts to any peers that already
 	// have a pending message to send.
