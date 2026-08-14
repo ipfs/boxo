@@ -999,3 +999,41 @@ func TestSendMessagePanicInCloseIsRecovered(t *testing.T) {
 		return false
 	}, 2*time.Second, 50*time.Millisecond, "close goroutine did not mark stream closed")
 }
+
+// A peer can already be connected by the time bitswap starts, for example when
+// mDNS or an inbound dial lands while the node is still being built. Those
+// connections have to be picked up on start, because libp2p only reports
+// changes from the moment a notifiee is registered.
+func TestStartNoticesExistingConnections(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	mn := mocknet.New()
+	defer mn.Close()
+	streamNet, err := tn.StreamNet(ctx, mn)
+	require.NoError(t, err)
+
+	p1 := tnet.RandIdentityOrFatal(t)
+	p2 := tnet.RandIdentityOrFatal(t)
+	bsnet1 := streamNet.Adapter(p1)
+	streamNet.Adapter(p2)
+
+	require.NoError(t, mn.LinkAll())
+	_, err = mn.ConnectPeers(p1.ID(), p2.ID())
+	require.NoError(t, err)
+
+	r1 := newReceiver()
+	bsnet1.Start(r1)
+	t.Cleanup(bsnet1.Stop)
+
+	select {
+	case connected := <-r1.connectionEvent:
+		require.True(t, connected, "expected a connect event, got a disconnect")
+	case <-ctx.Done():
+		t.Fatal("bitswap never noticed the peer that was connected before Start")
+	}
+
+	r1.mu.Lock()
+	defer r1.mu.Unlock()
+	require.Contains(t, r1.peers, p2.ID())
+}
