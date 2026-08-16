@@ -698,8 +698,7 @@ func (ht *Network) connectToURL(ctx context.Context, p peer.ID, u network.Parsed
 	}
 
 	// probe success.
-	// FIXME: Storacha returns 410 for our probe.
-	if resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusNoContent || resp.StatusCode == http.StatusGone {
+	if resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusNoContent {
 		log.Debugf("connect/ping request to %s %s succeeded: %d", p, req.URL, resp.StatusCode)
 		io.Copy(io.Discard, resp.Body) // read all body data so that connection can be reused
 		return resp.StatusCode, time.Time{}, nil

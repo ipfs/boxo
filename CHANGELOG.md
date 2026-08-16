@@ -28,6 +28,8 @@ The following emojis are used to highlight certain changes:
 
 ### Removed
 
+- `bitswap/network/httpnet`: HTTP 410 is no longer accepted as a successful answer to the connection probe; it was a workaround for a provider that has since shut down. 410 on real block requests still counts as a valid "content unavailable" reply.
+
 ### Fixed
 
 - `bitswap/network/httpnet`: message senders created while a host was in cooldown no longer treat that cooldown as permanent; the request path resumes once the cooldown expires.

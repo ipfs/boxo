@@ -933,6 +933,29 @@ func TestConnectKeepsCooledEndpoints(t *testing.T) {
 	}
 }
 
+// A 410 on the probe is an endpoint that does not serve the probe path, not a
+// working gateway.
+func TestConnectProbe410Fails(t *testing.T) {
+	ctx := context.Background()
+	htnet, mn := mockNetwork(t, mockReceiver(t))
+	peer, err := mn.GenPeer()
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv, handler := makeServerAndHandler(t, 0, 0)
+	handler.probeStatus.Store(http.StatusGone)
+
+	if err := connectToPeer(t, ctx, htnet, peer, srv); err == nil {
+		t.Fatal("expected connect to fail on a 410 probe")
+	}
+	if got := handler.probes.Load(); got != 2 {
+		t.Errorf("expected HEAD and GET probes: %d", got)
+	}
+	if _, cooling := htnet.cooldownTracker.inCooldown(srv.Listener.Addr().String()); !cooling {
+		t.Error("failed probe should have started a cooldown")
+	}
+}
+
 func TestConnectHeadFallbackNotSelfGated(t *testing.T) {
 	ctx := context.Background()
 	htnet, mn := mockNetwork(t, mockReceiver(t))
