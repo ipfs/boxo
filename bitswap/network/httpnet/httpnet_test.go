@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -200,6 +201,16 @@ func makeBlockstore(t *testing.T, start, end int) blockstore.Blockstore {
 
 type Handler struct {
 	bstore blockstore.Blockstore
+
+	// Probe instrumentation. probes counts requests for pingCid.
+	// probeStatus, when non-zero, overrides the 200 a probe answers by
+	// default; probeHeadStatus, when non-zero, overrides it for HEAD
+	// probes only. probeRetryAfter, when set, is sent as a Retry-After
+	// header on non-200 probe responses.
+	probes          atomic.Int64
+	probeStatus     atomic.Int64
+	probeHeadStatus atomic.Int64
+	probeRetryAfter atomic.Value // string
 }
 
 func (h *Handler) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
@@ -217,7 +228,22 @@ func (h *Handler) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 	}
 
 	if cidstr == pingCid {
-		rw.WriteHeader(http.StatusOK)
+		h.probes.Add(1)
+		status := int(h.probeStatus.Load())
+		if r.Method == http.MethodHead {
+			if s := int(h.probeHeadStatus.Load()); s != 0 {
+				status = s
+			}
+		}
+		if status == 0 {
+			status = http.StatusOK
+		}
+		if status != http.StatusOK {
+			if ra, _ := h.probeRetryAfter.Load().(string); ra != "" {
+				rw.Header().Set("Retry-After", ra)
+			}
+		}
+		rw.WriteHeader(status)
 		return
 	}
 
@@ -254,7 +280,7 @@ func (h *Handler) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 	rw.Write(b.RawData())
 }
 
-func makeServer(t *testing.T, bstart, bend int) *httptest.Server {
+func makeServerAndHandler(t *testing.T, bstart, bend int) (*httptest.Server, *Handler) {
 	t.Helper()
 
 	handler := &Handler{
@@ -264,6 +290,13 @@ func makeServer(t *testing.T, bstart, bend int) *httptest.Server {
 	srv := httptest.NewUnstartedServer(handler)
 	srv.EnableHTTP2 = true
 	srv.StartTLS()
+	return srv, handler
+}
+
+func makeServer(t *testing.T, bstart, bend int) *httptest.Server {
+	t.Helper()
+
+	srv, _ := makeServerAndHandler(t, bstart, bend)
 	return srv
 }
 
@@ -674,5 +707,137 @@ func TestErrorTracking(t *testing.T) {
 	err = recv.waitDisconnected(1)
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+// TestNoBackgroundProbes is the regression guard for the removed periodic
+// ping loop: an idle connected peer must not generate any request. The sleep
+// is deliberately longer than the old 5s ping cadence.
+func TestNoBackgroundProbes(t *testing.T) {
+	ctx := context.Background()
+	htnet, mn := mockNetwork(t, mockReceiver(t))
+	peer, err := mn.GenPeer()
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv, handler := makeServerAndHandler(t, 0, 0)
+	mustConnectToPeer(t, ctx, htnet, peer, srv)
+
+	probes := handler.probes.Load()
+	if probes == 0 {
+		t.Fatal("Connect should have probed the endpoint")
+	}
+
+	time.Sleep(6 * time.Second)
+
+	if got := handler.probes.Load(); got != probes {
+		t.Errorf("idle connected peer generated background probes: %d -> %d", probes, got)
+	}
+}
+
+func TestConnectSeedsLatency(t *testing.T) {
+	ctx := context.Background()
+	htnet, mn := mockNetwork(t, mockReceiver(t))
+	peer, err := mn.GenPeer()
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := makeServer(t, 0, 0)
+	mustConnectToPeer(t, ctx, htnet, peer, srv)
+
+	if htnet.Latency(peer.ID()) <= 0 {
+		t.Error("latency should be seeded by the Connect probe")
+	}
+}
+
+func TestPassiveLatencyUpdate(t *testing.T) {
+	ctx := context.Background()
+	recv := mockReceiver(t)
+	htnet, mn := mockNetwork(t, recv)
+	peer, err := mn.GenPeer()
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := makeServer(t, 0, 0)
+	mustConnectToPeer(t, ctx, htnet, peer, srv)
+
+	seed := htnet.Latency(peer.ID())
+
+	// slowCid answers with a ~2s delay, far above the probe seed, so the
+	// EWMA must move up once the response is recorded.
+	msg := makeWantsMessage([]cid.Cid{slowCid})
+	if err := htnet.SendMessage(ctx, peer.ID(), msg); err != nil {
+		t.Fatal(err)
+	}
+	if err := recv.wait(5); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := htnet.Latency(peer.ID()); got <= seed {
+		t.Errorf("latency should grow after a slow response: seed %s, got %s", seed, got)
+	}
+}
+
+func TestPassiveLatencySkipsThrottleStatuses(t *testing.T) {
+	ctx := context.Background()
+	recv := mockReceiver(t)
+	htnet, mn := mockNetwork(t, recv)
+	peer, err := mn.GenPeer()
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := makeServer(t, 0, 0)
+	mustConnectToPeer(t, ctx, htnet, peer, srv)
+
+	seed := htnet.Latency(peer.ID())
+
+	// backoffCid answers 429: a throttled response must not move the
+	// latency estimate, or short rejections would shrink DONT_HAVE
+	// timeouts.
+	msg := makeWantsMessage([]cid.Cid{backoffCid})
+	if err := htnet.SendMessage(ctx, peer.ID(), msg); err != nil {
+		t.Fatal(err)
+	}
+	if err := recv.wait(5); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := htnet.Latency(peer.ID()); got != seed {
+		t.Errorf("latency should not move on 429: seed %s, got %s", seed, got)
+	}
+}
+
+func TestDisconnectFreezesProbes(t *testing.T) {
+	ctx := context.Background()
+	htnet, mn := mockNetwork(t, mockReceiver(t))
+	peer, err := mn.GenPeer()
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv, handler := makeServerAndHandler(t, 0, 0)
+	mustConnectToPeer(t, ctx, htnet, peer, srv)
+
+	probes := handler.probes.Load()
+
+	if err := htnet.DisconnectFrom(ctx, peer.ID()); err != nil {
+		t.Fatal(err)
+	}
+	if htnet.IsConnectedToPeer(ctx, peer.ID()) {
+		t.Error("peer should not be connected after DisconnectFrom")
+	}
+	if htnet.Latency(peer.ID()) != 0 {
+		t.Error("latency should be wiped on disconnect")
+	}
+	if got := handler.probes.Load(); got != probes {
+		t.Errorf("disconnect should not generate probes: %d -> %d", probes, got)
+	}
+
+	// Reconnecting probes again and re-seeds latency.
+	mustConnectToPeer(t, ctx, htnet, peer, srv)
+	if got := handler.probes.Load(); got != probes+1 {
+		t.Errorf("reconnect should probe again: %d -> %d", probes, got)
+	}
+	if htnet.Latency(peer.ID()) <= 0 {
+		t.Error("latency should be re-seeded on reconnect")
 	}
 }

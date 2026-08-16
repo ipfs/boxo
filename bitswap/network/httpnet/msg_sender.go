@@ -225,6 +225,7 @@ func (sender *httpMsgSender) tryURL(ctx context.Context, u *senderURL, entry bsm
 	log.Debugf("%d/%d %s %q", u.serverErrors.Load(), sender.opts.MaxRetries, method, req.URL)
 	atomic.AddUint64(&sender.ht.stats.MessagesSent, 1)
 	sender.ht.metrics.RequestsInFlight.Inc()
+	reqStart := time.Now()
 	resp, err := sender.ht.client.Do(req)
 	if err != nil {
 		err = fmt.Errorf("error making request to %q: %w", req.URL, err)
@@ -248,6 +249,12 @@ func (sender *httpMsgSender) tryURL(ctx context.Context, u *senderURL, entry bsm
 		return nil, serr
 	}
 	defer resp.Body.Close()
+
+	// Time to response headers, comparable to the connect-probe round trip
+	// that seeds the latency estimate. Only recorded below for responses
+	// the server understood, so throttling and server errors cannot skew
+	// the estimate.
+	respLatency := time.Since(reqStart)
 
 	// Record request size
 	var buf bytes.Buffer
@@ -315,6 +322,7 @@ func (sender *httpMsgSender) tryURL(ctx context.Context, u *senderURL, entry bsm
 			sender.ht.cooldownTracker.remove(req.URL.Host)
 			u.cooldown.Store(time.Time{})
 		}
+		sender.ht.pinger.recordLatencyIfConnected(sender.peer, respLatency)
 
 		return nil, &senderError{
 			Type: typeClient,
@@ -326,6 +334,7 @@ func (sender *httpMsgSender) tryURL(ctx context.Context, u *senderURL, entry bsm
 			sender.ht.cooldownTracker.remove(req.URL.Host)
 			u.cooldown.Store(time.Time{})
 		}
+		sender.ht.pinger.recordLatencyIfConnected(sender.peer, respLatency)
 		log.Debugf("%s %q -> %d (%d bytes)", req.Method, req.URL, statusCode, len(body))
 
 		if req.Method == http.MethodHead {

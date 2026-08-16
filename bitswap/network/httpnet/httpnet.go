@@ -360,7 +360,7 @@ func New(host host.Host, opts ...Option) network.BitSwapNetwork {
 	}
 	htnet.client = c
 
-	pinger := newPinger(htnet, pingCid)
+	pinger := newPinger(htnet)
 	htnet.pinger = pinger
 
 	et := newErrorTracker(htnet)
@@ -403,12 +403,16 @@ func (ht *Network) Stop() {
 	})
 }
 
-// Ping triggers a ping to the given peer and returns the latency.
+// Ping sends a probe to the peer's endpoints and returns the measured
+// latency. Endpoints in cooldown are not probed; when all of them are cooling
+// down, no request is made and the result carries an error.
 func (ht *Network) Ping(ctx context.Context, p peer.ID) ping.Result {
 	return ht.pinger.ping(ctx, p)
 }
 
-// Latency returns the EWMA latency for the given peer.
+// Latency returns the EWMA latency for the given peer. The estimate is seeded
+// from the Connect probe and updated with response times of real retrieval
+// requests.
 func (ht *Network) Latency(p peer.ID) time.Duration {
 	return ht.pinger.latency(p)
 }
@@ -426,14 +430,15 @@ func (ht *Network) senderURLs(p peer.ID) []*senderURL {
 	return ht.cooldownTracker.fillSenderURLs(urls)
 }
 
-// IsHTTPPeer returns true if the peer is currently being pinged, which means
-// we are connected to it via HTTP.
+// IsConnectedToPeer returns true if the peer is in the connected registry,
+// which means Connect() found a working HTTP endpoint for it and
+// DisconnectFrom() has not been called since.
 func (ht *Network) IsConnectedToPeer(ctx context.Context, p peer.ID) bool {
 	// only answer this question while no one is connecting or
 	// disconnecting.
 	ht.ongoingConnsLock.RLock()
 	defer ht.ongoingConnsLock.RUnlock()
-	return ht.pinger.isPinging(p)
+	return ht.pinger.isConnected(p)
 }
 
 // SendMessage sends the given message to the given peer. It uses
@@ -479,12 +484,11 @@ func (ht *Network) unlockConnectingPeer(p peer.ID) {
 
 // Connect attempts setting up an HTTP connection to the given peer. The given
 // AddrInfo must include at least one HTTP endpoint for the peer. HTTP URLs in
-// AddrInfo will be tried by making an HTTP GET request to
-// "ipfs/bafyqaaa", which is the CID for an empty raw block (inlined).
-// Any completed request, regardless of the HTTP response, is considered a
-// connection success and marks this peer as "connected", setting it up to
-// handle messages and make requests. The peer will be pinged regularly to
-// collect latency measurements until DisconnectFrom() is called.
+// AddrInfo will be tried by making an HTTP request to "/ipfs/bafkqaaa", which
+// is the CID for an empty raw block (inlined). A URL works when the endpoint
+// answers in a way that shows it understood the request. On success the peer
+// is marked as "connected", setting it up to handle messages and make
+// requests, and its latency estimate is seeded from the probe round trip.
 func (ht *Network) Connect(ctx context.Context, pi peer.AddrInfo) error {
 	// Connect is called when finding provider records. We should avoid
 	// reconnecting all the time. We should avoid re-testing broken
@@ -536,9 +540,11 @@ func (ht *Network) Connect(ctx context.Context, pi peer.AddrInfo) error {
 	// that we are about to open next time with the client. We call
 	// peer.Connected() on success.
 	var workingAddrs []multiaddr.Multiaddr
+	var probeRTT time.Duration
 	supportsHead := true
 	for _, u := range urls {
 		// If head works we assume GET works too.
+		start := time.Now()
 		status, err := ht.connectToURL(ctx, pi.ID, u, "HEAD")
 		if err != nil {
 			errs = append(errs, fmt.Errorf("%s: %s", u.Multiaddress.String(), err))
@@ -551,6 +557,9 @@ func (ht *Network) Connect(ctx context.Context, pi peer.AddrInfo) error {
 				continue // do not try GET, just move on.
 			}
 		} else {
+			if probeRTT == 0 {
+				probeRTT = time.Since(start)
+			}
 			workingAddrs = append(workingAddrs, u.Multiaddress)
 			continue
 		}
@@ -558,6 +567,7 @@ func (ht *Network) Connect(ctx context.Context, pi peer.AddrInfo) error {
 		// HEAD did not work. Try GET.
 		supportsHead = false
 
+		start = time.Now()
 		_, err = ht.connectToURL(ctx, pi.ID, u, "GET")
 		if err != nil {
 			errs = append(errs, fmt.Errorf("%s: %s", u.Multiaddress.String(), err))
@@ -565,6 +575,9 @@ func (ht *Network) Connect(ctx context.Context, pi peer.AddrInfo) error {
 				return errors.Join(errs...)
 			}
 			continue
+		}
+		if probeRTT == 0 {
+			probeRTT = time.Since(start)
 		}
 		workingAddrs = append(workingAddrs, u.Multiaddress)
 	}
@@ -584,7 +597,13 @@ func (ht *Network) Connect(ctx context.Context, pi peer.AddrInfo) error {
 	// Record whether HEAD test passed for all urls - ignoring error
 	_ = ps.Put(pi.ID, peerstoreSupportsHeadKey, supportsHead)
 
-	ht.pinger.startPinging(p)
+	ht.pinger.markConnected(p)
+	// Seed the latency estimate from the probe, so consumers see a real
+	// value without any extra request. Real retrieval responses update it
+	// from here on.
+	if probeRTT > 0 {
+		ht.pinger.recordLatencyIfConnected(p, probeRTT)
+	}
 	ht.connEvtMgr.Connected(p)
 
 	log.Debugf("connect success to %s (supports HEAD: %t)", p, supportsHead)
@@ -650,8 +669,8 @@ func (ht *Network) connectToURL(ctx context.Context, p peer.ID, u network.Parsed
 }
 
 // DisconnectFrom marks this peer as Disconnected in the connection event
-// manager, stops pinging for latency measurements and removes it from the
-// peerstore.
+// manager, removes it from the connected registry and forgets its recorded
+// latency.
 func (ht *Network) DisconnectFrom(ctx context.Context, p peer.ID) error {
 	ht.lockConnectingPeer(p)
 	defer ht.unlockConnectingPeer(p)
@@ -659,7 +678,7 @@ func (ht *Network) DisconnectFrom(ctx context.Context, p peer.ID) error {
 	log.Debugf("disconnecting from %s", p)
 	ht.connEvtMgr.Disconnected(p) // notify everywhere that we are going offline
 
-	ht.pinger.stopPinging(p)
+	ht.pinger.markDisconnected(p)
 	ht.errorTracker.stopTracking(p)
 
 	// coolDownTracker: we leave untouched. We want to keep

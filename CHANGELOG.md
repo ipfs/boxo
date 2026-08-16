@@ -18,6 +18,9 @@ The following emojis are used to highlight certain changes:
 
 ### Changed
 
+- ✨ `bitswap/network/httpnet`: removed the background ping loop that probed every connected HTTP peer with `GET/HEAD /ipfs/bafkqaaa` every 5 seconds for the lifetime of the process (old: fixed 5s cadence per peer, results discarded; new: no periodic probes). Idle HTTP peers generate no background traffic.
+- `bitswap/network/httpnet`: latency to HTTP peers is measured from the `Connect` probe and from real retrieval responses instead of periodic pings.
+
 ### Removed
 
 ### Fixed
