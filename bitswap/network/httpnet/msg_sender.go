@@ -192,12 +192,21 @@ func (sender *httpMsgSender) tryURL(ctx context.Context, u *senderURL, entry bsm
 	}
 
 	if dl := u.cooldown.Load().(time.Time); !dl.IsZero() {
-		err := fmt.Errorf("cooldown (%s): %s %q ", dl, method, u.URL)
-		log.Debug(err)
-		return nil, &senderError{
-			Type: typeRetryLater,
-			Err:  err,
+		if time.Now().Before(dl) {
+			err := fmt.Errorf("cooldown (%s): %s %q ", dl, method, u.URL)
+			log.Debug(err)
+			return nil, &senderError{
+				Type: typeRetryLater,
+				Err:  err,
+			}
 		}
+		// The deadline passed while this sender was alive. Clear the
+		// snapshot and proceed, otherwise a sender created during a
+		// cooldown treats it as permanent. CompareAndSwap, so a fresh
+		// deadline stored by a concurrent worker survives; losing the
+		// swap only lets this one request through, same as any request
+		// already in flight when a cooldown starts.
+		u.cooldown.CompareAndSwap(dl, time.Time{})
 	}
 
 	// We do not abort ongoing requests. This is known to cause "http2: server
@@ -647,6 +656,11 @@ func parseRetryAfter(ra string) (time.Time, bool) {
 	if err != nil {
 		date, err := time.Parse(time.RFC1123, ra)
 		if err != nil {
+			return time.Time{}, false
+		}
+		// A date at or before now (cached response, clock skew) is not
+		// a usable deadline; callers fall back to their own backoff.
+		if !date.After(time.Now()) {
 			return time.Time{}, false
 		}
 		return date, true

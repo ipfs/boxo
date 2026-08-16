@@ -16,15 +16,21 @@ The following emojis are used to highlight certain changes:
 
 ### Added
 
+- `bitswap/network/httpnet`: `DefaultConnectFailureBackoff` constant, the wait before `Connect` re-probes an endpoint after a failed probe.
+- `bitswap/network/httpnet`: `CooldownTracker` type with `NewCooldownTracker`, `SharedCooldownTracker` and the `WithCooldownTracker` option, for controlling where per-host backoff state lives.
+
 ### Changed
 
 - ✨ `bitswap/network/httpnet`: removed the background ping loop that probed every connected HTTP peer with `GET/HEAD /ipfs/bafkqaaa` every 5 seconds for the lifetime of the process (old: fixed 5s cadence per peer, results discarded; new: no periodic probes). Idle HTTP peers generate no background traffic.
 - `bitswap/network/httpnet`: latency to HTTP peers is measured from the `Connect` probe and from real retrieval responses instead of periodic pings.
+- `bitswap/network/httpnet`: `Connect` and `Ping` honor per-host cooldowns; after a failed endpoint probe, `Connect` does not re-probe the host until `Retry-After` (when provided) or `DefaultConnectFailureBackoff` elapses (old: no backoff, re-probe on every call).
+- `bitswap/network/httpnet`: per-host cooldowns live in a process-wide registry (`SharedCooldownTracker`) so backoff deadlines survive short-lived `Network` instances (old: per-instance state, forgotten on every restart); `Network.Stop` no longer stops the registry, and `WithCooldownTracker` gives a `Network` a private one.
 
 ### Removed
 
 ### Fixed
 
+- `bitswap/network/httpnet`: message senders created while a host was in cooldown no longer treat that cooldown as permanent; the request path resumes once the cooldown expires.
 - `bitswap/network/bsnet`: peers already connected when Bitswap starts are now recognised. libp2p only reports connections opened after a notifier is registered, so a peer connected during node startup stayed invisible to Bitswap for the life of that connection, and no want was ever sent to it. Nodes with another way to find content usually masked this; nodes relying on an already-connected peer could wait forever.
 
 ### Security

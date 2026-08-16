@@ -11,6 +11,10 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/protocol/ping"
 )
 
+// errProbesInCooldown is returned by ping when every endpoint of the peer is
+// in cooldown, so no probe was sent.
+var errProbesInCooldown = errors.New("all peer endpoints are in cooldown, no probe sent")
+
 // pinger is the registry of connected HTTP peers and their latency estimate.
 // The latency EWMA is seeded from the Connect probe and updated with response
 // times of real retrieval requests. ping sends an on-demand probe only when
@@ -34,7 +38,9 @@ func newPinger(ht *Network) *pinger {
 }
 
 // ping sends a probe to the known urls of the given peer and returns the
-// result with the latency for this peer. The result is also recorded.
+// result with the latency for this peer. The result is also recorded. URLs
+// whose host is in cooldown are skipped; when every url is cooling down no
+// request is made at all and the result carries errProbesInCooldown.
 func (pngr *pinger) ping(ctx context.Context, p peer.ID) ping.Result {
 	pi := pngr.ht.host.Peerstore().PeerInfo(p)
 	urls := network.ExtractURLsFromPeer(pi)
@@ -44,16 +50,29 @@ func (pngr *pinger) ping(ctx context.Context, p peer.ID) ping.Result {
 		}
 	}
 
+	// Do not probe hosts that asked us to back off.
+	probeURLs := make([]network.ParsedURL, 0, len(urls))
+	for _, u := range urls {
+		if _, cooling := pngr.ht.cooldownTracker.inCooldown(u.URL.Host); !cooling {
+			probeURLs = append(probeURLs, u)
+		}
+	}
+	if len(probeURLs) == 0 {
+		return ping.Result{
+			Error: errProbesInCooldown,
+		}
+	}
+
 	method := "GET"
 	if supportsHave(pngr.ht.host.Peerstore(), p) {
 		method = "HEAD"
 	}
 
-	results := make(chan ping.Result, len(urls))
-	for _, u := range urls {
+	results := make(chan ping.Result, len(probeURLs))
+	for _, u := range probeURLs {
 		go func(u network.ParsedURL) {
 			start := time.Now()
-			_, err := pngr.ht.connectToURL(ctx, p, u, method)
+			_, _, err := pngr.ht.connectToURL(ctx, p, u, method)
 			if err != nil {
 				log.Debug(err)
 				results <- ping.Result{Error: err}
@@ -67,7 +86,7 @@ func (pngr *pinger) ping(ctx context.Context, p peer.ID) ping.Result {
 
 	var result ping.Result
 	var errs []error
-	for range urls {
+	for range probeURLs {
 		r := <-results
 		if r.Error != nil {
 			errs = append(errs, r.Error)
@@ -79,12 +98,12 @@ func (pngr *pinger) ping(ctx context.Context, p peer.ID) ping.Result {
 
 	lenErrors := len(errs)
 	// if all urls failed return that, otherwise ignore.
-	if lenErrors == len(urls) {
+	if lenErrors == len(probeURLs) {
 		return ping.Result{
 			Error: errors.Join(errs...),
 		}
 	}
-	result.RTT = result.RTT / time.Duration(len(urls)-lenErrors)
+	result.RTT = result.RTT / time.Duration(len(probeURLs)-lenErrors)
 
 	pngr.recordLatencyIfConnected(p, result.RTT)
 	return result

@@ -54,6 +54,10 @@ const (
 	DefaultMaxHTTPAddressesPerPeer       = 10
 	DefaultMaxDontHaveErrors             = 100
 	DefaultHTTPWorkers                   = 64
+	// DefaultConnectFailureBackoff is how long Connect waits before
+	// re-probing an HTTP endpoint after a failed probe, unless the endpoint
+	// requested a different wait with a Retry-After header.
+	DefaultConnectFailureBackoff = time.Minute
 )
 
 var pingCid = "bafkqaaa" // identity CID
@@ -218,6 +222,19 @@ func WithConnectEventManager(evm *network.ConnectEventManager) Option {
 	}
 }
 
+// WithCooldownTracker replaces the process-wide cooldown registry with a
+// private one made with NewCooldownTracker. Without this option, the Network
+// uses SharedCooldownTracker, and it should stay that way for anything that
+// talks to endpoints it does not operate: the shared registry is what keeps
+// backoff deadlines (Retry-After, HTTP 429 and similar) working across
+// short-lived Network instances. Use a private registry only in tests or
+// when isolating traffic on purpose.
+func WithCooldownTracker(ct *CooldownTracker) Option {
+	return func(net *Network) {
+		net.cooldownTracker = ct
+	}
+}
+
 type Network struct {
 	// NOTE: Stats must be at the top of the heap allocation to ensure 64bit
 	// alignment.
@@ -233,7 +250,7 @@ type Network struct {
 	pinger          *pinger
 	errorTracker    *errorTracker
 	requestTracker  *requestTracker
-	cooldownTracker *cooldownTracker
+	cooldownTracker *CooldownTracker
 
 	ongoingConnsLock sync.RWMutex
 	ongoingConns     map[peer.ID]struct{}
@@ -299,8 +316,11 @@ func New(host host.Host, opts ...Option) network.BitSwapNetwork {
 	reqTracker := newRequestTracker()
 	htnet.requestTracker = reqTracker
 
-	cooldownTracker := newCooldownTracker(DefaultMaxBackoff)
-	htnet.cooldownTracker = cooldownTracker
+	// Default to the process-wide registry so backoff deadlines survive
+	// this Network instance. See SharedCooldownTracker.
+	if htnet.cooldownTracker == nil {
+		htnet.cooldownTracker = SharedCooldownTracker()
+	}
 
 	netdialer := &net.Dialer{
 		// Timeout for connects to complete.
@@ -395,10 +415,14 @@ func (ht *Network) Start(receivers ...network.Receiver) {
 
 // Stop stops the connect event manager associated with this network.
 // Other methods should no longer be used after calling Stop().
+//
+// The cooldown registry is deliberately left alone: by default it is the
+// process-wide SharedCooldownTracker, which must outlive this instance so
+// backoff deadlines survive Network churn. It holds no resources that need
+// shutting down.
 func (ht *Network) Stop() {
 	ht.connEvtMgr.Stop()
 	ht.closeOnce.Do(func() {
-		ht.cooldownTracker.stopCleaner()
 		close(ht.closing)
 	})
 }
@@ -489,6 +513,9 @@ func (ht *Network) unlockConnectingPeer(p peer.ID) {
 // answers in a way that shows it understood the request. On success the peer
 // is marked as "connected", setting it up to handle messages and make
 // requests, and its latency estimate is seeded from the probe round trip.
+// Endpoints whose probe failed are not probed again until their cooldown
+// expires: the Retry-After deadline when the endpoint sent one, otherwise
+// DefaultConnectFailureBackoff.
 func (ht *Network) Connect(ctx context.Context, pi peer.AddrInfo) error {
 	// Connect is called when finding provider records. We should avoid
 	// reconnecting all the time. We should avoid re-testing broken
@@ -540,12 +567,24 @@ func (ht *Network) Connect(ctx context.Context, pi peer.AddrInfo) error {
 	// that we are about to open next time with the client. We call
 	// peer.Connected() on success.
 	var workingAddrs []multiaddr.Multiaddr
+	var cooledAddrs []multiaddr.Multiaddr
 	var probeRTT time.Duration
 	supportsHead := true
 	for _, u := range urls {
+		// Respect an ongoing cooldown for this host without making any
+		// request. The address is kept as a failover target below:
+		// senders skip it while the cooldown lasts and use it again
+		// once it lapses, instead of losing it for the lifetime of the
+		// connection.
+		if dl, cooling := ht.cooldownTracker.inCooldown(u.URL.Host); cooling {
+			errs = append(errs, fmt.Errorf("%s: host in cooldown until %s", u.Multiaddress.String(), dl))
+			cooledAddrs = append(cooledAddrs, u.Multiaddress)
+			continue
+		}
+
 		// If head works we assume GET works too.
 		start := time.Now()
-		status, err := ht.connectToURL(ctx, pi.ID, u, "HEAD")
+		status, retryAfter, err := ht.connectToURL(ctx, pi.ID, u, "HEAD")
 		if err != nil {
 			errs = append(errs, fmt.Errorf("%s: %s", u.Multiaddress.String(), err))
 			// abort if context cancelled
@@ -554,7 +593,10 @@ func (ht *Network) Connect(ctx context.Context, pi peer.AddrInfo) error {
 			}
 
 			if status == http.StatusTooManyRequests {
-				continue // do not try GET, just move on.
+				// The endpoint is throttling the probe itself:
+				// back off from the host, do not try GET.
+				ht.startCooldown(u.URL.Host, retryAfter)
+				continue
 			}
 		} else {
 			if probeRTT == 0 {
@@ -568,12 +610,14 @@ func (ht *Network) Connect(ctx context.Context, pi peer.AddrInfo) error {
 		supportsHead = false
 
 		start = time.Now()
-		_, err = ht.connectToURL(ctx, pi.ID, u, "GET")
+		_, retryAfter, err = ht.connectToURL(ctx, pi.ID, u, "GET")
 		if err != nil {
 			errs = append(errs, fmt.Errorf("%s: %s", u.Multiaddress.String(), err))
 			if ctxErr := ctx.Err(); ctxErr != nil {
 				return errors.Join(errs...)
 			}
+			// Both methods failed: back off from the host.
+			ht.startCooldown(u.URL.Host, retryAfter)
 			continue
 		}
 		if probeRTT == 0 {
@@ -589,11 +633,18 @@ func (ht *Network) Connect(ctx context.Context, pi peer.AddrInfo) error {
 		return err
 	}
 
+	// Cooled addresses were never probed, so HEAD support cannot be
+	// assumed for the peer.
+	if len(cooledAddrs) > 0 {
+		supportsHead = false
+	}
+
 	// We have some working urls, keep the bitswap providers in case we fail over.
-	// Add the working addresses to the peerstore. Clean the others.
+	// Add the working and the cooled-but-untested addresses to the
+	// peerstore. Clean the others.
 	ps := ht.host.Peerstore()
 	ps.ClearAddrs(p)
-	ps.AddAddrs(p, workingAddrs, peerstore.PermanentAddrTTL)
+	ps.AddAddrs(p, append(workingAddrs, cooledAddrs...), peerstore.PermanentAddrTTL)
 	// Record whether HEAD test passed for all urls - ignoring error
 	_ = ps.Put(pi.ID, peerstoreSupportsHeadKey, supportsHead)
 
@@ -611,18 +662,28 @@ func (ht *Network) Connect(ctx context.Context, pi peer.AddrInfo) error {
 	return nil
 }
 
-// connectToURL perform a pingCid request  against the given URL using the given method. An error is returned if we interprete that the server does not understand the request (not a valid IPFS gateway that we can use for HTTP requests).  That happens if the client.Do fails, if the remote endpoint does not support HTTP/2, or if the remote endpoint errors in a way that suggests it is not a gateway. Some requests are considered successful even if they return an http error code if we can assume that the server has understood the request. The response status code is returned in any case.
-func (ht *Network) connectToURL(ctx context.Context, p peer.ID, u network.ParsedURL, method string) (int, error) {
+// startCooldown registers a failed-probe cooldown for the host, honoring the
+// Retry-After deadline when the endpoint provided one.
+func (ht *Network) startCooldown(host string, retryAfter time.Time) {
+	if retryAfter.IsZero() {
+		ht.cooldownTracker.setByDuration(host, DefaultConnectFailureBackoff)
+		return
+	}
+	ht.cooldownTracker.setByDate(host, retryAfter)
+}
+
+// connectToURL perform a pingCid request  against the given URL using the given method. An error is returned if we interprete that the server does not understand the request (not a valid IPFS gateway that we can use for HTTP requests).  That happens if the client.Do fails, if the remote endpoint does not support HTTP/2, or if the remote endpoint errors in a way that suggests it is not a gateway. Some requests are considered successful even if they return an http error code if we can assume that the server has understood the request. The response status code is returned in any case, along with the Retry-After deadline when a throttling response carried one.
+func (ht *Network) connectToURL(ctx context.Context, p peer.ID, u network.ParsedURL, method string) (int, time.Time, error) {
 	req, err := buildRequest(ctx, u, method, pingCid, ht.userAgent)
 	if err != nil {
 		log.Debug(err)
-		return 0, err
+		return 0, time.Time{}, err
 	}
 
 	log.Debugf("connect/ping request to %s %s %q", p, method, req.URL)
 	resp, err := ht.client.Do(req)
 	if err != nil {
-		return 0, err
+		return 0, time.Time{}, err
 	}
 	defer resp.Body.Close()
 
@@ -633,7 +694,7 @@ func (ht *Network) connectToURL(ctx context.Context, p peer.ID, u network.Parsed
 	if u.URL.Scheme == "https" && resp.Proto != http2proto {
 		err = fmt.Errorf("%s://%q is not using HTTP/2 (%s)", req.URL.Scheme, req.URL.Host, resp.Proto)
 		log.Warn(err)
-		return resp.StatusCode, err
+		return resp.StatusCode, time.Time{}, err
 	}
 
 	// probe success.
@@ -641,7 +702,7 @@ func (ht *Network) connectToURL(ctx context.Context, p peer.ID, u network.Parsed
 	if resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusNoContent || resp.StatusCode == http.StatusGone {
 		log.Debugf("connect/ping request to %s %s succeeded: %d", p, req.URL, resp.StatusCode)
 		io.Copy(io.Discard, resp.Body) // read all body data so that connection can be reused
-		return resp.StatusCode, nil
+		return resp.StatusCode, time.Time{}, nil
 	}
 
 	if resp.StatusCode == http.StatusInternalServerError {
@@ -652,20 +713,33 @@ func (ht *Network) connectToURL(ctx context.Context, p peer.ID, u network.Parsed
 
 		body, err := io.ReadAll(limReader)
 		if err != nil {
-			return resp.StatusCode, err
+			return resp.StatusCode, time.Time{}, err
 		}
 
 		// The endpoint understands ipld.
 		if isKnownNotFoundError(string(body)) {
 			log.Debugf("connect/ping request to %s %s succeeded despite status code (known error): %d / %s", p, req.URL, resp.StatusCode, string(body))
-			return resp.StatusCode, nil
+			return resp.StatusCode, time.Time{}, nil
+		}
+	}
+
+	// Per the path-gateway spec, throttling responses should carry
+	// Retry-After. Surface it so the caller can size the cooldown.
+	var retryAfter time.Time
+	switch resp.StatusCode {
+	case http.StatusTooManyRequests,
+		http.StatusServiceUnavailable,
+		http.StatusBadGateway,
+		http.StatusGatewayTimeout:
+		if ra, ok := parseRetryAfter(resp.Header.Get("Retry-After")); ok {
+			retryAfter = ra
 		}
 	}
 
 	log.Debugf("connect error: %d <- %q (%s)", resp.StatusCode, req.URL, p)
 	// We made a proper request and got a 5xx back.
 	// We cannot consider this a working connection.
-	return resp.StatusCode, errors.New("testCid request not understood by the server")
+	return resp.StatusCode, retryAfter, errors.New("testCid request not understood by the server")
 }
 
 // DisconnectFrom marks this peer as Disconnected in the connection event
