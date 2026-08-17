@@ -16,6 +16,18 @@ The following emojis are used to highlight certain changes:
 
 ### Added
 
+### Changed
+
+### Removed
+
+### Fixed
+
+### Security
+
+## [v0.42.2]
+
+### Added
+
 - `bitswap/network/httpnet`: `DefaultConnectFailureBackoff` constant, the wait before `Connect` re-probes an endpoint after a failed probe.
 - `bitswap/network/httpnet`: `CooldownTracker` type with `NewCooldownTracker`, `SharedCooldownTracker` and the `WithCooldownTracker` option, for controlling where per-host backoff state lives.
 
@@ -34,8 +46,6 @@ The following emojis are used to highlight certain changes:
 
 - `bitswap/network/httpnet`: message senders created while a host was in cooldown no longer treat that cooldown as permanent; the request path resumes once the cooldown expires.
 - `bitswap/network/bsnet`: peers already connected when Bitswap starts are now recognised. libp2p only reports connections opened after a notifier is registered, so a peer connected during node startup stayed invisible to Bitswap for the life of that connection, and no want was ever sent to it. Nodes with another way to find content usually masked this; nodes relying on an already-connected peer could wait forever.
-
-### Security
 
 ## [v0.42.1]
 
