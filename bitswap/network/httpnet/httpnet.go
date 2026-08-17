@@ -613,7 +613,7 @@ func (ht *Network) Connect(ctx context.Context, pi peer.AddrInfo) error {
 		_, retryAfter, err = ht.connectToURL(ctx, pi.ID, u, "GET")
 		if err != nil {
 			errs = append(errs, fmt.Errorf("%s: %s", u.Multiaddress.String(), err))
-			if ctxErr := ctx.Err(); ctxErr != nil {
+			if ctx.Err() != nil {
 				return errors.Join(errs...)
 			}
 			// Both methods failed: back off from the host.
