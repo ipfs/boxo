@@ -63,6 +63,15 @@ func TestRecordLatencyIfConnected(t *testing.T) {
 	if pngr.latency(p) != time.Second {
 		t.Fatal("sample for a connected peer should be recorded")
 	}
+
+	// A zero measurement from a coarse clock is floored, not dropped: a
+	// measured peer must never look unmeasured.
+	other := peer.ID("zero-sample-peer")
+	pngr.markConnected(other)
+	pngr.recordLatencyIfConnected(other, 0)
+	if pngr.latency(other) <= 0 {
+		t.Fatal("zero sample should be floored to a positive latency")
+	}
 }
 
 func TestPingerConcurrentHammer(t *testing.T) {

@@ -651,10 +651,10 @@ func (ht *Network) Connect(ctx context.Context, pi peer.AddrInfo) error {
 	ht.pinger.markConnected(p)
 	// Seed the latency estimate from the probe, so consumers see a real
 	// value without any extra request. Real retrieval responses update it
-	// from here on.
-	if probeRTT > 0 {
-		ht.pinger.recordLatencyIfConnected(p, probeRTT)
-	}
+	// from here on. Recorded unconditionally: this point is only reached
+	// after a probe succeeded, and a coarse clock may have measured that
+	// probe as zero; the recording floor turns it into a valid sample.
+	ht.pinger.recordLatencyIfConnected(p, probeRTT)
 	ht.connEvtMgr.Connected(p)
 
 	log.Debugf("connect success to %s (supports HEAD: %t)", p, supportsHead)

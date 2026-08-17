@@ -144,6 +144,14 @@ func (pngr *pinger) recordLatency(p peer.ID, next time.Duration) {
 // the connected registry, so a sample from an in-flight request cannot
 // resurrect latency state for a peer that just disconnected.
 func (pngr *pinger) recordLatencyIfConnected(p peer.ID, next time.Duration) {
+	// Coarse monotonic clocks (Windows ticks at ~0.5ms) measure a fast
+	// round-trip over a pooled connection as zero, which downstream reads
+	// as "no latency data". Floor the sample so a measured peer never
+	// looks unmeasured.
+	if next <= 0 {
+		next = time.Millisecond
+	}
+
 	pngr.connectedLock.RLock()
 	defer pngr.connectedLock.RUnlock()
 
