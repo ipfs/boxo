@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -200,6 +201,16 @@ func makeBlockstore(t *testing.T, start, end int) blockstore.Blockstore {
 
 type Handler struct {
 	bstore blockstore.Blockstore
+
+	// Probe instrumentation. probes counts requests for pingCid.
+	// probeStatus, when non-zero, overrides the 200 a probe answers by
+	// default; probeHeadStatus, when non-zero, overrides it for HEAD
+	// probes only. probeRetryAfter, when set, is sent as a Retry-After
+	// header on non-200 probe responses.
+	probes          atomic.Int64
+	probeStatus     atomic.Int64
+	probeHeadStatus atomic.Int64
+	probeRetryAfter atomic.Value // string
 }
 
 func (h *Handler) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
@@ -217,7 +228,22 @@ func (h *Handler) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 	}
 
 	if cidstr == pingCid {
-		rw.WriteHeader(http.StatusOK)
+		h.probes.Add(1)
+		status := int(h.probeStatus.Load())
+		if r.Method == http.MethodHead {
+			if s := int(h.probeHeadStatus.Load()); s != 0 {
+				status = s
+			}
+		}
+		if status == 0 {
+			status = http.StatusOK
+		}
+		if status != http.StatusOK {
+			if ra, _ := h.probeRetryAfter.Load().(string); ra != "" {
+				rw.Header().Set("Retry-After", ra)
+			}
+		}
+		rw.WriteHeader(status)
 		return
 	}
 
@@ -254,7 +280,7 @@ func (h *Handler) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 	rw.Write(b.RawData())
 }
 
-func makeServer(t *testing.T, bstart, bend int) *httptest.Server {
+func makeServerAndHandler(t *testing.T, bstart, bend int) (*httptest.Server, *Handler) {
 	t.Helper()
 
 	handler := &Handler{
@@ -264,6 +290,13 @@ func makeServer(t *testing.T, bstart, bend int) *httptest.Server {
 	srv := httptest.NewUnstartedServer(handler)
 	srv.EnableHTTP2 = true
 	srv.StartTLS()
+	return srv, handler
+}
+
+func makeServer(t *testing.T, bstart, bend int) *httptest.Server {
+	t.Helper()
+
+	srv, _ := makeServerAndHandler(t, bstart, bend)
 	return srv
 }
 
@@ -674,5 +707,432 @@ func TestErrorTracking(t *testing.T) {
 	err = recv.waitDisconnected(1)
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+// TestNoBackgroundProbes is the regression guard for the removed periodic
+// ping loop: an idle connected peer must not generate any request. The sleep
+// is deliberately longer than the old 5s ping cadence.
+func TestNoBackgroundProbes(t *testing.T) {
+	ctx := context.Background()
+	htnet, mn := mockNetwork(t, mockReceiver(t))
+	peer, err := mn.GenPeer()
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv, handler := makeServerAndHandler(t, 0, 0)
+	mustConnectToPeer(t, ctx, htnet, peer, srv)
+
+	probes := handler.probes.Load()
+	if probes == 0 {
+		t.Fatal("Connect should have probed the endpoint")
+	}
+
+	time.Sleep(6 * time.Second)
+
+	if got := handler.probes.Load(); got != probes {
+		t.Errorf("idle connected peer generated background probes: %d -> %d", probes, got)
+	}
+}
+
+func TestConnectSeedsLatency(t *testing.T) {
+	ctx := context.Background()
+	htnet, mn := mockNetwork(t, mockReceiver(t))
+	peer, err := mn.GenPeer()
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := makeServer(t, 0, 0)
+	mustConnectToPeer(t, ctx, htnet, peer, srv)
+
+	if htnet.Latency(peer.ID()) <= 0 {
+		t.Error("latency should be seeded by the Connect probe")
+	}
+}
+
+func TestPassiveLatencyUpdate(t *testing.T) {
+	ctx := context.Background()
+	recv := mockReceiver(t)
+	htnet, mn := mockNetwork(t, recv)
+	peer, err := mn.GenPeer()
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := makeServer(t, 0, 0)
+	mustConnectToPeer(t, ctx, htnet, peer, srv)
+
+	seed := htnet.Latency(peer.ID())
+
+	// slowCid answers with a ~2s delay, far above the probe seed, so the
+	// EWMA must move up once the response is recorded.
+	msg := makeWantsMessage([]cid.Cid{slowCid})
+	if err := htnet.SendMessage(ctx, peer.ID(), msg); err != nil {
+		t.Fatal(err)
+	}
+	if err := recv.wait(5); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := htnet.Latency(peer.ID()); got <= seed {
+		t.Errorf("latency should grow after a slow response: seed %s, got %s", seed, got)
+	}
+}
+
+func TestPassiveLatencySkipsThrottleStatuses(t *testing.T) {
+	ctx := context.Background()
+	recv := mockReceiver(t)
+	htnet, mn := mockNetwork(t, recv)
+	peer, err := mn.GenPeer()
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := makeServer(t, 0, 0)
+	mustConnectToPeer(t, ctx, htnet, peer, srv)
+
+	seed := htnet.Latency(peer.ID())
+
+	// backoffCid answers 429: a throttled response must not move the
+	// latency estimate, or short rejections would shrink DONT_HAVE
+	// timeouts.
+	msg := makeWantsMessage([]cid.Cid{backoffCid})
+	if err := htnet.SendMessage(ctx, peer.ID(), msg); err != nil {
+		t.Fatal(err)
+	}
+	if err := recv.wait(5); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := htnet.Latency(peer.ID()); got != seed {
+		t.Errorf("latency should not move on 429: seed %s, got %s", seed, got)
+	}
+}
+
+func TestConnectCooldownRetryAfter(t *testing.T) {
+	ctx := context.Background()
+	htnet, mn := mockNetwork(t, mockReceiver(t))
+	peer, err := mn.GenPeer()
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv, handler := makeServerAndHandler(t, 0, 0)
+	handler.probeStatus.Store(http.StatusTooManyRequests)
+	handler.probeRetryAfter.Store("1")
+
+	if err := connectToPeer(t, ctx, htnet, peer, srv); err == nil {
+		t.Fatal("expected connect to fail while throttled")
+	}
+	if got := handler.probes.Load(); got != 1 {
+		t.Fatalf("429 on HEAD should not be followed by GET: %d probes", got)
+	}
+
+	// A second connect within the Retry-After window makes no request.
+	err = connectToPeer(t, ctx, htnet, peer, srv)
+	if err == nil {
+		t.Fatal("expected connect to fail during cooldown")
+	}
+	if !strings.Contains(err.Error(), "cooldown") {
+		t.Errorf("expected a cooldown error, got: %s", err)
+	}
+	if got := handler.probes.Load(); got != 1 {
+		t.Errorf("connect during cooldown should not probe: %d probes", got)
+	}
+
+	// After the Retry-After deadline, connect probes again.
+	handler.probeStatus.Store(0)
+	time.Sleep(1100 * time.Millisecond)
+	mustConnectToPeer(t, ctx, htnet, peer, srv)
+	if got := handler.probes.Load(); got != 2 {
+		t.Errorf("connect after cooldown should probe again: %d probes", got)
+	}
+}
+
+func TestConnectCooldownDefaultBackoff(t *testing.T) {
+	ctx := context.Background()
+	htnet, mn := mockNetwork(t, mockReceiver(t))
+	peer, err := mn.GenPeer()
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv, handler := makeServerAndHandler(t, 0, 0)
+	handler.probeStatus.Store(http.StatusInternalServerError)
+
+	if err := connectToPeer(t, ctx, htnet, peer, srv); err == nil {
+		t.Fatal("expected connect to fail")
+	}
+	if got := handler.probes.Load(); got != 2 {
+		t.Fatalf("expected HEAD and GET probes: %d", got)
+	}
+
+	// The host is cooling down for DefaultConnectFailureBackoff: a second
+	// connect makes no request.
+	if err := connectToPeer(t, ctx, htnet, peer, srv); err == nil {
+		t.Fatal("expected connect to fail during cooldown")
+	}
+	if got := handler.probes.Load(); got != 2 {
+		t.Errorf("connect during cooldown should not probe: %d probes", got)
+	}
+
+	host := srv.Listener.Addr().String()
+	dl, cooling := htnet.cooldownTracker.inCooldown(host)
+	if !cooling {
+		t.Fatal("expected an active cooldown for the host")
+	}
+	if until := time.Until(dl); until < DefaultConnectFailureBackoff-10*time.Second || until > DefaultConnectFailureBackoff {
+		t.Errorf("cooldown should be about DefaultConnectFailureBackoff away: %s", until)
+	}
+}
+
+// A Retry-After date in the past (cached response, clock skew) must not
+// disable the backoff: the default applies instead.
+func TestConnectCooldownPastRetryAfterDate(t *testing.T) {
+	ctx := context.Background()
+	htnet, mn := mockNetwork(t, mockReceiver(t))
+	peer, err := mn.GenPeer()
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv, handler := makeServerAndHandler(t, 0, 0)
+	handler.probeStatus.Store(http.StatusTooManyRequests)
+	handler.probeRetryAfter.Store(time.Now().Add(-time.Hour).UTC().Format(time.RFC1123))
+
+	if err := connectToPeer(t, ctx, htnet, peer, srv); err == nil {
+		t.Fatal("expected connect to fail while throttled")
+	}
+
+	dl, cooling := htnet.cooldownTracker.inCooldown(srv.Listener.Addr().String())
+	if !cooling {
+		t.Fatal("expected an active cooldown despite the past Retry-After date")
+	}
+	if until := time.Until(dl); until < DefaultConnectFailureBackoff-10*time.Second || until > DefaultConnectFailureBackoff {
+		t.Errorf("expected the default backoff, got a deadline %s away", until)
+	}
+}
+
+// An endpoint skipped only because its host was cooling stays in the
+// peerstore as a failover target for the connection's lifetime; since it was
+// never probed, HEAD support is not assumed for the peer.
+func TestConnectKeepsCooledEndpoints(t *testing.T) {
+	ctx := context.Background()
+	htnet, mn := mockNetwork(t, mockReceiver(t))
+	peer, err := mn.GenPeer()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cooled := makeServer(t, 0, 0)
+	healthy := makeServer(t, 0, 0)
+
+	htnet.cooldownTracker.setByDuration(cooled.Listener.Addr().String(), time.Minute)
+
+	mustConnectToPeer(t, ctx, htnet, peer, cooled, healthy)
+
+	if addrs := htnet.host.Peerstore().Addrs(peer.ID()); len(addrs) != 2 {
+		t.Errorf("cooled endpoint should stay in the peerstore: %d addrs", len(addrs))
+	}
+	if supportsHave(htnet.host.Peerstore(), peer.ID()) {
+		t.Error("HEAD support must not be assumed for an unprobed endpoint")
+	}
+}
+
+// A 410 on the probe is an endpoint that does not serve the probe path, not a
+// working gateway.
+func TestConnectProbe410Fails(t *testing.T) {
+	ctx := context.Background()
+	htnet, mn := mockNetwork(t, mockReceiver(t))
+	peer, err := mn.GenPeer()
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv, handler := makeServerAndHandler(t, 0, 0)
+	handler.probeStatus.Store(http.StatusGone)
+
+	if err := connectToPeer(t, ctx, htnet, peer, srv); err == nil {
+		t.Fatal("expected connect to fail on a 410 probe")
+	}
+	if got := handler.probes.Load(); got != 2 {
+		t.Errorf("expected HEAD and GET probes: %d", got)
+	}
+	if _, cooling := htnet.cooldownTracker.inCooldown(srv.Listener.Addr().String()); !cooling {
+		t.Error("failed probe should have started a cooldown")
+	}
+}
+
+func TestConnectHeadFallbackNotSelfGated(t *testing.T) {
+	ctx := context.Background()
+	htnet, mn := mockNetwork(t, mockReceiver(t))
+	peer, err := mn.GenPeer()
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv, handler := makeServerAndHandler(t, 0, 0)
+	handler.probeHeadStatus.Store(http.StatusMethodNotAllowed)
+
+	// HEAD fails, the GET fallback within the same Connect must still run
+	// and succeed, and no cooldown may be written for the host.
+	mustConnectToPeer(t, ctx, htnet, peer, srv)
+
+	if got := handler.probes.Load(); got != 2 {
+		t.Errorf("expected HEAD and GET probes: %d", got)
+	}
+	if _, cooling := htnet.cooldownTracker.inCooldown(srv.Listener.Addr().String()); cooling {
+		t.Error("no cooldown should be set when the GET fallback succeeded")
+	}
+	if supportsHave(htnet.host.Peerstore(), peer.ID()) {
+		t.Error("HEAD support should have been recorded as false")
+	}
+}
+
+func TestDisconnectFreezesProbes(t *testing.T) {
+	ctx := context.Background()
+	htnet, mn := mockNetwork(t, mockReceiver(t))
+	peer, err := mn.GenPeer()
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv, handler := makeServerAndHandler(t, 0, 0)
+	mustConnectToPeer(t, ctx, htnet, peer, srv)
+
+	probes := handler.probes.Load()
+
+	if err := htnet.DisconnectFrom(ctx, peer.ID()); err != nil {
+		t.Fatal(err)
+	}
+	if htnet.IsConnectedToPeer(ctx, peer.ID()) {
+		t.Error("peer should not be connected after DisconnectFrom")
+	}
+	if htnet.Latency(peer.ID()) != 0 {
+		t.Error("latency should be wiped on disconnect")
+	}
+	if got := handler.probes.Load(); got != probes {
+		t.Errorf("disconnect should not generate probes: %d -> %d", probes, got)
+	}
+
+	// Reconnecting probes again and re-seeds latency.
+	mustConnectToPeer(t, ctx, htnet, peer, srv)
+	if got := handler.probes.Load(); got != probes+1 {
+		t.Errorf("reconnect should probe again: %d -> %d", probes, got)
+	}
+	if htnet.Latency(peer.ID()) <= 0 {
+		t.Error("latency should be re-seeded on reconnect")
+	}
+}
+
+func TestPingAllHostsCooling(t *testing.T) {
+	ctx := context.Background()
+	htnet, mn := mockNetwork(t, mockReceiver(t))
+	peer, err := mn.GenPeer()
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv, handler := makeServerAndHandler(t, 0, 0)
+	mustConnectToPeer(t, ctx, htnet, peer, srv)
+
+	probes := handler.probes.Load()
+
+	htnet.cooldownTracker.setByDuration(srv.Listener.Addr().String(), time.Minute)
+
+	res := htnet.Ping(ctx, peer.ID())
+	if !errors.Is(res.Error, errProbesInCooldown) {
+		t.Errorf("expected errProbesInCooldown, got: %v", res.Error)
+	}
+	if got := handler.probes.Load(); got != probes {
+		t.Errorf("ping during cooldown should not probe: %d -> %d", probes, got)
+	}
+}
+
+// TestCooldownSharedAcrossNetworks covers the reason the cooldown registry is
+// process-wide: an application that builds a Network per retrieval must not
+// re-probe a host that just failed, even from a brand-new instance, and
+// Network.Stop must not tear the shared registry down.
+func TestCooldownSharedAcrossNetworks(t *testing.T) {
+	ctx := context.Background()
+	srv, handler := makeServerAndHandler(t, 0, 0)
+	handler.probeStatus.Store(http.StatusInternalServerError)
+
+	htnet1, mn1 := mockNetwork(t, mockReceiver(t))
+	peer1, err := mn1.GenPeer()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := connectToPeer(t, ctx, htnet1, peer1, srv); err == nil {
+		t.Fatal("expected connect to fail")
+	}
+	if got := handler.probes.Load(); got != 2 {
+		t.Fatalf("expected HEAD and GET probes: %d", got)
+	}
+
+	// Stopping the first Network must leave the shared registry running.
+	htnet1.Stop()
+
+	// A different Network in the same process inherits the cooldown: an
+	// ephemeral node must not re-probe a host that just failed.
+	htnet2, mn2 := mockNetwork(t, mockReceiver(t))
+	peer2, err := mn2.GenPeer()
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = connectToPeer(t, ctx, htnet2, peer2, srv)
+	if err == nil {
+		t.Fatal("expected connect to fail during shared cooldown")
+	}
+	if !strings.Contains(err.Error(), "cooldown") {
+		t.Errorf("expected a cooldown error, got: %s", err)
+	}
+	if got := handler.probes.Load(); got != 2 {
+		t.Errorf("second Network should not probe during shared cooldown: %d probes", got)
+	}
+
+	// A Network with a private registry is isolated and probes again.
+	htnet3, mn3 := mockNetwork(t, mockReceiver(t), WithCooldownTracker(NewCooldownTracker()))
+	peer3, err := mn3.GenPeer()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := connectToPeer(t, ctx, htnet3, peer3, srv); err == nil {
+		t.Fatal("expected connect to fail")
+	}
+	if got := handler.probes.Load(); got != 4 {
+		t.Errorf("a private registry should probe independently: %d probes", got)
+	}
+}
+
+func TestSenderCooldownExpires(t *testing.T) {
+	ctx := context.Background()
+	htnet, mn := mockNetwork(t, mockReceiver(t))
+	peer, err := mn.GenPeer()
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := makeServer(t, 0, 1)
+	mustConnectToPeer(t, ctx, htnet, peer, srv)
+
+	nms, err := htnet.NewMessageSender(ctx, peer.ID(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ms := nms.(*httpMsgSender)
+	u := ms.urls[0]
+
+	entry := makeWantsMessage(makeCids(t, 0, 1)).Wantlist()[0]
+
+	// A pending cooldown short-circuits without a request.
+	u.cooldown.Store(time.Now().Add(time.Minute))
+	_, serr := ms.tryURL(ctx, u, entry)
+	if serr == nil || serr.Type != typeRetryLater {
+		t.Fatal("pending cooldown should return retry-later")
+	}
+
+	// An expired cooldown is cleared and the request proceeds. This is
+	// what keeps a sender created during a cooldown from treating it as
+	// permanent.
+	u.cooldown.Store(time.Now().Add(-time.Second))
+	b, serr := ms.tryURL(ctx, u, entry)
+	if serr != nil {
+		t.Fatalf("expired cooldown should not block the request: %s", serr)
+	}
+	if b == nil {
+		t.Fatal("expected a block")
+	}
+	if !u.cooldown.Load().(time.Time).IsZero() {
+		t.Error("expired cooldown snapshot should have been cleared")
 	}
 }

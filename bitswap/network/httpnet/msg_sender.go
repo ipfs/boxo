@@ -192,12 +192,21 @@ func (sender *httpMsgSender) tryURL(ctx context.Context, u *senderURL, entry bsm
 	}
 
 	if dl := u.cooldown.Load().(time.Time); !dl.IsZero() {
-		err := fmt.Errorf("cooldown (%s): %s %q ", dl, method, u.URL)
-		log.Debug(err)
-		return nil, &senderError{
-			Type: typeRetryLater,
-			Err:  err,
+		if time.Now().Before(dl) {
+			err := fmt.Errorf("cooldown (%s): %s %q ", dl, method, u.URL)
+			log.Debug(err)
+			return nil, &senderError{
+				Type: typeRetryLater,
+				Err:  err,
+			}
 		}
+		// The deadline passed while this sender was alive. Clear the
+		// snapshot and proceed, otherwise a sender created during a
+		// cooldown treats it as permanent. CompareAndSwap, so a fresh
+		// deadline stored by a concurrent worker survives; losing the
+		// swap only lets this one request through, same as any request
+		// already in flight when a cooldown starts.
+		u.cooldown.CompareAndSwap(dl, time.Time{})
 	}
 
 	// We do not abort ongoing requests. This is known to cause "http2: server
@@ -225,6 +234,7 @@ func (sender *httpMsgSender) tryURL(ctx context.Context, u *senderURL, entry bsm
 	log.Debugf("%d/%d %s %q", u.serverErrors.Load(), sender.opts.MaxRetries, method, req.URL)
 	atomic.AddUint64(&sender.ht.stats.MessagesSent, 1)
 	sender.ht.metrics.RequestsInFlight.Inc()
+	reqStart := time.Now()
 	resp, err := sender.ht.client.Do(req)
 	if err != nil {
 		err = fmt.Errorf("error making request to %q: %w", req.URL, err)
@@ -248,6 +258,12 @@ func (sender *httpMsgSender) tryURL(ctx context.Context, u *senderURL, entry bsm
 		return nil, serr
 	}
 	defer resp.Body.Close()
+
+	// Time to response headers, comparable to the connect-probe round trip
+	// that seeds the latency estimate. Only recorded below for responses
+	// the server understood, so throttling and server errors cannot skew
+	// the estimate.
+	respLatency := time.Since(reqStart)
 
 	// Record request size
 	var buf bytes.Buffer
@@ -315,6 +331,7 @@ func (sender *httpMsgSender) tryURL(ctx context.Context, u *senderURL, entry bsm
 			sender.ht.cooldownTracker.remove(req.URL.Host)
 			u.cooldown.Store(time.Time{})
 		}
+		sender.ht.pinger.recordLatencyIfConnected(sender.peer, respLatency)
 
 		return nil, &senderError{
 			Type: typeClient,
@@ -326,6 +343,7 @@ func (sender *httpMsgSender) tryURL(ctx context.Context, u *senderURL, entry bsm
 			sender.ht.cooldownTracker.remove(req.URL.Host)
 			u.cooldown.Store(time.Time{})
 		}
+		sender.ht.pinger.recordLatencyIfConnected(sender.peer, respLatency)
 		log.Debugf("%s %q -> %d (%d bytes)", req.Method, req.URL, statusCode, len(body))
 
 		if req.Method == http.MethodHead {
@@ -638,6 +656,11 @@ func parseRetryAfter(ra string) (time.Time, bool) {
 	if err != nil {
 		date, err := time.Parse(time.RFC1123, ra)
 		if err != nil {
+			return time.Time{}, false
+		}
+		// A date at or before now (cached response, clock skew) is not
+		// a usable deadline; callers fall back to their own backoff.
+		if !date.After(time.Now()) {
 			return time.Time{}, false
 		}
 		return date, true
