@@ -251,6 +251,7 @@ type Network struct {
 	errorTracker    *errorTracker
 	requestTracker  *requestTracker
 	cooldownTracker *CooldownTracker
+	inflight        *inflightTracker
 
 	ongoingConnsLock sync.RWMutex
 	ongoingConns     map[peer.ID]struct{}
@@ -315,6 +316,8 @@ func New(host host.Host, opts ...Option) network.BitSwapNetwork {
 
 	reqTracker := newRequestTracker()
 	htnet.requestTracker = reqTracker
+
+	htnet.inflight = newInflightTracker()
 
 	// Default to the process-wide registry so backoff deadlines survive
 	// this Network instance. See SharedCooldownTracker.
@@ -784,8 +787,9 @@ func (ht *Network) Unprotect(p peer.ID, tag string) bool {
 	return true
 }
 
-// Stats returns message counts for this peer. Each message sent is an HTTP
-// requests. Each message received is an HTTP response.
+// Stats returns message counts for this peer. Messages are counted per
+// peer they serve, so requests coalesced across peers sharing an HTTP
+// endpoint count once per peer rather than once per wire request.
 func (ht *Network) Stats() network.Stats {
 	return network.Stats{
 		MessagesRecvd: atomic.LoadUint64(&ht.stats.MessagesRecvd),

@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -37,6 +38,9 @@ var (
 var _ network.Receiver = (*mockRecv)(nil)
 
 type mockRecv struct {
+	// mu guards the maps: coalesced requests deliver responses to
+	// several peers' collector goroutines concurrently.
+	mu                 sync.Mutex
 	blocks             map[cid.Cid]struct{}
 	haves              map[cid.Cid]struct{}
 	donthaves          map[cid.Cid]struct{}
@@ -46,6 +50,7 @@ type mockRecv struct {
 }
 
 func (recv *mockRecv) ReceiveMessage(ctx context.Context, sender peer.ID, incoming bsmsg.BitSwapMessage) {
+	recv.mu.Lock()
 	for _, b := range incoming.Blocks() {
 		recv.blocks[b.Cid()] = struct{}{}
 	}
@@ -57,6 +62,7 @@ func (recv *mockRecv) ReceiveMessage(ctx context.Context, sender peer.ID, incomi
 	for _, c := range incoming.DontHaves() {
 		recv.donthaves[c] = struct{}{}
 	}
+	recv.mu.Unlock()
 
 	recv.waitCh <- struct{}{}
 }
@@ -1134,5 +1140,72 @@ func TestSenderCooldownExpires(t *testing.T) {
 	}
 	if !u.cooldown.Load().(time.Time).IsZero() {
 		t.Error("expired cooldown snapshot should have been cleared")
+	}
+}
+
+// TestCoalescedRequestsShareOneRoundTrip verifies end to end that
+// concurrent identical wants from two peer IDs resolving to the same
+// HTTP endpoint produce a single wire request, while each peer still
+// receives its own bitswap response.
+func TestCoalescedRequestsShareOneRoundTrip(t *testing.T) {
+	ctx := context.Background()
+	recv := mockReceiver(t)
+	htnet, mn := mockNetwork(t, recv)
+
+	peerA, err := mn.GenPeer()
+	if err != nil {
+		t.Fatal(err)
+	}
+	peerB, err := mn.GenPeer()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var hits atomic.Int32
+	handler := http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/ipfs/"+pingCid) {
+			rw.WriteHeader(http.StatusOK)
+			return
+		}
+		hits.Add(1)
+		// Hold the response so the second peer's want overlaps the
+		// first peer's in-flight request.
+		time.Sleep(400 * time.Millisecond)
+		rw.WriteHeader(http.StatusNotFound)
+	})
+	srv := httptest.NewUnstartedServer(handler)
+	srv.EnableHTTP2 = true
+	srv.StartTLS()
+	t.Cleanup(srv.Close)
+
+	mustConnectToPeer(t, ctx, htnet, peerA, srv)
+	if err := recv.waitConnected(1); err != nil {
+		t.Fatal(err)
+	}
+	mustConnectToPeer(t, ctx, htnet, peerB, srv)
+	if err := recv.waitConnected(1); err != nil {
+		t.Fatal(err)
+	}
+
+	msg := makeWantsMessage(makeCids(t, 0, 1))
+	if err := htnet.SendMessage(ctx, peerA.ID(), msg); err != nil {
+		t.Fatal(err)
+	}
+	if err := htnet.SendMessage(ctx, peerB.ID(), msg); err != nil {
+		t.Fatal(err)
+	}
+
+	// Both peers must deliver their (DONT_HAVE) response.
+	if err := recv.wait(3); err != nil {
+		t.Fatal(err)
+	}
+	if err := recv.wait(3); err != nil {
+		t.Fatal(err)
+	}
+	if len(recv.donthaves) != 1 {
+		t.Fatalf("want the shared cid as DONT_HAVE, got %d entries", len(recv.donthaves))
+	}
+	if got := hits.Load(); got != 1 {
+		t.Errorf("concurrent identical wants made %d wire requests, want 1", got)
 	}
 }

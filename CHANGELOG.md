@@ -18,6 +18,8 @@ The following emojis are used to highlight certain changes:
 
 ### Changed
 
+- ✨ `bitswap/network/httpnet`: concurrent identical requests (same scheme, host, SNI, method and CID) against one HTTP endpoint share a single round trip. Delegated routing routinely returns several peer IDs for one gateway and bitswap keeps one queue per peer ID, so identical wants previously produced one request each. [#1151](https://github.com/ipfs/boxo/pull/1151)
+
 ### Removed
 
 ### Fixed
