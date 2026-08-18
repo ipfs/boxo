@@ -50,6 +50,32 @@ func TestCooldownInCooldown(t *testing.T) {
 	}
 }
 
+// TestCooldownSetReturnsEffectiveDeadline pins that the setters return
+// the deadline the tracker kept, so callers that snapshot it (senderURL)
+// honor the same capped window as everyone reading the tracker.
+func TestCooldownSetReturnsEffectiveDeadline(t *testing.T) {
+	ct := NewCooldownTracker()
+	host := "gateway.example.net:443"
+
+	dl := ct.setByDate(host, time.Now().Add(time.Hour))
+	if time.Until(dl) > DefaultMaxBackoff {
+		t.Errorf("setByDate returned an uncapped deadline: %s", dl)
+	}
+	stored, _ := ct.inCooldown(host)
+	if !dl.Equal(stored) {
+		t.Errorf("setByDate returned %s, tracker stores %s", dl, stored)
+	}
+
+	dl = ct.setByDuration(host, time.Hour)
+	if time.Until(dl) > DefaultMaxBackoff {
+		t.Errorf("setByDuration returned an uncapped deadline: %s", dl)
+	}
+	stored, _ = ct.inCooldown(host)
+	if !dl.Equal(stored) {
+		t.Errorf("setByDuration returned %s, tracker stores %s", dl, stored)
+	}
+}
+
 func TestCooldownSweepOnWrite(t *testing.T) {
 	ct := NewCooldownTracker()
 

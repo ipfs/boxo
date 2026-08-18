@@ -83,7 +83,9 @@ func (ct *CooldownTracker) sweepLocked(now time.Time) {
 	}
 }
 
-func (ct *CooldownTracker) setByDate(host string, t time.Time) {
+// setByDate stores a cooldown deadline for the host and returns the
+// deadline actually kept, capped at maxBackoff past now.
+func (ct *CooldownTracker) setByDate(host string, t time.Time) time.Time {
 	now := time.Now()
 	latestDate := now.Add(ct.maxBackoff)
 	if t.After(latestDate) {
@@ -93,17 +95,20 @@ func (ct *CooldownTracker) setByDate(host string, t time.Time) {
 	ct.urls[host] = t
 	ct.sweepLocked(now)
 	ct.urlsLock.Unlock()
+	return t
 }
 
-func (ct *CooldownTracker) setByDuration(host string, d time.Duration) {
+func (ct *CooldownTracker) setByDuration(host string, d time.Duration) time.Time {
 	if d > ct.maxBackoff {
 		d = ct.maxBackoff
 	}
 	now := time.Now()
+	dl := now.Add(d)
 	ct.urlsLock.Lock()
-	ct.urls[host] = now.Add(d)
+	ct.urls[host] = dl
 	ct.sweepLocked(now)
 	ct.urlsLock.Unlock()
+	return dl
 }
 
 // inCooldown returns the cooldown deadline for the host and whether that

@@ -18,11 +18,15 @@ The following emojis are used to highlight certain changes:
 
 ### Changed
 
-- ✨ `bitswap/network/httpnet`: concurrent identical requests (same scheme, host, SNI, method and CID) against one HTTP endpoint share a single round trip. Delegated routing routinely returns several peer IDs for one gateway and bitswap keeps one queue per peer ID, so identical wants previously produced one request each. [#1151](https://github.com/ipfs/boxo/pull/1151)
+- ✨ `bitswap/network/httpnet`: traffic is deduplicated across peer IDs that resolve to the same HTTP endpoint, a common pattern in delegated routing responses where one gateway is advertised under several peer IDs. Concurrent identical requests (same scheme, host, SNI, method and CID) share one round trip; the second peer ID resolving to an endpoint already proven working skips the `Connect` probe and inherits the HEAD-support decision; server and client error counters are shared per endpoint, so a broken gateway disconnects all of its peer IDs after one round of failures instead of one round per peer ID, and the client-error threshold trips on combined volume. [#1151](https://github.com/ipfs/boxo/pull/1151)
+- `bitswap/network/httpnet`: `DefaultMaxRetries` is now 3 (was 1) and doubles as the per-endpoint server-error budget. The error counter is shared per endpoint across senders and peers, so senders with mismatched `MaxRetries` trip at the lowest configured value; the new default matches the retry budget bitswap's `MessageQueue` already configured. [#1151](https://github.com/ipfs/boxo/pull/1151)
+- ✨ `bitswap/network/httpnet`: throttling responses (HTTP 429, 502, 503, 504) no longer escalate to a peer disconnect. The endpoint enters a cooldown sized by `Retry-After` (or `DefaultSendErrorBackoff`), wants during the window resolve as `DONT_HAVE` without HTTP requests and without counting toward the client-error disconnect threshold, and traffic resumes when the window lapses (old: disconnect after one retry cycle, with recovery waiting on provider re-discovery). When throttling responses omit `Retry-After`, the fallback cooldown doubles per consecutive throttle up to `DefaultMaxBackoff` instead of staying at the sender's configured backoff. [#1151](https://github.com/ipfs/boxo/pull/1151)
 
 ### Removed
 
 ### Fixed
+
+- `bitswap/network/httpnet`: a message sender now snapshots the capped cooldown deadline kept by the tracker instead of the raw `Retry-After` date, so a single response can no longer pause a sender beyond `DefaultMaxBackoff`. A successful response also resets the endpoint's server-error count (old: the count only grew, so a sender that had accumulated errors disconnected on a later request even after the endpoint recovered). [#1151](https://github.com/ipfs/boxo/pull/1151)
 
 ### Security
 
