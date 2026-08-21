@@ -28,6 +28,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
+	"golang.org/x/net/idna"
 )
 
 var log = logging.Logger("boxo/gateway")
@@ -36,6 +37,11 @@ const (
 	ipfsPathPrefix        = "/ipfs/"
 	ipnsPathPrefix        = ipns.NamespacePrefix
 	immutableCacheControl = "public, max-age=29030400, immutable"
+
+	// maxIpfsUriLength caps the value of the Ipfs-Uri response header.
+	// Longer values are not sent (IPIP-0548 allows omission) to stay under
+	// common per-field limits in reverse proxies.
+	maxIpfsUriLength = 8192
 )
 
 var (
@@ -261,6 +267,16 @@ func (i *handler) getOrHeadHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
+	// Set as soon as the content path is known, so redirect and error
+	// responses below carry it too (IPIP-0548). The content path does not
+	// change after this point.
+	if i.config.DeprecatedXIpfsPath && isFieldValueSafe(contentPath.String()) {
+		w.Header().Set("X-Ipfs-Path", contentPath.String())
+	}
+	if uri, ok := ipfsUriHeaderValue(contentPath); ok && len(uri) <= maxIpfsUriLength {
+		w.Header().Set("Ipfs-Uri", uri)
+	}
+
 	if i.handleOnlyIfCached(w, r, contentPath) {
 		return
 	}
@@ -273,8 +289,6 @@ func (i *handler) getOrHeadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	trace.SpanFromContext(r.Context()).SetAttributes(attribute.String("ResponseFormat", responseFormat))
 	i.requestTypeMetric.WithLabelValues(contentPath.Namespace(), responseFormat).Inc()
-
-	w.Header().Set("X-Ipfs-Path", contentPath.String())
 
 	// Fail fast if unsupported request type was sent to a Trustless Gateway.
 	if !i.isDeserializedResponsePossible(r) && !i.isTrustlessRequest(contentPath, responseFormat) {
@@ -543,6 +557,123 @@ func setIpfsRootsHeader(w http.ResponseWriter, rq *requestData, md *ContentPathM
 	rootCidList := strings.Join(pathRoots, ",") // convention from rfc2616#sec4.2
 
 	w.Header().Set("X-Ipfs-Roots", rootCidList)
+}
+
+// isFieldValueSafe reports whether s can be carried byte-for-byte in an HTTP
+// field value: only HTAB (0x09), SP (0x20), and visible ASCII (0x21-0x7E)
+// are allowed (Section 5.5 of RFC 9110). CR, LF, and NUL are rejected or
+// replaced by HTTP software, other control characters are invalid, and
+// non-ASCII bytes arrive garbled, so the legacy X-Ipfs-Path header MUST be
+// omitted for such content paths (IPIP-0548); Ipfs-Uri percent-encodes them
+// instead.
+func isFieldValueSafe(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if c := s[i]; c != '\t' && (c < 0x20 || c > 0x7E) {
+			return false
+		}
+	}
+	return true
+}
+
+// ipfsUriHeaderValue builds the value of the Ipfs-Uri response header for the
+// given content path (IPIP-0548): an ipfs:// or ipns:// URI with the content
+// root in its canonical text form, and a URI path that mirrors the content
+// path remainder (everything after "/{namespace}/{root}") with every segment
+// percent-encoded, so a trailing slash is kept. It returns false when the
+// namespace has no URI scheme or the content root cannot be normalized, in
+// which case the header is not sent.
+func ipfsUriHeaderValue(contentPath path.Path) (string, bool) {
+	segments := contentPath.Segments()
+	if len(segments) < 2 {
+		return "", false
+	}
+
+	var authority string
+	switch contentPath.Namespace() {
+	case path.IPFSNamespace:
+		// Canonical form: CIDv1 in lowercase base32.
+		c, err := cid.Decode(segments[1])
+		if err != nil {
+			return "", false
+		}
+		authority, err = cid.NewCidV1(c.Type(), c.Hash()).StringOfBase(multibase.Base32)
+		if err != nil {
+			return "", false
+		}
+	case path.IPNSNamespace:
+		if name, err := ipns.NameFromString(segments[1]); err == nil {
+			// Canonical form for cryptographic IPNS names: CIDv1 in
+			// lowercase base36, preserving the multicodec. ipns.Name
+			// covers libp2p-key, the only codec in use today; roots with
+			// other codecs fall through to the DNSLink branch, fail its
+			// checks, and the header is omitted, as IPIP-0548 allows.
+			authority = name.String()
+		} else {
+			// DNSLink: canonical form is the lowercase FQDN as A-labels,
+			// without the optional trailing dot. Omit the header when the
+			// root does not convert to A-labels or the result is not a
+			// multi-label DNS name.
+			host, err := idna.Lookup.ToASCII(strings.TrimSuffix(segments[1], "."))
+			if err != nil || !strings.Contains(host, ".") ||
+				strings.Contains(host, "..") || strings.HasPrefix(host, ".") || strings.HasSuffix(host, ".") {
+				return "", false
+			}
+			authority = host
+		}
+	default:
+		return "", false
+	}
+
+	var b strings.Builder
+	b.WriteString(contentPath.Namespace())
+	b.WriteString("://")
+	b.WriteString(authority)
+	// The URI path mirrors the content path remainder: split on "/", each
+	// segment percent-encoded, rejoined with "/". The content path is already
+	// normalized (path.NewPath collapses duplicate slashes and dot segments
+	// but keeps a trailing slash), so the remainder here is "", "/", or
+	// "/segment..." with an optional trailing slash, all of which the header
+	// value reproduces.
+	remainder := strings.TrimPrefix(contentPath.String(), "/"+segments[0]+"/"+segments[1])
+	if remainder != "" {
+		for _, segment := range strings.Split(remainder[1:], "/") {
+			b.WriteByte('/')
+			b.WriteString(encodeIpfsUriSegment(segment))
+		}
+	}
+	return b.String(), true
+}
+
+// encodeIpfsUriSegment percent-encodes a single content path segment for use
+// in an Ipfs-Uri value: every byte outside the RFC 3986 unreserved set becomes
+// %XX with uppercase hex, so the output is ASCII-only and byte-identical
+// across implementations. This is stricter than url.PathEscape, which leaves
+// sub-delims like "&" and "=" unencoded. A segment that is exactly "." or
+// ".." is emitted fully percent-encoded (IPIP-0548), so it cannot be taken
+// for a relative dot segment; such segments never survive the gateway's
+// request path normalization, but the encoding is total for any input.
+func encodeIpfsUriSegment(segment string) string {
+	switch segment {
+	case ".":
+		return "%2E"
+	case "..":
+		return "%2E%2E"
+	}
+	const upperhex = "0123456789ABCDEF"
+	var b strings.Builder
+	b.Grow(len(segment))
+	for i := 0; i < len(segment); i++ {
+		c := segment[i]
+		if 'A' <= c && c <= 'Z' || 'a' <= c && c <= 'z' || '0' <= c && c <= '9' ||
+			c == '-' || c == '.' || c == '_' || c == '~' {
+			b.WriteByte(c)
+		} else {
+			b.WriteByte('%')
+			b.WriteByte(upperhex[c>>4])
+			b.WriteByte(upperhex[c&0xF])
+		}
+	}
+	return b.String()
 }
 
 // lastModifiedMatch returns true if we can respond with HTTP 304 Not Modified
