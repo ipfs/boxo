@@ -23,6 +23,7 @@ The following emojis are used to highlight certain changes:
 
 - 🛠 `gateway`: the deprecated `X-Ipfs-Path` response header is no longer sent by default; its value cannot represent all UnixFS file names and it is superseded by `Ipfs-Uri`. **Action required:** consumers that read `X-Ipfs-Path` should migrate to `Ipfs-Uri`; to restore the legacy header meanwhile, set `Config.DeprecatedXIpfsPath` and call `Headers.WithDeprecatedXIpfsPath` before `Headers.ApplyCors` so it is listed in `Access-Control-Expose-Headers` again. Even with the flag set, the header is omitted for content paths with bytes that cannot appear in an HTTP field value (Section 5.5 of RFC 9110), such as raw non-ASCII UnixFS file names: gateway-conformance fails a gateway that sends such values, and only `Ipfs-Uri` carries those paths. [IPIP-548](https://github.com/ipfs/specs/pull/548) [#1209](https://github.com/ipfs/boxo/pull/1209)
 - `gateway`: conformance CI runs [gateway-conformance v0.14.0](https://github.com/ipfs/gateway-conformance/releases/tag/v0.14.0), the first release with the IPIP-548 `Ipfs-Uri` tests. [#1209](https://github.com/ipfs/boxo/pull/1209)
+ - updated Go in `go.mod` to 1.26.0
 
 ### Removed
 

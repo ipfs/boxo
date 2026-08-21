@@ -88,10 +88,10 @@ func TestCarBackendTar(t *testing.T) {
 
 	// Track requests to handle exampleA being requested multiple times with partial responses
 	exampleARequests := make(map[string]int)
-	var requestCount int32
+	var requestCount atomic.Int32
 
 	s := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		atomic.AddInt32(&requestCount, 1)
+		requestCount.Add(1)
 
 		// Get the path, ignoring query parameters for comparison
 		requestPath := request.URL.Path

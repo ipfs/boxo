@@ -283,7 +283,7 @@ func TestProvidersRecordsLimit(t *testing.T) {
 	// filter-addrs=quic-v1, only the QUIC records survive filtering.
 	makeRecords := func(t *testing.T, n, tcpOnly int) []iter.Result[types.Record] {
 		recs := make([]iter.Result[types.Record], 0, n)
-		for i := 0; i < n; i++ {
+		for i := range n {
 			_, pid := makeEd25519PeerID(t)
 			addr := quicAddr
 			if i < tcpOnly {
@@ -401,7 +401,7 @@ func TestPeersRecordsLimit(t *testing.T) {
 	// filter-addrs=quic-v1, only the QUIC records survive filtering.
 	makeRecords := func(n, tcpOnly int) []iter.Result[*types.PeerRecord] {
 		recs := make([]iter.Result[*types.PeerRecord], 0, n)
-		for i := 0; i < n; i++ {
+		for i := range n {
 			addr := quicAddr
 			if i < tcpOnly {
 				addr = tcpAddr

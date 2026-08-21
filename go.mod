@@ -1,6 +1,6 @@
 module github.com/ipfs/boxo
 
-go 1.25.7
+go 1.26
 
 require (
 	github.com/cespare/xxhash/v2 v2.3.0

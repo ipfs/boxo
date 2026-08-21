@@ -469,12 +469,12 @@ func TestHTTPCachingBehavior(t *testing.T) {
 
 	etag := `"test-etag-123"`
 	lastModified := "Wed, 21 Oct 2015 07:28:00 GMT"
-	var requestCount int32
-	var conditionalRequestCount int32
+	var requestCount atomic.Int32
+	var conditionalRequestCount atomic.Int32
 
 	// Create server that tracks conditional requests
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		count := atomic.AddInt32(&requestCount, 1)
+		count := requestCount.Add(1)
 		t.Logf("HTTP caching test request #%d: %s, If-None-Match: %s, If-Modified-Since: %s",
 			count, r.Method, r.Header.Get("If-None-Match"), r.Header.Get("If-Modified-Since"))
 
@@ -483,7 +483,7 @@ func TestHTTPCachingBehavior(t *testing.T) {
 		ifModifiedSince := r.Header.Get("If-Modified-Since")
 
 		if ifNoneMatch == etag || ifModifiedSince == lastModified {
-			atomic.AddInt32(&conditionalRequestCount, 1)
+			conditionalRequestCount.Add(1)
 			// Return 304 Not Modified
 			t.Logf("Returning 304 Not Modified for conditional request")
 			w.WriteHeader(http.StatusNotModified)
@@ -528,12 +528,12 @@ func TestHTTPCachingBehavior(t *testing.T) {
 	require.NotNil(t, config1)
 	assert.Equal(t, int64(2025080101), config1.AutoConfVersion)
 
-	initialRequestCount := atomic.LoadInt32(&requestCount)
+	initialRequestCount := requestCount.Load()
 	require.GreaterOrEqual(t, int(initialRequestCount), 1, "Should have made at least one initial request")
 
 	// Reset counters to track only subsequent requests
-	atomic.StoreInt32(&requestCount, 0)
-	atomic.StoreInt32(&conditionalRequestCount, 0)
+	requestCount.Store(0)
+	conditionalRequestCount.Store(0)
 
 	// Wait to ensure cache is considered stale (100ms refresh interval)
 	time.Sleep(150 * time.Millisecond)
@@ -547,8 +547,8 @@ func TestHTTPCachingBehavior(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	// Should have made at least one conditional request
-	finalRequestCount := atomic.LoadInt32(&requestCount)
-	finalConditionalCount := atomic.LoadInt32(&conditionalRequestCount)
+	finalRequestCount := requestCount.Load()
+	finalConditionalCount := conditionalRequestCount.Load()
 
 	t.Logf("Final request count: %d, conditional count: %d", finalRequestCount, finalConditionalCount)
 
