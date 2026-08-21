@@ -74,7 +74,7 @@ func TestFairSchedulerLowPendingPeerIsServed(t *testing.T) {
 
 	newPeerBlockCid := blocks.NewBlock([]byte(newPeerCid)).Cid()
 
-	for i := 0; i < maxEnvelopesToWait; i++ {
+	for i := range maxEnvelopesToWait {
 		select {
 		case next := <-e.Outbox():
 			env := <-next
@@ -190,7 +190,7 @@ func TestFairComparatorCappedPendingAndTiebreak(t *testing.T) {
 	if first == cmp(bMed, aBig) {
 		t.Fatal("salted tiebreak must be antisymmetric")
 	}
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		if cmp(aBig, bMed) != first {
 			t.Fatal("salted tiebreak must be stable within a scheduler instance")
 		}
@@ -206,7 +206,7 @@ func TestFairComparatorTiebreakSaltVariesAcrossSchedulers(t *testing.T) {
 	now := time.Now()
 
 	flips := 0
-	for i := 0; i < pairs; i++ {
+	for i := range pairs {
 		s1 := newPeerScheduler()
 		s2 := newPeerScheduler()
 		idA := peer.ID(fmt.Sprintf("peer-a-%03d", i))

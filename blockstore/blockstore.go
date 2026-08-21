@@ -395,7 +395,7 @@ func NewGCLocker() GCLocker {
 
 type gclocker struct {
 	lk    sync.RWMutex
-	gcreq int32
+	gcreq atomic.Int32
 }
 
 // Unlocker represents an object which can Unlock
@@ -414,9 +414,9 @@ func (u *unlocker) Unlock(_ context.Context) {
 }
 
 func (bs *gclocker) GCLock(_ context.Context) Unlocker {
-	atomic.AddInt32(&bs.gcreq, 1)
+	bs.gcreq.Add(1)
 	bs.lk.Lock()
-	atomic.AddInt32(&bs.gcreq, -1)
+	bs.gcreq.Add(-1)
 	return &unlocker{bs.lk.Unlock}
 }
 
@@ -426,5 +426,5 @@ func (bs *gclocker) PinLock(_ context.Context) Unlocker {
 }
 
 func (bs *gclocker) GCRequested(_ context.Context) bool {
-	return atomic.LoadInt32(&bs.gcreq) > 0
+	return bs.gcreq.Load() > 0
 }

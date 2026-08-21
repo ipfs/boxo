@@ -18,6 +18,8 @@ The following emojis are used to highlight certain changes:
 
 ### Changed
 
+- updated Go in `go.mod` to 1.26.0 [#1210](https://github.com/ipfs/boxo/pull/1210)
+
 ### Removed
 
 ### Fixed

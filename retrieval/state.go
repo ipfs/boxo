@@ -549,8 +549,7 @@ func WrapWithState(ctx context.Context, err error) error {
 	}
 
 	// Check if already wrapped
-	var existingErr *ErrorWithState
-	if errors.As(err, &existingErr) {
+	if _, ok := errors.AsType[*ErrorWithState](err); ok {
 		return err
 	}
 

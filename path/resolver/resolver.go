@@ -4,6 +4,7 @@ package resolver
 import (
 	"context"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/ipfs/boxo/fetcher"
@@ -248,8 +249,8 @@ func pathAllSelector(path []string) ipld.Node {
 
 func pathSelector(path []string, ssb builder.SelectorSpecBuilder, reduce func(string, builder.SelectorSpec) builder.SelectorSpec) ipld.Node {
 	spec := ssb.Matcher()
-	for i := len(path) - 1; i >= 0; i-- {
-		spec = reduce(path[i], spec)
+	for _, p := range slices.Backward(path) {
+		spec = reduce(p, spec)
 	}
 	return spec.Node()
 }
