@@ -63,9 +63,11 @@ func TestIpfsUriHeaderValue(t *testing.T) {
 		{"dnslink lowercased", "/ipns/EN.WIKIPEDIA-ON-IPFS.ORG/wiki", "ipns://en.wikipedia-on-ipfs.org/wiki", true},
 		{"dnslink trailing dot stripped", "/ipns/en.wikipedia-on-ipfs.org./wiki", "ipns://en.wikipedia-on-ipfs.org/wiki", true},
 		{"dnslink unicode converted to a-labels", "/ipns/ŻÓŁĆ.example.net/wiki", "ipns://xn--kda4b0koi.example.net/wiki", true},
+		{"dnslink on a private network", "/ipns/example.local/wiki", "ipns://example.local/wiki", true},
 		// Roots that cannot be normalized: header is omitted.
 		{"ipld namespace has no uri scheme", "/ipld/" + cidV1, "", false},
 		{"ipns root neither name nor dnslink", "/ipns/notavalidname", "", false},
+		{"dnslink with no dot", "/ipns/examplenodot", "", false},
 		{"dnslink with empty label", "/ipns/en..example.net/wiki", "", false},
 	} {
 		t.Run(test.name, func(t *testing.T) {
