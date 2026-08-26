@@ -16,15 +16,18 @@ The following emojis are used to highlight certain changes:
 
 ### Added
 
-- ✨ `gateway`: responses now include the `Ipfs-Uri` header with a canonical `ipfs://` or `ipns://` URI for the requested content path, and expose it via the default `Access-Control-Expose-Headers`. The header carries the content root in canonical form (base32 CIDv1 for `/ipfs/`, base36 CIDv1 for cryptographic `/ipns/` names, lowercase FQDN for DNSLink) with percent-encoded path segments, so clients get a value that is safe in HTTP field context regardless of bytes in the underlying path. [IPIP-548](https://github.com/ipfs/specs/pull/548)
+- ✨ `gateway`: responses now include the `Ipfs-Uri` header with a canonical `ipfs://` or `ipns://` URI for the requested content path, and expose it via the default `Access-Control-Expose-Headers`. The header carries the content root in canonical form (base32 CIDv1 for `/ipfs/`, base36 CIDv1 for cryptographic `/ipns/` names, lowercase FQDN for DNSLink) with percent-encoded path segments, so clients get a value that is safe in HTTP field context regardless of bytes in the underlying path. [IPIP-548](https://github.com/ipfs/specs/pull/548) [#1209](https://github.com/ipfs/boxo/pull/1209)
 
 ### Changed
 
-- 🛠 `gateway`: the deprecated `X-Ipfs-Path` response header is no longer sent by default; its value cannot represent all UnixFS file names and it is superseded by `Ipfs-Uri`. **Action required:** consumers that read `X-Ipfs-Path` should migrate to `Ipfs-Uri`; to restore the legacy header meanwhile, set `Config.DeprecatedXIpfsPath` and call `Headers.WithDeprecatedXIpfsPath` before `Headers.ApplyCors` so it is listed in `Access-Control-Expose-Headers` again. Even with the flag set, the header is omitted for content paths with bytes that cannot appear in an HTTP field value (Section 5.5 of RFC 9110), such as raw non-ASCII UnixFS file names: gateway-conformance fails a gateway that sends such values, and only `Ipfs-Uri` carries those paths. [IPIP-548](https://github.com/ipfs/specs/pull/548)
+- 🛠 `gateway`: the deprecated `X-Ipfs-Path` response header is no longer sent by default; its value cannot represent all UnixFS file names and it is superseded by `Ipfs-Uri`. **Action required:** consumers that read `X-Ipfs-Path` should migrate to `Ipfs-Uri`; to restore the legacy header meanwhile, set `Config.DeprecatedXIpfsPath` and call `Headers.WithDeprecatedXIpfsPath` before `Headers.ApplyCors` so it is listed in `Access-Control-Expose-Headers` again. Even with the flag set, the header is omitted for content paths with bytes that cannot appear in an HTTP field value (Section 5.5 of RFC 9110), such as raw non-ASCII UnixFS file names: gateway-conformance fails a gateway that sends such values, and only `Ipfs-Uri` carries those paths. [IPIP-548](https://github.com/ipfs/specs/pull/548) [#1209](https://github.com/ipfs/boxo/pull/1209)
+- `gateway`: conformance CI runs [gateway-conformance v0.14.0](https://github.com/ipfs/gateway-conformance/releases/tag/v0.14.0), the first release with the IPIP-548 `Ipfs-Uri` tests. [#1209](https://github.com/ipfs/boxo/pull/1209)
 
 ### Removed
 
 ### Fixed
+
+- `gateway`: `X-Ipfs-Path` values no longer carry bytes that are invalid in an HTTP field value (Section 5.5 of RFC 9110). The header used to echo raw UnixFS file names, so non-ASCII paths arrived garbled or broke strict clients; when the header is enabled, it is now omitted for such paths, which only the percent-encoded `Ipfs-Uri` can carry. [#1209](https://github.com/ipfs/boxo/pull/1209)
 
 ### Security
 
