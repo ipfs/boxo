@@ -248,12 +248,13 @@ type Network struct {
 	receivers       []network.Receiver
 	connEvtMgr      *network.ConnectEventManager
 	pinger          *pinger
-	errorTracker    *errorTracker
+	endpoints       *endpointTracker
 	requestTracker  *requestTracker
 	cooldownTracker *CooldownTracker
+	inflight        *inflightTracker
 
-	ongoingConnsLock sync.RWMutex
-	ongoingConns     map[peer.ID]struct{}
+	ongoingConnsLock sync.Mutex
+	ongoingConns     map[peer.ID]*peerConnLock
 
 	// options
 	userAgent               string
@@ -293,7 +294,7 @@ func New(host host.Host, opts ...Option) network.BitSwapNetwork {
 	htnet := &Network{
 		host:                    host,
 		closing:                 make(chan struct{}),
-		ongoingConns:            make(map[peer.ID]struct{}),
+		ongoingConns:            make(map[peer.ID]*peerConnLock),
 		userAgent:               defaultUserAgent(),
 		maxBlockSize:            DefaultMaxBlockSize,
 		dialTimeout:             DefaultDialTimeout,
@@ -315,6 +316,8 @@ func New(host host.Host, opts ...Option) network.BitSwapNetwork {
 
 	reqTracker := newRequestTracker()
 	htnet.requestTracker = reqTracker
+
+	htnet.inflight = newInflightTracker()
 
 	// Default to the process-wide registry so backoff deadlines survive
 	// this Network instance. See SharedCooldownTracker.
@@ -383,8 +386,7 @@ func New(host host.Host, opts ...Option) network.BitSwapNetwork {
 	pinger := newPinger(htnet)
 	htnet.pinger = pinger
 
-	et := newErrorTracker(htnet)
-	htnet.errorTracker = et
+	htnet.endpoints = newEndpointTracker()
 
 	for i := 0; i < htnet.httpWorkers; i++ {
 		go htnet.httpWorker(i)
@@ -451,17 +453,17 @@ func (ht *Network) senderURLs(p peer.ID) []*senderURL {
 	if len(urls) == 0 {
 		return nil
 	}
-	return ht.cooldownTracker.fillSenderURLs(urls)
+	surls := ht.cooldownTracker.fillSenderURLs(urls)
+	for _, su := range surls {
+		su.serverErrors = ht.endpoints.serverErrorCounter(endpointKey(su.URL.Scheme, su.URL.Host, su.SNI))
+	}
+	return surls
 }
 
 // IsConnectedToPeer returns true if the peer is in the connected registry,
 // which means Connect() found a working HTTP endpoint for it and
 // DisconnectFrom() has not been called since.
 func (ht *Network) IsConnectedToPeer(ctx context.Context, p peer.ID) bool {
-	// only answer this question while no one is connecting or
-	// disconnecting.
-	ht.ongoingConnsLock.RLock()
-	defer ht.ongoingConnsLock.RUnlock()
 	return ht.pinger.isConnected(p)
 }
 
@@ -488,22 +490,40 @@ func (ht *Network) Self() peer.ID {
 	return ht.host.ID()
 }
 
-// lockConnectingPeer locks code around connecting/disconnecting to avoid
-// answering questions about connection state while a connect/disconnect
-// operation is ongoing. Also avoid doing them twice, or simultaneously.
-func (ht *Network) lockConnectingPeer(p peer.ID) {
-	ht.ongoingConnsLock.Lock()
-	ht.ongoingConns[p] = struct{}{}
-	ht.ongoingConnsLock.Unlock()
+// peerConnLock serializes Connect and DisconnectFrom per peer, so that
+// the endpoint registration a Connect makes cannot interleave with the
+// release a concurrent DisconnectFrom performs. Entries are refcounted
+// and dropped when no operation holds them.
+type peerConnLock struct {
+	mu   sync.Mutex
+	refs int
 }
 
-// unlockConnectingPeer unlocks code around connecting/disconnecting to avoid
-// answering questions about connection state while a connect/disconnect
-// operation is ongoing. Also avoid doing them twice, or simultaneously.
+// lockConnectingPeer serializes connect/disconnect operations for the
+// peer. Operations on other peers proceed independently.
+func (ht *Network) lockConnectingPeer(p peer.ID) {
+	ht.ongoingConnsLock.Lock()
+	l, ok := ht.ongoingConns[p]
+	if !ok {
+		l = &peerConnLock{}
+		ht.ongoingConns[p] = l
+	}
+	l.refs++
+	ht.ongoingConnsLock.Unlock()
+	l.mu.Lock()
+}
+
+// unlockConnectingPeer releases the peer's connect/disconnect lock,
+// dropping its entry when no other operation waits on it.
 func (ht *Network) unlockConnectingPeer(p peer.ID) {
 	ht.ongoingConnsLock.Lock()
-	delete(ht.ongoingConns, p)
+	l := ht.ongoingConns[p]
+	l.refs--
+	if l.refs == 0 {
+		delete(ht.ongoingConns, p)
+	}
 	ht.ongoingConnsLock.Unlock()
+	l.mu.Unlock()
 }
 
 // Connect attempts setting up an HTTP connection to the given peer. The given
@@ -533,6 +553,13 @@ func (ht *Network) Connect(ctx context.Context, pi peer.AddrInfo) error {
 
 	ht.lockConnectingPeer(p)
 	defer ht.unlockConnectingPeer(p)
+
+	// Re-check under the lock: a concurrent Connect for the same peer
+	// may have finished while this one waited.
+	if ht.pinger.isConnected(p) {
+		ht.connEvtMgr.Connected(p)
+		return nil
+	}
 
 	urls := network.ExtractURLsFromPeer(pi)
 
@@ -568,9 +595,30 @@ func (ht *Network) Connect(ctx context.Context, pi peer.AddrInfo) error {
 	// peer.Connected() on success.
 	var workingAddrs []multiaddr.Multiaddr
 	var cooledAddrs []multiaddr.Multiaddr
-	var probeRTT time.Duration
+	var probes []endpointProbe
+	var probeRTT, inheritedRTT time.Duration
+	probed := false
 	supportsHead := true
 	for _, u := range urls {
+		key := endpointKey(u.URL.Scheme, u.URL.Host, u.SNI)
+
+		// Endpoints already proven working by another connected peer
+		// skip the probe and inherit its HEAD-support decision and
+		// probe round trip. This is the expected pattern when
+		// delegated routing returns several peer IDs for one gateway.
+		if method, rtt, ok := ht.endpoints.knownMethod(u, DefaultMaxRetries); ok {
+			log.Debugf("skipping probe for %s: endpoint already known via another peer", u.URL)
+			workingAddrs = append(workingAddrs, u.Multiaddress)
+			probes = append(probes, endpointProbe{key: key, method: method, rtt: rtt})
+			if method != http.MethodHead {
+				supportsHead = false
+			}
+			if inheritedRTT == 0 {
+				inheritedRTT = rtt
+			}
+			continue
+		}
+
 		// Respect an ongoing cooldown for this host without making any
 		// request. The address is kept as a failover target below:
 		// senders skip it while the cooldown lasts and use it again
@@ -579,12 +627,13 @@ func (ht *Network) Connect(ctx context.Context, pi peer.AddrInfo) error {
 		if dl, cooling := ht.cooldownTracker.inCooldown(u.URL.Host); cooling {
 			errs = append(errs, fmt.Errorf("%s: host in cooldown until %s", u.Multiaddress.String(), dl))
 			cooledAddrs = append(cooledAddrs, u.Multiaddress)
+			probes = append(probes, endpointProbe{key: key})
 			continue
 		}
 
 		// If head works we assume GET works too.
 		start := time.Now()
-		status, retryAfter, err := ht.connectToURL(ctx, pi.ID, u, "HEAD")
+		status, retryAfter, err := ht.connectToURL(ctx, pi.ID, u, http.MethodHead)
 		if err != nil {
 			errs = append(errs, fmt.Errorf("%s: %s", u.Multiaddress.String(), err))
 			// abort if context cancelled
@@ -599,10 +648,16 @@ func (ht *Network) Connect(ctx context.Context, pi peer.AddrInfo) error {
 				continue
 			}
 		} else {
+			rtt := time.Since(start)
 			if probeRTT == 0 {
-				probeRTT = time.Since(start)
+				probeRTT = rtt
 			}
+			probed = true
 			workingAddrs = append(workingAddrs, u.Multiaddress)
+			probes = append(probes, endpointProbe{key: key, method: http.MethodHead, rtt: rtt})
+			// A successful probe proves the endpoint healthy;
+			// forgive server errors accrued by other peers.
+			ht.endpoints.clearServerErrors(key)
 			continue
 		}
 
@@ -610,7 +665,7 @@ func (ht *Network) Connect(ctx context.Context, pi peer.AddrInfo) error {
 		supportsHead = false
 
 		start = time.Now()
-		_, retryAfter, err = ht.connectToURL(ctx, pi.ID, u, "GET")
+		_, retryAfter, err = ht.connectToURL(ctx, pi.ID, u, http.MethodGet)
 		if err != nil {
 			errs = append(errs, fmt.Errorf("%s: %s", u.Multiaddress.String(), err))
 			if ctx.Err() != nil {
@@ -620,10 +675,14 @@ func (ht *Network) Connect(ctx context.Context, pi peer.AddrInfo) error {
 			ht.startCooldown(u.URL.Host, retryAfter)
 			continue
 		}
+		rtt := time.Since(start)
 		if probeRTT == 0 {
-			probeRTT = time.Since(start)
+			probeRTT = rtt
 		}
+		probed = true
 		workingAddrs = append(workingAddrs, u.Multiaddress)
+		probes = append(probes, endpointProbe{key: key, method: http.MethodGet, rtt: rtt})
+		ht.endpoints.clearServerErrors(key)
 	}
 
 	// Bail out if no working urls found.
@@ -648,13 +707,21 @@ func (ht *Network) Connect(ctx context.Context, pi peer.AddrInfo) error {
 	// Record whether HEAD test passed for all urls - ignoring error
 	_ = ps.Put(pi.ID, peerstoreSupportsHeadKey, supportsHead)
 
+	ht.endpoints.register(p, probes)
 	ht.pinger.markConnected(p)
-	// Seed the latency estimate from the probe, so consumers see a real
-	// value without any extra request. Real retrieval responses update it
-	// from here on. Recorded unconditionally: this point is only reached
-	// after a probe succeeded, and a coarse clock may have measured that
-	// probe as zero; the recording floor turns it into a valid sample.
-	ht.pinger.recordLatencyIfConnected(p, probeRTT)
+	// Seed the latency estimate so consumers see a real value without
+	// any extra request. Real retrieval responses update it from here
+	// on. A probe that ran seeds unconditionally, even when a coarse
+	// clock measured it as zero (the recording floor turns that into a
+	// valid sample). Peers whose endpoints were all inherited from
+	// another peer seed from the endpoint's recorded probe round trip,
+	// so the DONT_HAVE timeout manager does not fire an on-demand ping
+	// for a gateway that was already measured.
+	if probed {
+		ht.pinger.recordLatencyIfConnected(p, probeRTT)
+	} else if inheritedRTT > 0 {
+		ht.pinger.recordLatencyIfConnected(p, inheritedRTT)
+	}
 	ht.connEvtMgr.Connected(p)
 
 	log.Debugf("connect success to %s (supports HEAD: %t)", p, supportsHead)
@@ -752,7 +819,10 @@ func (ht *Network) DisconnectFrom(ctx context.Context, p peer.ID) error {
 	ht.connEvtMgr.Disconnected(p) // notify everywhere that we are going offline
 
 	ht.pinger.markDisconnected(p)
-	ht.errorTracker.stopTracking(p)
+	// Forget p's endpoint registrations. Endpoints with no remaining
+	// peers drop their shared error state, so the next connection
+	// starts fresh.
+	ht.endpoints.release(p)
 
 	// coolDownTracker: we leave untouched. We want to keep
 	// ongoing cooldowns there in case we reconnect to this peer.
@@ -784,8 +854,9 @@ func (ht *Network) Unprotect(p peer.ID, tag string) bool {
 	return true
 }
 
-// Stats returns message counts for this peer. Each message sent is an HTTP
-// requests. Each message received is an HTTP response.
+// Stats returns message counts for this peer. Messages are counted per
+// peer they serve, so requests coalesced across peers sharing an HTTP
+// endpoint count once per peer rather than once per wire request.
 func (ht *Network) Stats() network.Stats {
 	return network.Stats{
 		MessagesRecvd: atomic.LoadUint64(&ht.stats.MessagesRecvd),
@@ -800,6 +871,7 @@ func (ht *Network) httpWorker(i int) {
 			return
 		case reqInfo := <-ht.httpRequests:
 			retryLaterErrors := 0
+			sawClientResponse := false
 			var urlIgnore []*senderURL
 			for {
 				// bestURL
@@ -815,12 +887,21 @@ func (ht *Network) httpWorker(i int) {
 					break // stop retry loop
 				}
 
-				// no urls to retry left.
+				// No urls to retry left. The entry resolves as
+				// DONT_HAVE either way, but only real client
+				// responses (404 family) may count toward the
+				// client-error threshold: an entry exhausted
+				// purely by throttling must not let a cooldown
+				// window escalate into a disconnect.
 				if u == nil {
+					exhausted := typeClient
+					if !sawClientResponse && retryLaterErrors > 0 {
+						exhausted = typeRetryLater
+					}
 					reqInfo.result <- httpResult{
 						info: reqInfo,
 						err: &senderError{
-							Type: typeClient,
+							Type: exhausted,
 							Err:  nil,
 						},
 					}
@@ -842,23 +923,25 @@ func (ht *Network) httpWorker(i int) {
 				if serr != nil {
 					switch serr.Type {
 					case typeRetryLater:
-						// This error signals that we
-						// should retry but if things
-						// keep failing we consider it
-						// a serverError. When
-						// multiple urls, retries may
-						// happen on a different url.
+						// Throttling (429 and friends)
+						// means "I am busy, wait", not
+						// "I am broken": it must not
+						// charge the per-endpoint
+						// breaker or escalate to a
+						// disconnect. After two hits,
+						// drop the URL from this
+						// entry's retry pool so the
+						// loop terminates; the entry
+						// then resolves as DONT_HAVE
+						// and the peer resumes once
+						// the cooldown lapses.
 						retryLaterErrors++
 						if retryLaterErrors%2 == 0 {
-							// we retried same CID 2 times. No luck.
-							// Increase server errors.
-							// Start ignoring urls.
-							result.err.Type = typeServer
 							urlIgnore = append(urlIgnore, u)
-							u.serverErrors.Add(1)
 						}
 						continue // retry request again
 					case typeClient:
+						sawClientResponse = true
 						urlIgnore = append(urlIgnore, u)
 						continue // retry again ignoring current url
 					case typeContext:
@@ -869,7 +952,14 @@ func (ht *Network) httpWorker(i int) {
 						// happens in the result
 						// collector
 					case typeServer:
-						u.serverErrors.Add(1)
+						// Charge the breaker once per
+						// wire-level error: waiters
+						// that shared the leader's
+						// round trip observed the same
+						// failure, not a new one.
+						if !serr.shared {
+							u.serverErrors.Add(1)
+						}
 						continue // retry until bestURL forces abort
 
 					default:

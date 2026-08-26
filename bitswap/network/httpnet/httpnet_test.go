@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -37,6 +38,9 @@ var (
 var _ network.Receiver = (*mockRecv)(nil)
 
 type mockRecv struct {
+	// mu guards the maps: coalesced requests deliver responses to
+	// several peers' collector goroutines concurrently.
+	mu                 sync.Mutex
 	blocks             map[cid.Cid]struct{}
 	haves              map[cid.Cid]struct{}
 	donthaves          map[cid.Cid]struct{}
@@ -46,6 +50,7 @@ type mockRecv struct {
 }
 
 func (recv *mockRecv) ReceiveMessage(ctx context.Context, sender peer.ID, incoming bsmsg.BitSwapMessage) {
+	recv.mu.Lock()
 	for _, b := range incoming.Blocks() {
 		recv.blocks[b.Cid()] = struct{}{}
 	}
@@ -57,6 +62,7 @@ func (recv *mockRecv) ReceiveMessage(ctx context.Context, sender peer.ID, incomi
 	for _, c := range incoming.DontHaves() {
 		recv.donthaves[c] = struct{}{}
 	}
+	recv.mu.Unlock()
 
 	recv.waitCh <- struct{}{}
 }
@@ -374,27 +380,12 @@ func TestBestURL(t *testing.T) {
 	}
 	// add some bogus urls to test the sorting
 	now := time.Now()
-	surls := []*senderURL{
-		{
-			ParsedURL: network.ParsedURL{
-				URL: urls[0],
-			},
-		},
-		{
-			ParsedURL: network.ParsedURL{
-				URL: urls[1],
-			},
-		},
-		{
-			ParsedURL: network.ParsedURL{
-				URL: urls[2],
-			},
-		},
-		{
-			ParsedURL: network.ParsedURL{
-				URL: urls[3],
-			},
-		},
+	surls := make([]*senderURL, len(urls))
+	for i := range urls {
+		surls[i] = &senderURL{
+			ParsedURL:    network.ParsedURL{URL: urls[i]},
+			serverErrors: new(atomic.Int64),
+		}
 	}
 
 	surls[0].cooldown.Store(now.Add(time.Second))
@@ -623,8 +614,17 @@ func TestBackOff(t *testing.T) {
 	}
 
 	msrv := makeServer(t, 0, 1)
+	// Drain the connected events so the event manager's worker is never
+	// blocked on the size-1 channel; the disconnect assertions below
+	// depend on events still being deliverable.
 	mustConnectToPeer(t, ctx, htnet, peer, msrv)
+	if err := recv.waitConnected(1); err != nil {
+		t.Fatal(err)
+	}
 	mustConnectToPeer(t, ctx, htnet, peer2, msrv)
+	if err := recv.waitConnected(1); err != nil {
+		t.Fatal(err)
+	}
 
 	nms, err := htnet.NewMessageSender(ctx, peer.ID(), nil)
 	if err != nil {
@@ -661,6 +661,480 @@ func TestBackOff(t *testing.T) {
 
 	if len(recv.donthaves) != 2 || (len(recv.blocks)+len(recv.haves)) > 0 {
 		t.Error("no blocks should have been received while on backoff")
+	}
+
+	// Retry-After is "I am busy", not "I am broken": neither peer may
+	// disconnect over it.
+	if err := recv.waitDisconnected(1); err == nil {
+		t.Error("throttling should not disconnect peers")
+	}
+
+	// The shared per-endpoint breaker must not have been charged either;
+	// otherwise peer2 inherits a non-zero count and bestURL trips the
+	// fatal disconnect path instead of returning DONT_HAVE.
+	urls := network.ExtractURLsFromPeer(htnet.host.Peerstore().PeerInfo(peer.ID()))
+	if len(urls) == 0 {
+		t.Fatal("expected at least one URL on peer")
+	}
+	key := endpointKey(urls[0].URL.Scheme, urls[0].URL.Host, urls[0].SNI)
+	if got := htnet.endpoints.serverErrorCounter(key).Load(); got != 0 {
+		t.Errorf("breaker counter = %d after Retry-After cycle, want 0", got)
+	}
+}
+
+// TestSharedBreakerDisconnectsAcrossPeers verifies that when one peer
+// trips the breaker with real server errors against an endpoint shared
+// with other peers, the next SendMsg from any peer using the same
+// endpoint disconnects too, without further HTTP requests. Without
+// sharing, each peer would burn its own MaxRetries quota against the
+// broken host first.
+func TestSharedBreakerDisconnectsAcrossPeers(t *testing.T) {
+	ctx := context.Background()
+	recv := mockReceiver(t)
+	htnet, mn := mockNetwork(t, recv)
+
+	peerA, err := mn.GenPeer()
+	if err != nil {
+		t.Fatal(err)
+	}
+	peerB, err := mn.GenPeer()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	srv := makeServer(t, 0, 0)
+	mustConnectToPeer(t, ctx, htnet, peerA, srv)
+	if err := recv.waitConnected(1); err != nil {
+		t.Fatal(err)
+	}
+	mustConnectToPeer(t, ctx, htnet, peerB, srv)
+	if err := recv.waitConnected(1); err != nil {
+		t.Fatal(err)
+	}
+
+	// Drive a real server error from peerA against the shared endpoint:
+	// the server answers errorCid with a bare 500, which lands in the
+	// typeServer arm and charges the shared breaker. MaxRetries of 1
+	// keeps the test to a single wire error; both senders must use the
+	// same value since they share the counter.
+	oneRetry := &network.MessageSenderOpts{MaxRetries: 1}
+	senderA, err := htnet.NewMessageSender(ctx, peerA.ID(), oneRetry)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := senderA.SendMsg(ctx, makeWantsMessage([]cid.Cid{errorCid})); err != nil {
+		t.Fatal(err)
+	}
+	if err := recv.waitDisconnected(2); err != nil {
+		t.Fatalf("peerA should disconnect after typeServer trips MaxRetries: %v", err)
+	}
+
+	// peerB's senderURL shares the counter, so bestURL trips the fatal
+	// path before any HTTP request goes out.
+	senderB, err := htnet.NewMessageSender(ctx, peerB.ID(), oneRetry)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := senderB.SendMsg(ctx, makeWantsMessage(makeCids(t, 0, 1))); err != nil {
+		t.Fatal(err)
+	}
+	if err := recv.waitDisconnected(2); err != nil {
+		t.Fatalf("peerB should disconnect via the shared per-endpoint breaker: %v", err)
+	}
+
+	// With the last peer gone, the endpoint state is dropped and a
+	// future reconnect starts fresh.
+	urls := network.ExtractURLsFromPeer(htnet.host.Peerstore().PeerInfo(peerA.ID()))
+	if len(urls) == 0 {
+		t.Fatal("expected at least one URL on peerA")
+	}
+	key := endpointKey(urls[0].URL.Scheme, urls[0].URL.Host, urls[0].SNI)
+	if got := htnet.endpoints.serverErrorCounter(key).Load(); got != 0 {
+		t.Errorf("breaker counter = %d after all peers disconnected, want 0", got)
+	}
+}
+
+// TestClientErrorsSharedAcrossPeers verifies that 404-style client
+// errors accumulate per endpoint, not per peer: with N peer IDs on one
+// gateway the threshold trips on combined volume rather than N times
+// the configured maximum.
+func TestClientErrorsSharedAcrossPeers(t *testing.T) {
+	ctx := context.Background()
+	recv := mockReceiver(t)
+	htnet, mn := mockNetwork(t, recv, WithMaxDontHaveErrors(1))
+
+	peerA, err := mn.GenPeer()
+	if err != nil {
+		t.Fatal(err)
+	}
+	peerB, err := mn.GenPeer()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	msrv := makeServer(t, 0, 0) // empty blockstore: every want is a 404
+	mustConnectToPeer(t, ctx, htnet, peerA, msrv)
+	if err := recv.waitConnected(1); err != nil {
+		t.Fatal(err)
+	}
+	mustConnectToPeer(t, ctx, htnet, peerB, msrv)
+	if err := recv.waitConnected(1); err != nil {
+		t.Fatal(err)
+	}
+
+	msg := makeWantsMessage(makeCids(t, 0, 1))
+
+	// One client error via peerA: count 1, threshold 1, no trip yet.
+	if err := htnet.SendMessage(ctx, peerA.ID(), msg); err != nil {
+		t.Fatal(err)
+	}
+	recv.wait(1)
+	if err := recv.waitDisconnected(1); err == nil {
+		t.Fatal("no disconnect expected below the threshold")
+	}
+
+	// One more via peerB crosses the shared count (2 > 1) even though
+	// peerB itself only caused one error.
+	if err := htnet.SendMessage(ctx, peerB.ID(), msg); err != nil {
+		t.Fatal(err)
+	}
+	recv.wait(1)
+	if err := recv.waitDisconnected(2); err != nil {
+		t.Fatalf("combined client errors should disconnect the peer that crossed the threshold: %v", err)
+	}
+}
+
+// TestCoalescedRequestsShareOneRoundTrip verifies end to end that
+// concurrent identical wants from two peer IDs resolving to the same
+// HTTP endpoint produce a single wire request, while each peer still
+// receives its own bitswap response.
+func TestCoalescedRequestsShareOneRoundTrip(t *testing.T) {
+	ctx := context.Background()
+	recv := mockReceiver(t)
+	htnet, mn := mockNetwork(t, recv)
+
+	peerA, err := mn.GenPeer()
+	if err != nil {
+		t.Fatal(err)
+	}
+	peerB, err := mn.GenPeer()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var hits atomic.Int32
+	handler := http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/ipfs/"+pingCid) {
+			rw.WriteHeader(http.StatusOK)
+			return
+		}
+		hits.Add(1)
+		// Hold the response so the second peer's want overlaps the
+		// first peer's in-flight request.
+		time.Sleep(400 * time.Millisecond)
+		rw.WriteHeader(http.StatusNotFound)
+	})
+	srv := httptest.NewUnstartedServer(handler)
+	srv.EnableHTTP2 = true
+	srv.StartTLS()
+	t.Cleanup(srv.Close)
+
+	mustConnectToPeer(t, ctx, htnet, peerA, srv)
+	if err := recv.waitConnected(1); err != nil {
+		t.Fatal(err)
+	}
+	mustConnectToPeer(t, ctx, htnet, peerB, srv)
+	if err := recv.waitConnected(1); err != nil {
+		t.Fatal(err)
+	}
+
+	msg := makeWantsMessage(makeCids(t, 0, 1))
+	if err := htnet.SendMessage(ctx, peerA.ID(), msg); err != nil {
+		t.Fatal(err)
+	}
+	if err := htnet.SendMessage(ctx, peerB.ID(), msg); err != nil {
+		t.Fatal(err)
+	}
+
+	// Both peers must deliver their (DONT_HAVE) response.
+	if err := recv.wait(3); err != nil {
+		t.Fatal(err)
+	}
+	if err := recv.wait(3); err != nil {
+		t.Fatal(err)
+	}
+	if len(recv.donthaves) != 1 {
+		t.Fatalf("want the shared cid as DONT_HAVE, got %d entries", len(recv.donthaves))
+	}
+	if got := hits.Load(); got != 1 {
+		t.Errorf("concurrent identical wants made %d wire requests, want 1", got)
+	}
+}
+
+// TestCoalescedServerErrorChargesBreakerOnce verifies that a wire-level
+// server error observed by several coalesced waiters charges the shared
+// per-endpoint breaker once, so breaker sensitivity does not scale with
+// the number of peer IDs sharing the gateway.
+func TestCoalescedServerErrorChargesBreakerOnce(t *testing.T) {
+	ctx := context.Background()
+	recv := mockReceiver(t)
+	htnet, mn := mockNetwork(t, recv)
+
+	peerA, err := mn.GenPeer()
+	if err != nil {
+		t.Fatal(err)
+	}
+	peerB, err := mn.GenPeer()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var hits atomic.Int32
+	handler := http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/ipfs/"+pingCid) {
+			rw.WriteHeader(http.StatusOK)
+			return
+		}
+		hits.Add(1)
+		time.Sleep(400 * time.Millisecond)
+		rw.WriteHeader(http.StatusInternalServerError)
+	})
+	srv := httptest.NewUnstartedServer(handler)
+	srv.EnableHTTP2 = true
+	srv.StartTLS()
+	t.Cleanup(srv.Close)
+
+	mustConnectToPeer(t, ctx, htnet, peerA, srv)
+	if err := recv.waitConnected(1); err != nil {
+		t.Fatal(err)
+	}
+	mustConnectToPeer(t, ctx, htnet, peerB, srv)
+	if err := recv.waitConnected(1); err != nil {
+		t.Fatal(err)
+	}
+
+	// High retry budget so nobody trips fatal during the test.
+	opts := &network.MessageSenderOpts{MaxRetries: 5}
+	senderA, err := htnet.NewMessageSender(ctx, peerA.ID(), opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	senderB, err := htnet.NewMessageSender(ctx, peerB.ID(), opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	msg := makeWantsMessage(makeCids(t, 0, 1))
+	if err := senderA.SendMsg(ctx, msg); err != nil {
+		t.Fatal(err)
+	}
+	if err := senderB.SendMsg(ctx, msg); err != nil {
+		t.Fatal(err)
+	}
+	if err := recv.wait(3); err != nil {
+		t.Fatal(err)
+	}
+	if err := recv.wait(3); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := hits.Load(); got != 1 {
+		t.Fatalf("concurrent identical wants made %d wire requests, want 1", got)
+	}
+	urls := network.ExtractURLsFromPeer(htnet.host.Peerstore().PeerInfo(peerA.ID()))
+	if len(urls) == 0 {
+		t.Fatal("expected at least one URL on peerA")
+	}
+	key := endpointKey(urls[0].URL.Scheme, urls[0].URL.Host, urls[0].SNI)
+	if got := htnet.endpoints.serverErrorCounter(key).Load(); got != 1 {
+		t.Errorf("shared breaker charged %d times for one wire error, want 1", got)
+	}
+}
+
+// TestSenderBackoffCapAndBreakerReset pins two sender-side behaviors:
+// the cooldown snapshot a sender keeps is the capped deadline stored by
+// the tracker, not the raw Retry-After date, and a definitive response
+// (via clearCooldown) resets the endpoint's shared breaker counter.
+func TestSenderBackoffCapAndBreakerReset(t *testing.T) {
+	ctx := context.Background()
+	recv := mockReceiver(t)
+	htnet, mn := mockNetwork(t, recv)
+
+	p, err := mn.GenPeer()
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := makeServer(t, 0, 1)
+	mustConnectToPeer(t, ctx, htnet, p, srv)
+	if err := recv.waitConnected(1); err != nil {
+		t.Fatal(err)
+	}
+
+	nms, err := htnet.NewMessageSender(ctx, p.ID(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ms := nms.(*httpMsgSender)
+	u := ms.urls[0]
+
+	// A Retry-After far beyond the cap must not pause the sender longer
+	// than DefaultMaxBackoff.
+	ms.applyBackoff(u, "3600", true)
+	dl := u.cooldown.Load().(time.Time)
+	if until := time.Until(dl); until > DefaultMaxBackoff {
+		t.Errorf("sender snapshot honors uncapped Retry-After: %s from now", until)
+	}
+
+	u.serverErrors.Store(2)
+	ms.clearCooldown(u)
+	if got := u.serverErrors.Load(); got != 0 {
+		t.Errorf("breaker counter = %d after a definitive response, want 0", got)
+	}
+	if !u.cooldown.Load().(time.Time).IsZero() {
+		t.Error("cooldown should be cleared")
+	}
+}
+
+// TestThrottledWantsDoNotCountAsClientErrors verifies that wants
+// resolved as DONT_HAVE purely because of a throttle cooldown do not
+// feed the client-error threshold: even with the threshold at 1, a
+// throttled endpoint must not get its peer disconnected.
+func TestThrottledWantsDoNotCountAsClientErrors(t *testing.T) {
+	ctx := context.Background()
+	recv := mockReceiver(t)
+	htnet, mn := mockNetwork(t, recv, WithMaxDontHaveErrors(1))
+
+	p, err := mn.GenPeer()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	handler := http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/ipfs/"+pingCid) {
+			rw.WriteHeader(http.StatusOK)
+			return
+		}
+		rw.Header().Set("Retry-After", "5")
+		rw.WriteHeader(http.StatusTooManyRequests)
+	})
+	srv := httptest.NewUnstartedServer(handler)
+	srv.EnableHTTP2 = true
+	srv.StartTLS()
+	t.Cleanup(srv.Close)
+
+	mustConnectToPeer(t, ctx, htnet, p, srv)
+	if err := recv.waitConnected(1); err != nil {
+		t.Fatal(err)
+	}
+
+	// Three wants: the first meets the 429, the rest resolve from the
+	// cooldown. All must come back as DONT_HAVE without tripping the
+	// threshold of 1.
+	if err := htnet.SendMessage(ctx, p.ID(), makeWantsMessage(makeCids(t, 0, 3))); err != nil {
+		t.Fatal(err)
+	}
+	if err := recv.wait(2); err != nil {
+		t.Fatal(err)
+	}
+	if len(recv.donthaves) != 3 {
+		t.Fatalf("want 3 DONT_HAVEs, got %d", len(recv.donthaves))
+	}
+	if err := recv.waitDisconnected(1); err == nil {
+		t.Fatal("throttled wants must not count as client errors and disconnect the peer")
+	}
+	if !htnet.IsConnectedToPeer(ctx, p.ID()) {
+		t.Fatal("peer should remain connected")
+	}
+}
+
+// TestThrottleResumesAfterRetryAfter verifies the full throttle cycle:
+// a 429 with Retry-After puts the endpoint in cooldown (wants resolve as
+// DONT_HAVE without HTTP requests, the peer stays connected), and once
+// the window lapses the same long-lived sender resumes and fetches
+// blocks again.
+func TestThrottleResumesAfterRetryAfter(t *testing.T) {
+	ctx := context.Background()
+	recv := mockReceiver(t)
+	htnet, mn := mockNetwork(t, recv)
+
+	p, err := mn.GenPeer()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	bstore := makeBlockstore(t, 0, 1)
+	var throttled atomic.Bool
+	handler := http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/ipfs/"+pingCid) {
+			rw.WriteHeader(http.StatusOK)
+			return
+		}
+		if throttled.Load() {
+			rw.Header().Set("Retry-After", "1")
+			rw.WriteHeader(http.StatusTooManyRequests)
+			return
+		}
+		_, cidstr, _ := strings.Cut(r.URL.Path, "/ipfs/")
+		c, err := cid.Parse(cidstr)
+		if err != nil {
+			rw.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		b, err := bstore.Get(r.Context(), c)
+		if err != nil {
+			rw.WriteHeader(http.StatusNotFound)
+			return
+		}
+		rw.WriteHeader(http.StatusOK)
+		if r.Method != http.MethodHead {
+			rw.Write(b.RawData())
+		}
+	})
+	srv := httptest.NewUnstartedServer(handler)
+	srv.EnableHTTP2 = true
+	srv.StartTLS()
+	t.Cleanup(srv.Close)
+
+	mustConnectToPeer(t, ctx, htnet, p, srv)
+
+	nms, err := htnet.NewMessageSender(ctx, p.ID(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	msg := makeWantsMessage(makeCids(t, 0, 1))
+
+	throttled.Store(true)
+	if err := nms.SendMsg(ctx, msg); err != nil {
+		t.Fatal(err)
+	}
+	if err := recv.wait(2); err != nil {
+		t.Fatal(err)
+	}
+	if len(recv.donthaves) != 1 || len(recv.blocks) != 0 {
+		t.Fatalf("throttled want should resolve as DONT_HAVE; donthaves=%d blocks=%d",
+			len(recv.donthaves), len(recv.blocks))
+	}
+	if err := recv.waitDisconnected(1); err == nil {
+		t.Fatal("throttling should not disconnect the peer")
+	}
+	if !htnet.IsConnectedToPeer(ctx, p.ID()) {
+		t.Fatal("peer should remain connected through the cooldown")
+	}
+
+	// Let the Retry-After window lapse and stop throttling.
+	throttled.Store(false)
+	time.Sleep(1200 * time.Millisecond)
+
+	if err := nms.SendMsg(ctx, msg); err != nil {
+		t.Fatal(err)
+	}
+	if err := recv.wait(2); err != nil {
+		t.Fatal(err)
+	}
+	if len(recv.blocks) != 1 {
+		t.Fatalf("sender should resume after the cooldown; blocks=%d donthaves=%d",
+			len(recv.blocks), len(recv.donthaves))
 	}
 }
 

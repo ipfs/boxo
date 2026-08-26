@@ -24,9 +24,14 @@ import (
 
 // MessageSender option defaults.
 const (
-	// DefaultMaxRetries specifies how many requests to make to available HTTP
-	// endpoints in case of failure.
-	DefaultMaxRetries = 1
+	// DefaultMaxRetries specifies how many server errors an HTTP
+	// endpoint may accumulate before senders abort and disconnect its
+	// peers. The error counter is shared per endpoint across all
+	// senders and peers, so senders with mismatched MaxRetries trip at
+	// the lowest configured value; keep custom values consistent. The
+	// default matches the retry budget bitswap's MessageQueue
+	// configures.
+	DefaultMaxRetries = 3
 	// DefaultSendTimeout specifies sending each individual HTTP request can
 	// take.
 	DefaultSendTimeout = 5 * time.Second
@@ -60,10 +65,17 @@ func setSenderOpts(opts *network.MessageSenderOpts) network.MessageSenderOpts {
 }
 
 // senderURL wraps url with information about cooldowns and errors.
+//
+// serverErrors points at the per-endpoint counter shared by every
+// senderURL that resolves to the same (scheme, host, SNI), across all
+// peers and senders: when one peer trips the breaker on an endpoint,
+// every other peer sharing it sees the elevated count immediately. The
+// pointer is supplied by Network.senderURLs and must be non-nil before
+// the senderURL is used.
 type senderURL struct {
 	network.ParsedURL
 	cooldown     atomic.Value
-	serverErrors atomic.Int64
+	serverErrors *atomic.Int64
 }
 
 // httpMsgSender implements a network.MessageSender.
@@ -168,6 +180,11 @@ const (
 type senderError struct {
 	Type senderErrorType
 	Err  error
+	// shared marks errors derived from a coalesced response that this
+	// caller did not lead. The worker charges the per-endpoint breaker
+	// only for the leader, so one wire-level error counts once no
+	// matter how many waiters observed it.
+	shared bool
 }
 
 // Error returns the underlying error message.
@@ -175,10 +192,14 @@ func (err senderError) Error() string {
 	return err.Err.Error()
 }
 
-// tryURL attempts to make a request to the given URL using the given entry.
-// Blocks, Haves etc. are recorded in the given response. cancellations are
-// processed. tryURL returns an error so that it can be decided what to do
-// next: i.e. retry, or move to next item in wantlist, or abort completely.
+// tryURL makes one HTTP request for entry against u. It returns a
+// senderError describing what the caller should do next: retry the same
+// URL, move on to the next URL, skip the entry, or abort.
+//
+// Concurrent identical requests against the same HTTP endpoint share one
+// round trip via the inflight tracker. See inflight.go for the rationale.
+// Each caller still updates its own per-URL cooldown and its peer's
+// bitswap accounting from the shared response.
 func (sender *httpMsgSender) tryURL(ctx context.Context, u *senderURL, entry bsmsg.Entry) (blocks.Block, *senderError) {
 	var method string
 
@@ -221,18 +242,39 @@ func (sender *httpMsgSender) tryURL(ctx context.Context, u *senderURL, entry bsm
 		}
 	}
 
+	// Stats count logical bitswap messages per peer, so each caller of
+	// a coalesced request counts its own sent message, mirroring the
+	// per-waiter MessagesRecvd accounting in handleResponse. Wire-level
+	// metrics stay with the leader in executeRequest.
+	atomic.AddUint64(&sender.ht.stats.MessagesSent, 1)
+
+	cidStr := entry.Cid.String()
+	key := inflightKey(u.URL.Scheme, u.URL.Host, u.SNI, method, cidStr)
+	res, shared := sender.ht.inflight.do(key, func() *inflightResult {
+		return sender.executeRequest(u, method, cidStr)
+	})
+	if shared {
+		log.Debugf("piggybacked on inflight request: %s %q", method, u.URL)
+	}
+
+	return sender.handleResponse(u, entry, method, res, shared)
+}
+
+// executeRequest runs the HTTP round trip and records wire-level metrics.
+// It runs once per coalesced request; waiters reuse the result via
+// inflightTracker.do.
+func (sender *httpMsgSender) executeRequest(u *senderURL, method, cidStr string) *inflightResult {
+	// Detached context with the configured send timeout: the request must
+	// outlive any single caller's context so that waiters always get a
+	// usable result.
 	ctx, cancel := context.WithTimeout(context.Background(), sender.opts.SendTimeout)
 	defer cancel()
-	req, err := buildRequest(ctx, u.ParsedURL, method, entry.Cid.String(), sender.ht.userAgent)
+	req, err := buildRequest(ctx, u.ParsedURL, method, cidStr, sender.ht.userAgent)
 	if err != nil {
-		return nil, &senderError{
-			Type: typeFatal,
-			Err:  err,
-		}
+		return &inflightResult{err: err, errType: typeFatal}
 	}
 
 	log.Debugf("%d/%d %s %q", u.serverErrors.Load(), sender.opts.MaxRetries, method, req.URL)
-	atomic.AddUint64(&sender.ht.stats.MessagesSent, 1)
 	sender.ht.metrics.RequestsInFlight.Inc()
 	reqStart := time.Now()
 	resp, err := sender.ht.client.Do(req)
@@ -246,23 +288,23 @@ func (sender *httpMsgSender) tryURL(ctx context.Context, u *senderURL, entry bsm
 		// context cancellation). This means we allow ourselves to hit this a
 		// maximum of MaxRetries per url. and Disconnect() the peer when no
 		// urls work.
-		serr := &senderError{
-			Type: typeServer,
-			Err:  err,
-		}
-
+		errType := typeServer
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			serr.Type = typeContext // cont. with next block.
+			errType = typeContext // cont. with next block.
 		}
 
-		return nil, serr
+		return &inflightResult{
+			err:        err,
+			errType:    errType,
+			requestURL: req.URL.String(),
+		}
 	}
 	defer resp.Body.Close()
 
 	// Time to response headers, comparable to the connect-probe round trip
-	// that seeds the latency estimate. Only recorded below for responses
-	// the server understood, so throttling and server errors cannot skew
-	// the estimate.
+	// that seeds the latency estimate. Only recorded by handleResponse for
+	// responses the server understood, so throttling and server errors
+	// cannot skew the estimate.
 	respLatency := time.Since(reqStart)
 
 	// Record request size
@@ -283,9 +325,11 @@ func (sender *httpMsgSender) tryURL(ctx context.Context, u *senderURL, entry bsm
 		sender.ht.metrics.RequestsBodyFailure.Inc()
 		sender.ht.metrics.RequestsInFlight.Dec()
 		log.Debug(err)
-		return nil, &senderError{
-			Type: typeServer,
-			Err:  err,
+		return &inflightResult{
+			err:        err,
+			errType:    typeServer,
+			statusCode: resp.StatusCode,
+			requestURL: req.URL.String(),
 		}
 	}
 
@@ -311,6 +355,30 @@ func (sender *httpMsgSender) tryURL(ctx context.Context, u *senderURL, entry bsm
 	// updateStatusCounter
 	sender.ht.metrics.updateStatusCounter(req.Method, statusCode, host)
 
+	return &inflightResult{
+		statusCode: statusCode,
+		body:       body,
+		latency:    respLatency,
+		retryAfter: resp.Header.Get("Retry-After"),
+		requestURL: req.URL.String(),
+	}
+}
+
+// handleResponse classifies the shared HTTP result for the calling sender
+// and updates its per-URL cooldown and its peer's latency estimate. Each
+// waiter on a coalesced request runs this independently so that bitswap's
+// per-peer accounting matches what it would see if every peer had made
+// its own request. shared reports whether this caller piggybacked on
+// another leader's round trip; it travels on returned errors so the
+// breaker counts each wire-level error once.
+func (sender *httpMsgSender) handleResponse(u *senderURL, entry bsmsg.Entry, method string, res *inflightResult, shared bool) (blocks.Block, *senderError) {
+	if res.err != nil {
+		return nil, &senderError{Type: res.errType, Err: res.err, shared: shared}
+	}
+
+	statusCode := res.statusCode
+	body := res.body
+
 	switch statusCode {
 	// Valid responses signaling unavailability of the
 	// content.
@@ -324,29 +392,21 @@ func (sender *httpMsgSender) tryURL(ctx context.Context, u *senderURL, entry bsm
 		http.StatusTemporaryRedirect,
 		http.StatusPermanentRedirect:
 
-		err := fmt.Errorf("%s %q -> %d: %q", req.Method, req.URL, statusCode, string(body))
+		err := fmt.Errorf("%s %q -> %d: %q", method, res.requestURL, statusCode, string(body))
 		log.Debug(err)
-		// clear cooldowns since we got a proper reply
-		if !u.cooldown.Load().(time.Time).IsZero() {
-			sender.ht.cooldownTracker.remove(req.URL.Host)
-			u.cooldown.Store(time.Time{})
-		}
-		sender.ht.pinger.recordLatencyIfConnected(sender.peer, respLatency)
+		sender.clearCooldown(u)
+		sender.ht.pinger.recordLatencyIfConnected(sender.peer, res.latency)
 
 		return nil, &senderError{
 			Type: typeClient,
 			Err:  err,
 		}
 	case http.StatusOK: // \(^°^)/
-		// clear cooldowns since we got a proper reply
-		if !u.cooldown.Load().(time.Time).IsZero() {
-			sender.ht.cooldownTracker.remove(req.URL.Host)
-			u.cooldown.Store(time.Time{})
-		}
-		sender.ht.pinger.recordLatencyIfConnected(sender.peer, respLatency)
-		log.Debugf("%s %q -> %d (%d bytes)", req.Method, req.URL, statusCode, len(body))
+		sender.clearCooldown(u)
+		sender.ht.pinger.recordLatencyIfConnected(sender.peer, res.latency)
+		log.Debugf("%s %q -> %d (%d bytes)", method, res.requestURL, statusCode, len(body))
 
-		if req.Method == http.MethodHead {
+		if method == http.MethodHead {
 			return nil, nil
 		}
 		// GET
@@ -355,8 +415,9 @@ func (sender *httpMsgSender) tryURL(ctx context.Context, u *senderURL, entry bsm
 			log.Debugf("error making wantlist block for %s: %s", entry.Cid, err)
 			// avoid entertaining servers that send us wrong data too much.
 			return nil, &senderError{
-				Type: typeServer,
-				Err:  err,
+				Type:   typeServer,
+				Err:    err,
+				shared: shared,
 			}
 		}
 		atomic.AddUint64(&sender.ht.stats.MessagesRecvd, 1)
@@ -367,33 +428,15 @@ func (sender *httpMsgSender) tryURL(ctx context.Context, u *senderURL, entry bsm
 		http.StatusBadGateway,
 		http.StatusGatewayTimeout:
 		// See path-gateway spec. All these codes SHOULD return Retry-After.
-		// They are used to signal that a block cannot be fetched too, not only
-		// fatal server issues, which poses a difficult overlap. Current
-		// approach treats these errors as non fatal if they don't happen
-		// repeatedly:
-		// - By default we disconnect on server errors: MaxRetries = 1.
-		// - First try errors. We add default backoff if non specified.
-		// - Retry same CID. If it fails again, count that as server
-		//   error and avoid retrying on that url.
-		// - If we have no more urls to try, will move to next cid.
-		// - If we hit the MaxRetries for all urls, abort all.
-
-		// In practice, our wantlists should be 1/3 elements. It doesn't make
-		// sense to tolerate 5 server errors for 3 requests as we will
-		// repeatedly hit broken servers that way. It is always better if
-		// endpoints keep these errors for server issues, and simply return 404
-		// when they cannot find the content but everything else is fine.
-		err := fmt.Errorf("%s %q -> %d: %q", req.Method, req.URL, statusCode, string(body))
+		// They signal load or temporary unavailability, not a broken
+		// server: the host enters a cooldown sized by Retry-After (or
+		// the configured backoff), wants during the window resolve as
+		// DONT_HAVE without any HTTP request, and traffic resumes when
+		// the window lapses. Throttling never charges the per-endpoint
+		// breaker, so it cannot escalate to a disconnect.
+		err := fmt.Errorf("%s %q -> %d: %q", method, res.requestURL, statusCode, string(body))
 		log.Warn(err)
-		retryAfter := resp.Header.Get("Retry-After")
-		cooldownUntil, ok := parseRetryAfter(retryAfter)
-		if ok { // it means we should retry, so we will retry.
-			sender.ht.cooldownTracker.setByDate(req.URL.Host, cooldownUntil)
-			u.cooldown.Store(cooldownUntil)
-		} else {
-			sender.ht.cooldownTracker.setByDuration(req.URL.Host, sender.opts.SendErrorBackoff)
-			u.cooldown.Store(time.Now().Add(sender.opts.SendErrorBackoff))
-		}
+		sender.applyBackoff(u, res.retryAfter, true)
 
 		return nil, &senderError{
 			Type: typeRetryLater,
@@ -401,18 +444,52 @@ func (sender *httpMsgSender) tryURL(ctx context.Context, u *senderURL, entry bsm
 		}
 
 	// For any other code, we assume we must temporally backoff from the URL
-	// per the options. Tolerance for server errors per url is low. If after
+	// per the options. Tolerance for server errors per endpoint is low. If after
 	// waiting etc. it fails MaxRetries, we will fully disconnect.
 	default:
-		err := fmt.Errorf("%q -> %d: %q", req.URL, statusCode, string(body))
+		err := fmt.Errorf("%q -> %d: %q", res.requestURL, statusCode, string(body))
 		log.Warn(err)
-		sender.ht.cooldownTracker.setByDuration(req.URL.Host, sender.opts.SendErrorBackoff)
-		u.cooldown.Store(time.Now().Add(sender.opts.SendErrorBackoff))
+		sender.applyBackoff(u, "", false)
 		return nil, &senderError{
-			Type: typeServer,
-			Err:  err,
+			Type:   typeServer,
+			Err:    err,
+			shared: shared,
 		}
 	}
+}
+
+// clearCooldown removes any active cooldown on u after a definitive
+// response (200 or the 404 family), which proves the host is healthy. It
+// also resets the endpoint's shared breaker counter and throttle streak,
+// forgiving prior accruals for every peer sharing the endpoint.
+func (sender *httpMsgSender) clearCooldown(u *senderURL) {
+	if !u.cooldown.Load().(time.Time).IsZero() {
+		sender.ht.cooldownTracker.remove(u.URL.Host)
+		u.cooldown.Store(time.Time{})
+	}
+	if u.serverErrors.Load() > 0 {
+		u.serverErrors.Store(0)
+	}
+	sender.ht.endpoints.clearThrottleStreak(endpointKey(u.URL.Scheme, u.URL.Host, u.SNI))
+}
+
+// applyBackoff sets a cooldown on u. If retryAfter parses as a date or
+// seconds, that wins. Otherwise the wait starts at the configured
+// SendErrorBackoff and, for throttle responses, doubles per consecutive
+// headerless throttle so the host is not polled at a fixed short
+// interval forever. The stored snapshot is the deadline the tracker
+// kept, so the sender honors the same (capped) window as everyone else.
+func (sender *httpMsgSender) applyBackoff(u *senderURL, retryAfter string, throttle bool) {
+	if t, ok := parseRetryAfter(retryAfter); ok {
+		u.cooldown.Store(sender.ht.cooldownTracker.setByDate(u.URL.Host, t))
+		return
+	}
+	d := sender.opts.SendErrorBackoff
+	if throttle {
+		key := endpointKey(u.URL.Scheme, u.URL.Host, u.SNI)
+		d = sender.ht.endpoints.nextThrottleBackoff(key, d, DefaultMaxBackoff)
+	}
+	u.cooldown.Store(sender.ht.cooldownTracker.setByDuration(u.URL.Host, d))
 }
 
 // isKnownNotFoundError checks if the response body contains a known IPLD-specific
@@ -535,6 +612,7 @@ WANTLIST_LOOP:
 		bsresp := bsmsg.New(false)
 		totalResponses := 0
 		totalClientErrors := 0
+		totalThrottled := 0
 
 		for result := range resultsCollector {
 			// Record total request time.
@@ -564,6 +642,15 @@ WANTLIST_LOOP:
 					if entry.SendDontHave {
 						bsresp.AddDontHave(entry.Cid)
 					}
+				case typeRetryLater:
+					// Entry exhausted by throttling alone:
+					// answer DONT_HAVE but do not count a
+					// client error, so a cooldown window
+					// cannot trip the disconnect threshold.
+					totalThrottled++
+					if entry.SendDontHave {
+						bsresp.AddDontHave(entry.Cid)
+					}
 				case typeContext: // ignore and move on
 				case typeServer: // should not be returned as retried until fatal
 				default:
@@ -578,10 +665,15 @@ WANTLIST_LOOP:
 			}
 		}
 
-		// if totalClientErrors == 0, count is reset.
-		if err := sender.ht.errorTracker.logErrors(sender.peer, totalClientErrors, sender.ht.maxDontHaveErrors); err != nil {
-			log.Debugf("too many client errors. Disconnecting from %s", sender.peer)
-			sender.ht.DisconnectFrom(ctx, sender.peer)
+		// A round without client errors resets the count, except when
+		// entries were exhausted by throttling: such a round proves
+		// nothing about the endpoint's 404 behavior either way, so it
+		// stays neutral.
+		if totalClientErrors > 0 || totalThrottled == 0 {
+			if err := sender.ht.endpoints.logClientErrors(sender.urls, totalClientErrors, sender.ht.maxDontHaveErrors); err != nil {
+				log.Debugf("too many client errors. Disconnecting from %s", sender.peer)
+				sender.ht.DisconnectFrom(ctx, sender.peer)
+			}
 		}
 
 		// We return a special "cancel" function that we need to call
