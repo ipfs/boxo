@@ -16,6 +16,7 @@ The following emojis are used to highlight certain changes:
 
 ### Added
 
+- `ipld/unixfs`: opt-in `io.UnixFS_v1_2026` profile (and `UnixFSProfile.PBNodeFieldOrder` parameter) writes the `PBNode` `Data` field before `Links`, so streaming readers can read HAMT parameters before links. All other profiles and the default (`merkledag.DefaultPBNodeFieldOrder`) keep the canonical links-first bytes and CIDs. [IPIP-550](https://github.com/ipfs/specs/pull/550)
 - ✨ `gateway`: responses now include the `Ipfs-Uri` header with a canonical `ipfs://` or `ipns://` URI for the requested content path, and expose it via the default `Access-Control-Expose-Headers`. The header carries the content root in canonical form (base32 CIDv1 for `/ipfs/`, base36 CIDv1 for cryptographic `/ipns/` names, lowercase FQDN for DNSLink) with percent-encoded path segments, so clients get a value that is safe in HTTP field context regardless of bytes in the underlying path. [IPIP-548](https://github.com/ipfs/specs/pull/548) [#1209](https://github.com/ipfs/boxo/pull/1209)
 
 ### Changed

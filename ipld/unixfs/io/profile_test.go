@@ -2,6 +2,7 @@ package io
 
 import (
 	"context"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"testing"
@@ -53,6 +54,13 @@ func TestUnixFSProfiles(t *testing.T) {
 		assert.Equal(t, 256, UnixFS_v1_2025.HAMTShardWidth, "HAMTShardWidth should be 256")
 	})
 
+	t.Run("UnixFS_v1_2026 has correct values", func(t *testing.T) {
+		expected := UnixFS_v1_2025
+		expected.PBNodeFieldOrder = mdag.PBNodeDataFirst
+		assert.Equal(t, expected, UnixFS_v1_2026,
+			"UnixFS_v1_2026 should equal UnixFS_v1_2025 plus data-first PBNode field order")
+	})
+
 	t.Run("CidBuilder returns correct prefix", func(t *testing.T) {
 		t.Run("UnixFS_v0_2015", func(t *testing.T) {
 			builder := UnixFS_v0_2015.CidBuilder()
@@ -76,10 +84,12 @@ func TestUnixFSProfiles(t *testing.T) {
 		oldShardingSize := HAMTShardingSize
 		oldEstimation := HAMTSizeEstimation
 		oldShardWidth := DefaultShardWidth
+		oldFieldOrder := mdag.DefaultPBNodeFieldOrder
 		t.Cleanup(func() {
 			HAMTShardingSize = oldShardingSize
 			HAMTSizeEstimation = oldEstimation
 			DefaultShardWidth = oldShardWidth
+			mdag.DefaultPBNodeFieldOrder = oldFieldOrder
 		})
 
 		// Apply UnixFS_v1_2025
@@ -88,6 +98,12 @@ func TestUnixFSProfiles(t *testing.T) {
 		assert.Equal(t, UnixFS_v1_2025.HAMTShardingSize, HAMTShardingSize)
 		assert.Equal(t, UnixFS_v1_2025.HAMTSizeEstimation, HAMTSizeEstimation)
 		assert.Equal(t, UnixFS_v1_2025.HAMTShardWidth, DefaultShardWidth)
+		assert.Equal(t, mdag.PBNodeLinksFirst, mdag.DefaultPBNodeFieldOrder)
+
+		// Apply UnixFS_v1_2026
+		UnixFS_v1_2026.ApplyGlobals()
+
+		assert.Equal(t, mdag.PBNodeDataFirst, mdag.DefaultPBNodeFieldOrder)
 
 		// Apply UnixFS_v0_2015
 		UnixFS_v0_2015.ApplyGlobals()
@@ -95,6 +111,7 @@ func TestUnixFSProfiles(t *testing.T) {
 		assert.Equal(t, UnixFS_v0_2015.HAMTShardingSize, HAMTShardingSize)
 		assert.Equal(t, UnixFS_v0_2015.HAMTSizeEstimation, HAMTSizeEstimation)
 		assert.Equal(t, UnixFS_v0_2015.HAMTShardWidth, DefaultShardWidth)
+		assert.Equal(t, mdag.PBNodeLinksFirst, mdag.DefaultPBNodeFieldOrder)
 	})
 }
 
@@ -106,12 +123,67 @@ func saveAndRestoreGlobals(t *testing.T) {
 	oldEstimation := HAMTSizeEstimation
 	oldShardWidth := DefaultShardWidth
 	oldLinkSize := linksize.LinkSizeFunction
+	oldFieldOrder := mdag.DefaultPBNodeFieldOrder
 	t.Cleanup(func() {
 		HAMTShardingSize = oldShardingSize
 		HAMTSizeEstimation = oldEstimation
 		DefaultShardWidth = oldShardWidth
 		linksize.LinkSizeFunction = oldLinkSize
+		mdag.DefaultPBNodeFieldOrder = oldFieldOrder
 	})
+}
+
+// TestProfilePBNodeFieldOrderFixtures verifies the directory fixtures from
+// IPIP-550 (https://github.com/ipfs/specs/pull/550): the same directory
+// containing hello.txt yields the legacy links-first encoding under
+// UnixFS_v1_2025 and the data-first encoding under UnixFS_v1_2026.
+func TestProfilePBNodeFieldOrderFixtures(t *testing.T) {
+	const (
+		leafCid       = "bafkreicysg23kiwv34eg2d7qweipxwosdo2py4ldv42nbauguluen5v6am"
+		linksFirstHex = "12330a24015512205891b5b522d5df086d0ff0b110fbd9d21bb4fc7163af34d08286a2e846f6be03120968656c6c6f2e74787418060a020801"
+		linksFirstCid = "bafybeigdcg7pksx2zk5336vrfsktjodlr4rbfz37qr3koc5xboxe5ekv24"
+		dataFirstHex  = "0a02080112330a24015512205891b5b522d5df086d0ff0b110fbd9d21bb4fc7163af34d08286a2e846f6be03120968656c6c6f2e7478741806"
+		dataFirstCid  = "bafybeigqvyloizmfcdy6scaxnyltftzptaruqa3hnnplfzsbf4sqteiwlm"
+	)
+
+	cases := []struct {
+		name        string
+		profile     UnixFSProfile
+		expectedHex string
+		expectedCid string
+	}{
+		{"UnixFS_v1_2025 writes links first", UnixFS_v1_2025, linksFirstHex, linksFirstCid},
+		{"UnixFS_v1_2026 writes data first", UnixFS_v1_2026, dataFirstHex, dataFirstCid},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			saveAndRestoreGlobals(t)
+			tc.profile.ApplyGlobals()
+
+			ds := mdtest.Mock()
+			ctx := t.Context()
+
+			leaf := mdag.NewRawNode([]byte("hello\n"))
+			require.Equal(t, leafCid, leaf.Cid().String())
+			require.NoError(t, ds.Add(ctx, leaf))
+
+			dir, err := NewDirectory(ds)
+			require.NoError(t, err)
+			require.NoError(t, dir.AddChild(ctx, "hello.txt", leaf))
+
+			node, err := dir.GetNode()
+			require.NoError(t, err)
+			pn, ok := node.(*mdag.ProtoNode)
+			require.True(t, ok)
+			require.NoError(t, pn.SetCidBuilder(tc.profile.CidBuilder()))
+
+			enc, err := pn.EncodeProtobuf(true)
+			require.NoError(t, err)
+			assert.Equal(t, tc.expectedHex, hex.EncodeToString(enc))
+			assert.Equal(t, tc.expectedCid, pn.Cid().String())
+		})
+	}
 }
 
 func TestProfileHAMTThresholdBehavior(t *testing.T) {

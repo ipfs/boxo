@@ -2,6 +2,7 @@ package io
 
 import (
 	chunk "github.com/ipfs/boxo/chunker"
+	mdag "github.com/ipfs/boxo/ipld/merkledag"
 	"github.com/ipfs/boxo/ipld/unixfs/importer/helpers"
 	"github.com/ipfs/go-cid"
 	mh "github.com/multiformats/go-multihash"
@@ -56,6 +57,14 @@ type UnixFSProfile struct {
 	// HAMTShardWidth is the fanout for HAMT directory nodes.
 	// Must be a power of 2 and multiple of 8.
 	HAMTShardWidth int
+
+	// PBNodeFieldOrder controls the order of the top-level PBNode fields in
+	// serialized dag-pb blocks. The zero value (merkledag.PBNodeLinksFirst)
+	// is the canonical DAG-PB order used by all profiles through
+	// unixfs-v1-2025. merkledag.PBNodeDataFirst is the opt-in order proposed
+	// by IPIP-550 (https://github.com/ipfs/specs/pull/550) and changes the
+	// CIDs of directories and HAMT shards.
+	PBNodeFieldOrder mdag.PBNodeFieldOrder
 }
 
 // Predefined profiles matching IPIP-499 specifications.
@@ -97,6 +106,18 @@ var (
 		HAMTSizeEstimation: SizeEstimationBlock,
 		HAMTShardWidth:     256,
 	}
+
+	// UnixFS_v1_2026 matches the unixfs-v1-2026 profile proposed in IPIP-550
+	// (https://github.com/ipfs/specs/pull/550). It inherits all settings from
+	// UnixFS_v1_2025 and additionally writes the PBNode Data field before
+	// Links, so streaming readers can process HAMT parameters before reading
+	// links. Opt-in: directories and HAMT shards get different CIDs than
+	// under UnixFS_v1_2025.
+	UnixFS_v1_2026 = func() UnixFSProfile {
+		p := UnixFS_v1_2025
+		p.PBNodeFieldOrder = mdag.PBNodeDataFirst
+		return p
+	}()
 )
 
 // ApplyGlobals sets the global variables to match this profile's settings.
@@ -115,6 +136,9 @@ func (p UnixFSProfile) ApplyGlobals() {
 	HAMTShardingSize = p.HAMTShardingSize
 	HAMTSizeEstimation = p.HAMTSizeEstimation
 	DefaultShardWidth = p.HAMTShardWidth
+
+	// dag-pb encoding settings
+	mdag.DefaultPBNodeFieldOrder = p.PBNodeFieldOrder
 }
 
 // CidBuilder returns a cid.Builder configured for this profile.
