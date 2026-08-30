@@ -100,13 +100,18 @@ func (n *ProtoNode) marshalImmutable() (*immutableProtoNode, error) {
 	// without having to grow the buffer and cause allocations.
 	enc := make([]byte, 0, 1024)
 
-	if DefaultPBNodeFieldOrder == PBNodeDataFirst {
-		enc = appendEncodeDataFirst(enc, n.data, links)
-	} else {
-		enc, err = dagpb.AppendEncode(enc, nd)
-		if err != nil {
-			return nil, err
+	enc, err = dagpb.AppendEncode(enc, nd)
+	if err != nil {
+		return nil, err
+	}
+	switch order := DefaultPBNodeFieldOrder; order {
+	case PBNodeLinksFirst:
+	case PBNodeDataFirst:
+		if n.data != nil {
+			enc = moveDataFirst(enc, len(n.data))
 		}
+	default:
+		return nil, fmt.Errorf("unknown PBNodeFieldOrder %d", order)
 	}
 	return &immutableProtoNode{enc, nd.(dagpb.PBNode)}, nil
 }

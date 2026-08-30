@@ -1,9 +1,9 @@
 package merkledag
 
 import (
-	"encoding/binary"
+	"slices"
 
-	format "github.com/ipfs/go-ipld-format"
+	"google.golang.org/protobuf/encoding/protowire"
 )
 
 // PBNodeFieldOrder selects the order of the top-level PBNode fields in the
@@ -13,81 +13,58 @@ type PBNodeFieldOrder int
 
 const (
 	// PBNodeLinksFirst writes the repeated Links field (field number 2)
-	// before the Data field (field number 1). This is the canonical DAG-PB
-	// order, produced by all UnixFS profiles through unixfs-v1-2025.
+	// before the Data field (field number 1). This is the order the DAG-PB
+	// spec requires encoders to produce [1], used by all UnixFS profiles
+	// through unixfs-v1-2025.
+	//
+	// [1]: https://ipld.io/specs/codecs/dag-pb/spec/#protobuf-strictness
 	PBNodeLinksFirst PBNodeFieldOrder = iota
 
 	// PBNodeDataFirst writes the Data field (field number 1) before the
 	// repeated Links field (field number 2), so streaming readers can
-	// process Data (e.g. HAMT parameters) before reading links. Proposed
-	// by IPIP-550 (https://github.com/ipfs/specs/pull/550) for the
+	// process Data (e.g. HAMT parameters) before reading links. The DAG-PB
+	// spec says decoders should accept either order [1]; IPIP-550
+	// (https://github.com/ipfs/specs/pull/550) proposes this one for the
 	// unixfs-v1-2026 profile.
+	//
+	// [1]: https://ipld.io/specs/codecs/dag-pb/spec/#protobuf-strictness
 	PBNodeDataFirst
 )
 
 // DefaultPBNodeFieldOrder is the field order used when encoding a ProtoNode.
-// The default, PBNodeLinksFirst, keeps the bytes and CIDs boxo has always
-// produced; PBNodeDataFirst is opt-in and changes the CID of every encoded
-// node that has both fields.
+// PBNodeDataFirst changes the bytes, and so the CID, of every encoded node
+// that has both Data and Links: directories, HAMT shards, and the root and
+// intermediate nodes of files larger than one chunk. A node with only one of
+// the two fields encodes the same under both orders.
 //
-// Thread safety: this variable is read on every encode and is not safe for
-// concurrent modification. Set it once during program initialization, before
-// starting any imports, e.g. via io.UnixFSProfile.ApplyGlobals.
+// Like the other UnixFS import globals that io.UnixFSProfile.ApplyGlobals
+// writes, this is a process-wide setting, not a per-node option.
+// Per-node plumbing would touch every producer and consumer of ProtoNode, so
+// the global is the accepted compromise. What follows from it:
+//
+//   - Set it once at startup, before the first encode, and never change it
+//     while the process runs. It is read on every encode without
+//     synchronization, and a node that was already encoded keeps its cached
+//     bytes and CID until it is mutated or re-encoded with
+//     EncodeProtobuf(true).
+//   - It applies to every ProtoNode, not only UnixFS ones.
+//   - A node decoded from storage keeps its wire bytes as its encode cache,
+//     so storing it back unchanged keeps its CID. Copy and every mutation
+//     drop that cache, and the next encode uses the current order. Switching
+//     the order on an existing repository therefore changes the CIDs of
+//     nodes whose content did not change, for example MFS directories,
+//     which are copied when loaded (io.NewDirectoryFromNode).
 var DefaultPBNodeFieldOrder = PBNodeLinksFirst
 
-// appendEncodeDataFirst encodes a PBNode with the Data field before the
-// repeated Links field. go-codec-dagpb only writes the canonical links-first
-// order, hence this local encoder. Field presence mirrors the go-codec-dagpb
-// path in marshalImmutable: Data is written when non-nil (even if empty),
-// links with an undefined CID are dropped, and every written link carries
-// Hash, Name, and Tsize in that order.
-//
-// TODO: this could be upstreamed to github.com/ipld/go-codec-dagpb as an
-// encode option if IPIP-550 is ratified.
-func appendEncodeDataFirst(enc []byte, data []byte, links []*format.Link) []byte {
-	const (
-		tagPBNodeData  = 0x0a // field 1, wire type 2 (bytes)
-		tagPBNodeLinks = 0x12 // field 2, wire type 2 (embedded message)
-		tagPBLinkHash  = 0x0a // field 1, wire type 2 (bytes)
-		tagPBLinkName  = 0x12 // field 2, wire type 2 (string)
-		tagPBLinkTsize = 0x18 // field 3, wire type 0 (varint)
-	)
-
-	if data != nil {
-		enc = append(enc, tagPBNodeData)
-		enc = binary.AppendUvarint(enc, uint64(len(data)))
-		enc = append(enc, data...)
-	}
-	for _, link := range links {
-		if !link.Cid.Defined() {
-			continue
-		}
-		hash := link.Cid.Bytes()
-		// overflow, >MaxInt64 is almost certainly an error
-		tsize := uint64(max(int64(link.Size), 0))
-		linkLen := 1 + uvarintLen(uint64(len(hash))) + len(hash) +
-			1 + uvarintLen(uint64(len(link.Name))) + len(link.Name) +
-			1 + uvarintLen(tsize)
-		enc = append(enc, tagPBNodeLinks)
-		enc = binary.AppendUvarint(enc, uint64(linkLen))
-		enc = append(enc, tagPBLinkHash)
-		enc = binary.AppendUvarint(enc, uint64(len(hash)))
-		enc = append(enc, hash...)
-		enc = append(enc, tagPBLinkName)
-		enc = binary.AppendUvarint(enc, uint64(len(link.Name)))
-		enc = append(enc, link.Name...)
-		enc = append(enc, tagPBLinkTsize)
-		enc = binary.AppendUvarint(enc, tsize)
-	}
-	return enc
-}
-
-// uvarintLen returns the number of bytes binary.AppendUvarint writes for v.
-func uvarintLen(v uint64) int {
-	n := 1
-	for v >= 0x80 {
-		v >>= 7
-		n++
-	}
-	return n
+// moveDataFirst rewrites a links-first dag-pb encoding produced by
+// dagpb.AppendEncode into the PBNodeDataFirst order. AppendEncode writes the
+// Data field last, so the field occupies the trailing tag+length+bytes span
+// of enc and moving that span to the front is a rotation. Reusing the
+// reference encoder keeps one source of truth for link sorting and field
+// presence. dataLen is the length of the Data field that was encoded; the
+// field must be present.
+func moveDataFirst(enc []byte, dataLen int) []byte {
+	span := protowire.SizeTag(1) + protowire.SizeBytes(dataLen)
+	split := len(enc) - span
+	return slices.Concat(enc[split:], enc[:split])
 }
