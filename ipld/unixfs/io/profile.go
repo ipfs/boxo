@@ -113,11 +113,17 @@ var (
 	// Links, so streaming readers can process HAMT parameters before reading
 	// links. Opt-in: directories and HAMT shards get different CIDs than
 	// under UnixFS_v1_2025.
-	UnixFS_v1_2026 = func() UnixFSProfile {
-		p := UnixFS_v1_2025
-		p.PBNodeFieldOrder = mdag.PBNodeDataFirst
-		return p
-	}()
+	UnixFS_v1_2026 = UnixFSProfile{
+		CIDVersion:         1,
+		MhType:             mh.SHA2_256,
+		ChunkSize:          int64(1 * unitMiB),
+		FileDAGWidth:       1024,
+		RawLeaves:          true, // raw leaves for CIDv1
+		HAMTShardingSize:   int(256 * unitKiB),
+		HAMTSizeEstimation: SizeEstimationBlock,
+		HAMTShardWidth:     256,
+		PBNodeFieldOrder:   mdag.PBNodeDataFirst,
+	}
 )
 
 // ApplyGlobals sets the global variables to match this profile's settings.

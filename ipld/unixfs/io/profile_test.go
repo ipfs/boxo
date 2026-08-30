@@ -1,16 +1,21 @@
 package io
 
 import (
+	"bytes"
 	"context"
 	"encoding/hex"
 	"fmt"
 	"os"
+	"slices"
 	"testing"
 	"time"
 
+	chunk "github.com/ipfs/boxo/chunker"
 	mdag "github.com/ipfs/boxo/ipld/merkledag"
 	mdtest "github.com/ipfs/boxo/ipld/merkledag/test"
 	ft "github.com/ipfs/boxo/ipld/unixfs"
+	"github.com/ipfs/boxo/ipld/unixfs/importer/balanced"
+	"github.com/ipfs/boxo/ipld/unixfs/importer/helpers"
 	"github.com/ipfs/boxo/ipld/unixfs/private/linksize"
 	cid "github.com/ipfs/go-cid"
 	ipld "github.com/ipfs/go-ipld-format"
@@ -55,10 +60,17 @@ func TestUnixFSProfiles(t *testing.T) {
 	})
 
 	t.Run("UnixFS_v1_2026 has correct values", func(t *testing.T) {
-		expected := UnixFS_v1_2025
-		expected.PBNodeFieldOrder = mdag.PBNodeDataFirst
-		assert.Equal(t, expected, UnixFS_v1_2026,
-			"UnixFS_v1_2026 should equal UnixFS_v1_2025 plus data-first PBNode field order")
+		assert.Equal(t, 1, UnixFS_v1_2026.CIDVersion, "CIDVersion should be 1")
+		assert.Equal(t, uint64(mh.SHA2_256), UnixFS_v1_2026.MhType, "MhType should be SHA2_256")
+		assert.Equal(t, int64(1024*1024), UnixFS_v1_2026.ChunkSize, "ChunkSize should be 1 MiB")
+		assert.Equal(t, 1024, UnixFS_v1_2026.FileDAGWidth, "FileDAGWidth should be 1024")
+		assert.True(t, UnixFS_v1_2026.RawLeaves, "RawLeaves should be true for CIDv1")
+		assert.Equal(t, 256*1024, UnixFS_v1_2026.HAMTShardingSize, "HAMTShardingSize should be 256 KiB")
+		assert.Equal(t, SizeEstimationBlock, UnixFS_v1_2026.HAMTSizeEstimation, "should use block-based estimation")
+		assert.Equal(t, 256, UnixFS_v1_2026.HAMTShardWidth, "HAMTShardWidth should be 256")
+		assert.Equal(t, mdag.PBNodeDataFirst, UnixFS_v1_2026.PBNodeFieldOrder, "PBNodeFieldOrder should be data-first")
+		assert.Equal(t, mdag.PBNodeLinksFirst, UnixFS_v1_2025.PBNodeFieldOrder, "UnixFS_v1_2025 should keep links-first")
+		assert.Equal(t, mdag.PBNodeLinksFirst, UnixFS_v0_2015.PBNodeFieldOrder, "UnixFS_v0_2015 should keep links-first")
 	})
 
 	t.Run("CidBuilder returns correct prefix", func(t *testing.T) {
@@ -80,51 +92,35 @@ func TestUnixFSProfiles(t *testing.T) {
 	})
 
 	t.Run("ApplyGlobals sets global variables", func(t *testing.T) {
-		// Save original values
-		oldShardingSize := HAMTShardingSize
-		oldEstimation := HAMTSizeEstimation
-		oldShardWidth := DefaultShardWidth
-		oldFieldOrder := mdag.DefaultPBNodeFieldOrder
-		t.Cleanup(func() {
-			HAMTShardingSize = oldShardingSize
-			HAMTSizeEstimation = oldEstimation
-			DefaultShardWidth = oldShardWidth
-			mdag.DefaultPBNodeFieldOrder = oldFieldOrder
-		})
+		saveAndRestoreGlobals(t)
 
-		// Apply UnixFS_v1_2025
-		UnixFS_v1_2025.ApplyGlobals()
+		for _, p := range []UnixFSProfile{UnixFS_v1_2025, UnixFS_v1_2026, UnixFS_v0_2015} {
+			p.ApplyGlobals()
 
-		assert.Equal(t, UnixFS_v1_2025.HAMTShardingSize, HAMTShardingSize)
-		assert.Equal(t, UnixFS_v1_2025.HAMTSizeEstimation, HAMTSizeEstimation)
-		assert.Equal(t, UnixFS_v1_2025.HAMTShardWidth, DefaultShardWidth)
-		assert.Equal(t, mdag.PBNodeLinksFirst, mdag.DefaultPBNodeFieldOrder)
-
-		// Apply UnixFS_v1_2026
-		UnixFS_v1_2026.ApplyGlobals()
-
-		assert.Equal(t, mdag.PBNodeDataFirst, mdag.DefaultPBNodeFieldOrder)
-
-		// Apply UnixFS_v0_2015
-		UnixFS_v0_2015.ApplyGlobals()
-
-		assert.Equal(t, UnixFS_v0_2015.HAMTShardingSize, HAMTShardingSize)
-		assert.Equal(t, UnixFS_v0_2015.HAMTSizeEstimation, HAMTSizeEstimation)
-		assert.Equal(t, UnixFS_v0_2015.HAMTShardWidth, DefaultShardWidth)
-		assert.Equal(t, mdag.PBNodeLinksFirst, mdag.DefaultPBNodeFieldOrder)
+			assert.Equal(t, p.ChunkSize, chunk.DefaultBlockSize)
+			assert.Equal(t, p.FileDAGWidth, helpers.DefaultLinksPerBlock)
+			assert.Equal(t, p.HAMTShardingSize, HAMTShardingSize)
+			assert.Equal(t, p.HAMTSizeEstimation, HAMTSizeEstimation)
+			assert.Equal(t, p.HAMTShardWidth, DefaultShardWidth)
+			assert.Equal(t, p.PBNodeFieldOrder, mdag.DefaultPBNodeFieldOrder)
+		}
 	})
 }
 
 // saveAndRestoreGlobals saves the current global settings and restores them
-// after the test completes. Use this in tests that modify HAMTShardingSize,
-// HAMTSizeEstimation, DefaultShardWidth, or linksize.LinkSizeFunction.
+// after the test completes. Use this in tests that call ApplyGlobals or
+// modify any of the globals it writes, or linksize.LinkSizeFunction.
 func saveAndRestoreGlobals(t *testing.T) {
+	oldBlockSize := chunk.DefaultBlockSize
+	oldLinksPerBlock := helpers.DefaultLinksPerBlock
 	oldShardingSize := HAMTShardingSize
 	oldEstimation := HAMTSizeEstimation
 	oldShardWidth := DefaultShardWidth
 	oldLinkSize := linksize.LinkSizeFunction
 	oldFieldOrder := mdag.DefaultPBNodeFieldOrder
 	t.Cleanup(func() {
+		chunk.DefaultBlockSize = oldBlockSize
+		helpers.DefaultLinksPerBlock = oldLinksPerBlock
 		HAMTShardingSize = oldShardingSize
 		HAMTSizeEstimation = oldEstimation
 		DefaultShardWidth = oldShardWidth
@@ -184,6 +180,118 @@ func TestProfilePBNodeFieldOrderFixtures(t *testing.T) {
 			assert.Equal(t, tc.expectedCid, pn.Cid().String())
 		})
 	}
+}
+
+// TestProfilePBNodeFieldOrderEndToEnd builds a multi-chunk file and a sharded
+// directory under UnixFS_v1_2025 and UnixFS_v1_2026 from fixed inputs and
+// pins the resulting root CIDs. The file inputs and expected CIDs match what
+// `ipfs add --chunker=size-1000` produces under each profile. Every dag-pb
+// block of both DAGs must lead with the profile's first field, and the two
+// DAGs must decode to the same nodes.
+func TestProfilePBNodeFieldOrderEndToEnd(t *testing.T) {
+	const (
+		fileSize    = 3000
+		chunkSize   = 1000
+		hamtEntries = 64
+	)
+
+	cases := []struct {
+		name      string
+		profile   UnixFSProfile
+		firstByte byte
+		fileCid   string
+		hamtCid   string
+	}{
+		{"UnixFS_v1_2025", UnixFS_v1_2025, 0x12,
+			"bafybeiapp6tzng2hpxzmopnplvg6hoxldufypompu6uzmhc6rdyw4m2qx4",
+			"bafybeiahnfucbarnualj2uzakbqnj3b3nvrszwu4jrl2x7ekbfqshpd524"},
+		{"UnixFS_v1_2026", UnixFS_v1_2026, 0x0a,
+			"bafybeigwq5lxlau4ced4hlvjxuz4xtdbs4zz32dgndqpcc2ggcbiei6k2y",
+			"bafybeihfyecdexcpn3g3xqgzz23pexyespuldzfoh3tvjris56cxkropau"},
+	}
+
+	// fingerprints of every dag-pb node reachable from the roots, per profile;
+	// link CIDs are left out because dag-pb children differ between profiles
+	fingerprints := map[string][]string{}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			saveAndRestoreGlobals(t)
+			tc.profile.ApplyGlobals()
+			HAMTShardingSize = 1024 // shard at a size a unit test can reach
+
+			ds := mdtest.Mock()
+			ctx := t.Context()
+
+			params := helpers.DagBuilderParams{
+				Maxlinks:   tc.profile.FileDAGWidth,
+				RawLeaves:  tc.profile.RawLeaves,
+				CidBuilder: tc.profile.CidBuilder(),
+				Dagserv:    ds,
+			}
+			content := bytes.Repeat([]byte("a"), fileSize)
+			db, err := params.New(chunk.NewSizeSplitter(bytes.NewReader(content), chunkSize))
+			require.NoError(t, err)
+			fileRoot, err := balanced.Layout(db)
+			require.NoError(t, err)
+			assert.Equal(t, tc.fileCid, fileRoot.Cid().String(), "file root CID")
+
+			dir, err := NewDirectory(ds)
+			require.NoError(t, err)
+			dir.SetCidBuilder(tc.profile.CidBuilder())
+			for i := range hamtEntries {
+				leaf := mdag.NewRawNode(fmt.Appendf(nil, "file %d\n", i))
+				require.NoError(t, ds.Add(ctx, leaf))
+				require.NoError(t, dir.AddChild(ctx, fmt.Sprintf("file-%d.txt", i), leaf))
+			}
+			_, isHAMT := dir.(*DynamicDirectory).Directory.(*HAMTDirectory)
+			require.True(t, isHAMT, "directory should have switched to HAMT")
+			dirRoot, err := dir.GetNode()
+			require.NoError(t, err)
+			require.NoError(t, ds.Add(ctx, dirRoot))
+			assert.Equal(t, tc.hamtCid, dirRoot.Cid().String(), "HAMT root CID")
+
+			var dagpbNodes, subShards int
+			for _, root := range []cid.Cid{fileRoot.Cid(), dirRoot.Cid()} {
+				err := mdag.Walk(ctx, mdag.GetLinksDirect(ds), root, func(c cid.Cid) bool {
+					if c.Type() != cid.DagProtobuf {
+						return true
+					}
+					node, err := ds.Get(ctx, c)
+					require.NoError(t, err)
+					pn, ok := node.(*mdag.ProtoNode)
+					require.True(t, ok)
+					require.NotEmpty(t, pn.Data(), "%s: every dag-pb node here carries UnixFS Data", c)
+					require.NotEmpty(t, pn.Links(), "%s: every dag-pb node here carries links", c)
+					assert.Equal(t, tc.firstByte, pn.RawData()[0], "%s: first field", c)
+					dagpbNodes++
+
+					names := make([]string, 0, len(pn.Links()))
+					sizes := make([]uint64, 0, len(pn.Links()))
+					for _, l := range pn.Links() {
+						names = append(names, l.Name)
+						sizes = append(sizes, l.Size)
+						if c.Equals(dirRoot.Cid()) && len(l.Name) == 2 {
+							subShards++
+						}
+					}
+					fingerprints[tc.name] = append(fingerprints[tc.name],
+						fmt.Sprintf("%x|%q|%v", pn.Data(), names, sizes))
+					return true
+				})
+				require.NoError(t, err)
+			}
+			assert.Greater(t, subShards, 0, "HAMT root should link to child shards")
+			assert.Greater(t, dagpbNodes, 2, "file root, HAMT root and child shards expected")
+			t.Logf("%s: %d dag-pb nodes, %d child shards", tc.name, dagpbNodes, subShards)
+		})
+	}
+
+	for _, fp := range fingerprints {
+		slices.Sort(fp)
+	}
+	assert.Equal(t, fingerprints["UnixFS_v1_2025"], fingerprints["UnixFS_v1_2026"],
+		"both profiles must produce the same logical nodes")
 }
 
 func TestProfileHAMTThresholdBehavior(t *testing.T) {
