@@ -62,8 +62,10 @@ type UnixFSProfile struct {
 	// serialized dag-pb blocks. The zero value (merkledag.PBNodeLinksFirst)
 	// is the canonical DAG-PB order used by all profiles through
 	// unixfs-v1-2025. merkledag.PBNodeDataFirst is the opt-in order proposed
-	// by IPIP-550 (https://github.com/ipfs/specs/pull/550) and changes the
-	// CIDs of directories and HAMT shards.
+	// by IPIP-550 (https://github.com/ipfs/specs/pull/550). It changes the
+	// CID of every dag-pb node that has both Data and Links: directories,
+	// HAMT shards, and the root and intermediate nodes of files larger than
+	// one chunk. Single-chunk raw-leaf files keep their CIDs.
 	PBNodeFieldOrder mdag.PBNodeFieldOrder
 }
 
@@ -108,11 +110,19 @@ var (
 	}
 
 	// UnixFS_v1_2026 matches the unixfs-v1-2026 profile proposed in IPIP-550
-	// (https://github.com/ipfs/specs/pull/550). It inherits all settings from
-	// UnixFS_v1_2025 and additionally writes the PBNode Data field before
-	// Links, so streaming readers can process HAMT parameters before reading
-	// links. Opt-in: directories and HAMT shards get different CIDs than
-	// under UnixFS_v1_2025.
+	// (https://github.com/ipfs/specs/pull/550): the UnixFS_v1_2025 settings
+	// with the PBNode Data field written before Links, so streaming readers
+	// can process HAMT parameters before reading links. Opt-in: every dag-pb
+	// node with both Data and Links (directories, HAMT shards, files larger
+	// than one chunk) gets a different CID than under UnixFS_v1_2025.
+	//
+	// Applying this profile to a repository that holds links-first data
+	// re-encodes existing directories in the new order when they are loaded
+	// and stored again (for example MFS directories on their next access),
+	// so their CIDs change without a content change. A sharded directory's
+	// root is re-encoded first; each child shard follows once a lookup, a
+	// listing, or a change loads it (a listing loads all of them). Both
+	// orders decode identically.
 	UnixFS_v1_2026 = UnixFSProfile{
 		CIDVersion:         1,
 		MhType:             mh.SHA2_256,
@@ -130,9 +140,16 @@ var (
 // This affects all subsequent file and directory import operations.
 // Note: RawLeaves and CidBuilder are not globals; pass them to DAG builder options.
 //
-// Thread safety: this function modifies global variables and is not safe
-// for concurrent use. Call it once during program initialization, before
-// starting any imports. Do not call from multiple goroutines.
+// The settings written here (chunk.DefaultBlockSize,
+// helpers.DefaultLinksPerBlock, HAMTShardingSize, HAMTSizeEstimation,
+// DefaultShardWidth and merkledag.DefaultPBNodeFieldOrder) are process-wide
+// globals rather than per-call options: threading them through every
+// producer and consumer of the import pipeline would amount to a rewrite.
+// Call ApplyGlobals once at startup, before the first import, and do not
+// call it again while the process runs. The globals are read on every
+// import without synchronization, and a ProtoNode that was already encoded
+// keeps its cached bytes and CID until it is mutated (see
+// merkledag.DefaultPBNodeFieldOrder).
 func (p UnixFSProfile) ApplyGlobals() {
 	// File settings
 	chunk.DefaultBlockSize = p.ChunkSize
