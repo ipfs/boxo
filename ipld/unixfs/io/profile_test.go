@@ -202,12 +202,16 @@ func TestProfilePBNodeFieldOrderEndToEnd(t *testing.T) {
 		fileCid   string
 		hamtCid   string
 	}{
-		{"UnixFS_v1_2025", UnixFS_v1_2025, 0x12,
+		{
+			"UnixFS_v1_2025", UnixFS_v1_2025, 0x12,
 			"bafybeiapp6tzng2hpxzmopnplvg6hoxldufypompu6uzmhc6rdyw4m2qx4",
-			"bafybeiahnfucbarnualj2uzakbqnj3b3nvrszwu4jrl2x7ekbfqshpd524"},
-		{"UnixFS_v1_2026", UnixFS_v1_2026, 0x0a,
+			"bafybeiahnfucbarnualj2uzakbqnj3b3nvrszwu4jrl2x7ekbfqshpd524",
+		},
+		{
+			"UnixFS_v1_2026", UnixFS_v1_2026, 0x0a,
 			"bafybeigwq5lxlau4ced4hlvjxuz4xtdbs4zz32dgndqpcc2ggcbiei6k2y",
-			"bafybeihfyecdexcpn3g3xqgzz23pexyespuldzfoh3tvjris56cxkropau"},
+			"bafybeihfyecdexcpn3g3xqgzz23pexyespuldzfoh3tvjris56cxkropau",
+		},
 	}
 
 	// fingerprints of every dag-pb node reachable from the roots, per profile;
