@@ -59,18 +59,9 @@ func TestUnixFSProfiles(t *testing.T) {
 		assert.Equal(t, 256, UnixFS_v1_2025.HAMTShardWidth, "HAMTShardWidth should be 256")
 	})
 
-	t.Run("UnixFS_v1_2026 has correct values", func(t *testing.T) {
-		assert.Equal(t, 1, UnixFS_v1_2026.CIDVersion, "CIDVersion should be 1")
-		assert.Equal(t, uint64(mh.SHA2_256), UnixFS_v1_2026.MhType, "MhType should be SHA2_256")
-		assert.Equal(t, int64(1024*1024), UnixFS_v1_2026.ChunkSize, "ChunkSize should be 1 MiB")
-		assert.Equal(t, 1024, UnixFS_v1_2026.FileDAGWidth, "FileDAGWidth should be 1024")
-		assert.True(t, UnixFS_v1_2026.RawLeaves, "RawLeaves should be true for CIDv1")
-		assert.Equal(t, 256*1024, UnixFS_v1_2026.HAMTShardingSize, "HAMTShardingSize should be 256 KiB")
-		assert.Equal(t, SizeEstimationBlock, UnixFS_v1_2026.HAMTSizeEstimation, "should use block-based estimation")
-		assert.Equal(t, 256, UnixFS_v1_2026.HAMTShardWidth, "HAMTShardWidth should be 256")
-		assert.Equal(t, mdag.PBNodeDataFirst, UnixFS_v1_2026.PBNodeFieldOrder, "PBNodeFieldOrder should be data-first")
-		assert.Equal(t, mdag.PBNodeLinksFirst, UnixFS_v1_2025.PBNodeFieldOrder, "UnixFS_v1_2025 should keep links-first")
-		assert.Equal(t, mdag.PBNodeLinksFirst, UnixFS_v0_2015.PBNodeFieldOrder, "UnixFS_v0_2015 should keep links-first")
+	t.Run("profiles pin canonical links-first order", func(t *testing.T) {
+		assert.Equal(t, mdag.PBNodeLinksFirst, UnixFS_v1_2025.PBNodeFieldOrder, "UnixFS_v1_2025 must keep links-first")
+		assert.Equal(t, mdag.PBNodeLinksFirst, UnixFS_v0_2015.PBNodeFieldOrder, "UnixFS_v0_2015 must keep links-first")
 	})
 
 	t.Run("CidBuilder returns correct prefix", func(t *testing.T) {
@@ -94,7 +85,9 @@ func TestUnixFSProfiles(t *testing.T) {
 	t.Run("ApplyGlobals sets global variables", func(t *testing.T) {
 		saveAndRestoreGlobals(t)
 
-		for _, p := range []UnixFSProfile{UnixFS_v1_2025, UnixFS_v1_2026, UnixFS_v0_2015} {
+		dataFirst := UnixFS_v1_2025
+		dataFirst.PBNodeFieldOrder = mdag.PBNodeDataFirst
+		for _, p := range []UnixFSProfile{UnixFS_v1_2025, dataFirst, UnixFS_v0_2015} {
 			p.ApplyGlobals()
 
 			assert.Equal(t, p.ChunkSize, chunk.DefaultBlockSize)
@@ -131,8 +124,9 @@ func saveAndRestoreGlobals(t *testing.T) {
 
 // TestProfilePBNodeFieldOrderFixtures verifies the directory fixtures from
 // IPIP-550 (https://github.com/ipfs/specs/pull/550): the same directory
-// containing hello.txt yields the legacy links-first encoding under
-// UnixFS_v1_2025 and the data-first encoding under UnixFS_v1_2026.
+// containing hello.txt yields the canonical links-first encoding under
+// UnixFS_v1_2025 and the data-first encoding when the PBNodeFieldOrder
+// knob is set on top of it.
 func TestProfilePBNodeFieldOrderFixtures(t *testing.T) {
 	const (
 		leafCid       = "bafkreicysg23kiwv34eg2d7qweipxwosdo2py4ldv42nbauguluen5v6am"
@@ -142,6 +136,9 @@ func TestProfilePBNodeFieldOrderFixtures(t *testing.T) {
 		dataFirstCid  = "bafybeigqvyloizmfcdy6scaxnyltftzptaruqa3hnnplfzsbf4sqteiwlm"
 	)
 
+	dataFirst := UnixFS_v1_2025
+	dataFirst.PBNodeFieldOrder = mdag.PBNodeDataFirst
+
 	cases := []struct {
 		name        string
 		profile     UnixFSProfile
@@ -149,7 +146,7 @@ func TestProfilePBNodeFieldOrderFixtures(t *testing.T) {
 		expectedCid string
 	}{
 		{"UnixFS_v1_2025 writes links first", UnixFS_v1_2025, linksFirstHex, linksFirstCid},
-		{"UnixFS_v1_2026 writes data first", UnixFS_v1_2026, dataFirstHex, dataFirstCid},
+		{"data-first knob writes data first", dataFirst, dataFirstHex, dataFirstCid},
 	}
 
 	for _, tc := range cases {
@@ -183,17 +180,20 @@ func TestProfilePBNodeFieldOrderFixtures(t *testing.T) {
 }
 
 // TestProfilePBNodeFieldOrderEndToEnd builds a multi-chunk file and a sharded
-// directory under UnixFS_v1_2025 and UnixFS_v1_2026 from fixed inputs and
-// pins the resulting root CIDs. The file inputs and expected CIDs match what
-// `ipfs add --chunker=size-1000` produces under each profile. Every dag-pb
-// block of both DAGs must lead with the profile's first field, and the two
-// DAGs must decode to the same nodes.
+// directory from fixed inputs under UnixFS_v1_2025 and under the same profile
+// with the data-first knob set, and pins the resulting root CIDs. The file
+// inputs and expected CIDs match what `ipfs add --chunker=size-1000` produces
+// under each configuration. Every dag-pb block of both DAGs must lead with
+// the configured first field, and the two DAGs must decode to the same nodes.
 func TestProfilePBNodeFieldOrderEndToEnd(t *testing.T) {
 	const (
 		fileSize    = 3000
 		chunkSize   = 1000
 		hamtEntries = 64
 	)
+
+	dataFirst := UnixFS_v1_2025
+	dataFirst.PBNodeFieldOrder = mdag.PBNodeDataFirst
 
 	cases := []struct {
 		name      string
@@ -208,7 +208,7 @@ func TestProfilePBNodeFieldOrderEndToEnd(t *testing.T) {
 			"bafybeiahnfucbarnualj2uzakbqnj3b3nvrszwu4jrl2x7ekbfqshpd524",
 		},
 		{
-			"UnixFS_v1_2026", UnixFS_v1_2026, 0x0a,
+			"UnixFS_v1_2025+data-first", dataFirst, 0x0a,
 			"bafybeigwq5lxlau4ced4hlvjxuz4xtdbs4zz32dgndqpcc2ggcbiei6k2y",
 			"bafybeihfyecdexcpn3g3xqgzz23pexyespuldzfoh3tvjris56cxkropau",
 		},
@@ -294,8 +294,8 @@ func TestProfilePBNodeFieldOrderEndToEnd(t *testing.T) {
 	for _, fp := range fingerprints {
 		slices.Sort(fp)
 	}
-	assert.Equal(t, fingerprints["UnixFS_v1_2025"], fingerprints["UnixFS_v1_2026"],
-		"both profiles must produce the same logical nodes")
+	assert.Equal(t, fingerprints["UnixFS_v1_2025"], fingerprints["UnixFS_v1_2025+data-first"],
+		"both orders must produce the same logical nodes")
 }
 
 func TestProfileHAMTThresholdBehavior(t *testing.T) {

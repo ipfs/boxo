@@ -24,8 +24,9 @@ const (
 	// repeated Links field (field number 2), so streaming readers can
 	// process Data (e.g. HAMT parameters) before reading links. The DAG-PB
 	// spec says decoders should accept either order [1]; IPIP-550
-	// (https://github.com/ipfs/specs/pull/550) proposes this one for the
-	// unixfs-v1-2026 profile.
+	// (https://github.com/ipfs/specs/pull/550) defines this one as a
+	// low-level opt-in for writers that need it. No named profile selects
+	// it, and enabling it changes CIDs.
 	//
 	// [1]: https://ipld.io/specs/codecs/dag-pb/spec/#protobuf-strictness
 	PBNodeDataFirst

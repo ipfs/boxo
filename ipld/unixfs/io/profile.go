@@ -59,13 +59,18 @@ type UnixFSProfile struct {
 	HAMTShardWidth int
 
 	// PBNodeFieldOrder controls the order of the top-level PBNode fields in
-	// serialized dag-pb blocks. The zero value (merkledag.PBNodeLinksFirst)
-	// is the canonical DAG-PB order used by all profiles through
-	// unixfs-v1-2025. merkledag.PBNodeDataFirst is the opt-in order proposed
-	// by IPIP-550 (https://github.com/ipfs/specs/pull/550). It changes the
-	// CID of every dag-pb node that has both Data and Links: directories,
-	// HAMT shards, and the root and intermediate nodes of files larger than
-	// one chunk. Single-chunk raw-leaf files keep their CIDs.
+	// serialized dag-pb blocks. merkledag.PBNodeLinksFirst (the zero value)
+	// is the canonical DAG-PB order, pinned explicitly by every named
+	// profile. merkledag.PBNodeDataFirst is a low-level opt-in knob from
+	// IPIP-550 (https://github.com/ipfs/specs/pull/550) for writers that
+	// need streaming-friendly blocks; no named profile selects it. Enabling
+	// it changes the CID of every dag-pb node that has both Data and Links:
+	// directories, HAMT shards, and the root and intermediate nodes of
+	// files larger than one chunk. Single-chunk raw-leaf files keep their
+	// CIDs. Links-first data touched through the directory API is
+	// re-encoded in the new order when it is stored again (for example MFS
+	// directories on their next change), so CIDs change without a content
+	// change.
 	PBNodeFieldOrder mdag.PBNodeFieldOrder
 }
 
@@ -93,6 +98,7 @@ var (
 		HAMTShardingSize:   int(256 * unitKiB),
 		HAMTSizeEstimation: SizeEstimationLinks,
 		HAMTShardWidth:     256,
+		PBNodeFieldOrder:   mdag.PBNodeLinksFirst, // canonical order, pinned
 	}
 
 	// UnixFS_v1_2025 matches the unixfs-v1-2025 profile from IPIP-499.
@@ -107,32 +113,7 @@ var (
 		HAMTShardingSize:   int(256 * unitKiB),
 		HAMTSizeEstimation: SizeEstimationBlock,
 		HAMTShardWidth:     256,
-	}
-
-	// UnixFS_v1_2026 matches the unixfs-v1-2026 profile proposed in IPIP-550
-	// (https://github.com/ipfs/specs/pull/550): the UnixFS_v1_2025 settings
-	// with the PBNode Data field written before Links, so streaming readers
-	// can process HAMT parameters before reading links. Opt-in: every dag-pb
-	// node with both Data and Links (directories, HAMT shards, files larger
-	// than one chunk) gets a different CID than under UnixFS_v1_2025.
-	//
-	// Applying this profile to a repository that holds links-first data
-	// re-encodes existing directories in the new order when they are loaded
-	// and stored again (for example MFS directories on their next access),
-	// so their CIDs change without a content change. A sharded directory's
-	// root is re-encoded first; each child shard follows once a lookup, a
-	// listing, or a change loads it (a listing loads all of them). Both
-	// orders decode identically.
-	UnixFS_v1_2026 = UnixFSProfile{
-		CIDVersion:         1,
-		MhType:             mh.SHA2_256,
-		ChunkSize:          int64(1 * unitMiB),
-		FileDAGWidth:       1024,
-		RawLeaves:          true, // raw leaves for CIDv1
-		HAMTShardingSize:   int(256 * unitKiB),
-		HAMTSizeEstimation: SizeEstimationBlock,
-		HAMTShardWidth:     256,
-		PBNodeFieldOrder:   mdag.PBNodeDataFirst,
+		PBNodeFieldOrder:   mdag.PBNodeLinksFirst, // canonical order, pinned
 	}
 )
 

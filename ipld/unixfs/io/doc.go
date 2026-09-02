@@ -36,8 +36,11 @@
 //
 //   - [UnixFS_v0_2015]: Legacy CIDv0 settings (256 KiB chunks, dag-pb leaves)
 //   - [UnixFS_v1_2025]: Modern CIDv1 settings (1 MiB chunks, raw leaves)
-//   - [UnixFS_v1_2026]: UnixFS_v1_2025 with the dag-pb Data field written
-//     before Links (IPIP-550)
+//
+// Both pin the canonical links-first dag-pb field order. Writers that need
+// the streaming-friendly Data-first order can opt in via the low-level
+// [UnixFSProfile.PBNodeFieldOrder] knob (IPIP-550); no named profile
+// selects it, and enabling it changes CIDs.
 //
 // See https://specs.ipfs.tech/ipips/ipip-0499/ and
 // https://github.com/ipfs/specs/pull/550 for specification details.
