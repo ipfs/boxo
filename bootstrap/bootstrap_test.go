@@ -254,3 +254,77 @@ func TestHasCircuitProtocol(t *testing.T) {
 		})
 	}
 }
+
+// TestBootstrapRoundSkipsBackupWhenNoBootstrapPeers verifies that bootstrapRound
+// does not consult the backup peer list when no bootstrap peers are configured.
+// The backup list exists only as a recovery mechanism for when configured
+// bootstrap peers are down; with no configured peers there is nothing to
+// recover from, so dialing stale backup peers from previous runs would be
+// unwanted network traffic. See ipfs/kubo#11452.
+func TestBootstrapRoundSkipsBackupWhenNoBootstrapPeers(t *testing.T) {
+	backupCalled := false
+	loadFunc := func(_ context.Context) []peer.AddrInfo {
+		backupCalled = true
+		return nil
+	}
+	saveFunc := func(_ context.Context, _ []peer.AddrInfo) {}
+
+	bootCfg := BootstrapConfigWithPeers(nil, WithBackupPeers(loadFunc, saveFunc))
+	bootCfg.MinPeerThreshold = 2
+
+	priv, _, err := crypto.GenerateEd25519Key(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p2pHost, err := libp2p.New(libp2p.Identity(priv))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = p2pHost.Close() })
+
+	if err := bootstrapRound(t.Context(), p2pHost, bootCfg); err != nil {
+		t.Fatalf("bootstrapRound returned error: %v", err)
+	}
+	if backupCalled {
+		t.Fatal("bootstrapRound consulted the backup peer list despite no bootstrap peers being configured")
+	}
+}
+
+// TestBootstrapRoundDialsBackupWhenBootstrapPeersPresent confirms the backup
+// list is still consulted when configured bootstrap peers fail to connect,
+// preserving the recovery mechanism from ipfs/kubo#8856.
+func TestBootstrapRoundDialsBackupWhenBootstrapPeersPresent(t *testing.T) {
+	backupCalled := false
+	loadFunc := func(_ context.Context) []peer.AddrInfo {
+		backupCalled = true
+		return nil
+	}
+	saveFunc := func(_ context.Context, _ []peer.AddrInfo) {}
+
+	// A fake, undialable bootstrap peer so peersConnect attempts and fails
+	// rather than short-circuiting on an empty list.
+	fakeID, err := test.RandPeerID()
+	if err != nil {
+		t.Fatal(err)
+	}
+	fakePeer := peer.AddrInfo{ID: fakeID}
+	bootCfg := BootstrapConfigWithPeers([]peer.AddrInfo{fakePeer}, WithBackupPeers(loadFunc, saveFunc))
+	bootCfg.MinPeerThreshold = 2
+	// Keep the round snappy: the dial will fail fast against a random peer ID.
+	bootCfg.ConnectionTimeout = 500 * time.Millisecond
+
+	priv, _, err := crypto.GenerateEd25519Key(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p2pHost, err := libp2p.New(libp2p.Identity(priv))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = p2pHost.Close() })
+
+	_ = bootstrapRound(t.Context(), p2pHost, bootCfg)
+	if !backupCalled {
+		t.Fatal("bootstrapRound did not consult the backup peer list despite configured bootstrap peers failing to connect")
+	}
+}

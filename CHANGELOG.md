@@ -29,6 +29,7 @@ The following emojis are used to highlight certain changes:
 ### Fixed
 
 - `gateway`: `X-Ipfs-Path` values no longer carry bytes that are invalid in an HTTP field value (Section 5.5 of RFC 9110). The header used to echo raw UnixFS file names, so non-ASCII paths arrived garbled or broke strict clients; when the header is enabled, it is now omitted for such paths, which only the percent-encoded `Ipfs-Uri` can carry. [#1209](https://github.com/ipfs/boxo/pull/1209)
+- `bootstrap`: the saved backup peer list is no longer dialed when no bootstrap peers are configured. [#1213](https://github.com/ipfs/boxo/pull/1213)
 
 ### Security
 
