@@ -29,8 +29,7 @@ The following emojis are used to highlight certain changes:
 ### Fixed
 
 - `gateway`: `X-Ipfs-Path` values no longer carry bytes that are invalid in an HTTP field value (Section 5.5 of RFC 9110). The header used to echo raw UnixFS file names, so non-ASCII paths arrived garbled or broke strict clients; when the header is enabled, it is now omitted for such paths, which only the percent-encoded `Ipfs-Uri` can carry. [#1209](https://github.com/ipfs/boxo/pull/1209)
-- ✨ `bootstrap`: `bootstrapRound` no longer consults the backup peer list when no bootstrap peers are configured. The backup list exists only as a recovery mechanism for when configured bootstrap peers are down (see #8856); with no configured peers there is nothing to recover from, so dialing stale backup peers persisted from previous runs is skipped. This lets a caller fully disable bootstrap dialing by setting an empty peer list (for example a local-only/offline node with `Routing.Type=none`), and works with runtime overrides such as `ipfs daemon --routing=none` that do not change the config file. Nodes that configure explicit `Bootstrap` peers are unaffected. [#1213](https://github.com/ipfs/boxo/pull/1213)
-
+- `bootstrap`: the saved backup peer list is no longer dialed when no bootstrap peers are configured. [#1213](https://github.com/ipfs/boxo/pull/1213)
 
 ### Security
 

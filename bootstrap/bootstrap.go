@@ -300,13 +300,9 @@ func bootstrapRound(ctx context.Context, host host.Host, cfg BootstrapConfig) er
 	peers := cfg.BootstrapPeers()
 
 	if len(peers) == 0 {
-		// No bootstrap peers are configured. The backup peer list exists only as
-		// a recovery mechanism for when configured bootstrap peers are down
-		// (see #8856). With no configured peers there is nothing to recover
-		// from, so we skip the backup list entirely. This lets a caller fully
-		// disable bootstrap dialing by setting an empty peer list (for example
-		// a local-only/offline node with Routing.Type=none), and avoids dialing
-		// stale backup peers persisted from previous runs.
+		// The backup list is a fallback for when configured bootstrap peers
+		// are unreachable (ipfs/kubo#8856). With no configured peers there is
+		// nothing to fall back from.
 		log.Debugf("%s bootstrap skipped -- no bootstrap peers configured", id)
 		return nil
 	}
