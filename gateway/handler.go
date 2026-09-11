@@ -636,7 +636,7 @@ func ipfsUriHeaderValue(contentPath path.Path) (string, bool) {
 	// value reproduces.
 	remainder := strings.TrimPrefix(contentPath.String(), "/"+segments[0]+"/"+segments[1])
 	if remainder != "" {
-		for _, segment := range strings.Split(remainder[1:], "/") {
+		for segment := range strings.SplitSeq(remainder[1:], "/") {
 			b.WriteByte('/')
 			b.WriteString(encodeIpfsUriSegment(segment))
 		}
