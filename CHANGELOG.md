@@ -25,7 +25,7 @@ The following emojis are used to highlight certain changes:
 - `gateway`: conformance CI runs [gateway-conformance v0.14.0](https://github.com/ipfs/gateway-conformance/releases/tag/v0.14.0), the first release with the IPIP-548 `Ipfs-Uri` tests. [#1209](https://github.com/ipfs/boxo/pull/1209)
 - updated Go in `go.mod` to 1.26.0
 - upgrade to `go-libp2p-kad-dht` [v0.42.2](https://github.com/libp2p/go-libp2p-kad-dht/releases/tag/v0.42.2)
-- upgrade to `go.opentelemetry.io` to [v1.46.0](https://github.com/open-telemetry/opentelemetry-go/releases/tag/v1.44.0)
+- upgrade `go.opentelemetry.io` to [v1.46.0](https://github.com/open-telemetry/opentelemetry-go/releases/tag/v1.44.0)
 
 ### Removed
 
