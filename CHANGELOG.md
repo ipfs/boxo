@@ -16,6 +16,23 @@ The following emojis are used to highlight certain changes:
 
 ### Added
 
+### Changed
+
+### Removed
+
+### Fixed
+
+### Security
+
+## [v0.43.0]
+
+> [!IMPORTANT]
+> This is a bug fix release. It carries a minor version bump because the gateway no longer sends the deprecated `X-Ipfs-Path` header by default, replaced by `Ipfs-Uri` ([IPIP-548](https://github.com/ipfs/specs/pull/548)). If you still need `X-Ipfs-Path`, set `Config.DeprecatedXIpfsPath` and call `Headers.WithDeprecatedXIpfsPath` before `Headers.ApplyCors`, and plan a migration to `Ipfs-Uri`.
+>
+> Shipyard's IPFS work ends on September 30, 2026. Until then we ship security and bug fix releases if any are absolutely needed and still possible. After that date, no one at Shipyard maintains Boxo. If you depend on Boxo, read [the announcement](https://ipshipyard.com/blog/2026-the-end-of-ipfs-at-shipyard/) and bring your transition questions to the [community forum](https://discuss.ipfs.tech/).
+
+### Added
+
 - ✨ `ipld/unixfs`: reads of both `PBNode` field orders are now covered by tests, and a documented low-level opt-in (`UnixFSProfile.PBNodeFieldOrder`, applied via `merkledag.DefaultPBNodeFieldOrder`) lets writers that need streaming-friendly blocks encode the `Data` field before `Links` per [IPIP-550](https://github.com/ipfs/specs/pull/550). Off by default and selected by no named profile: `UnixFS_v0_2015` and `UnixFS_v1_2025` pin the canonical links-first order explicitly, so defaults and existing CIDs are unchanged. Enabling data-first changes the CID of every dag-pb node that has both fields (directories, HAMT shards, multi-chunk file roots), is process-wide (`ApplyGlobals` affects every `merkledag.ProtoNode` encoded in the process, not only UnixFS nodes), and re-encodes links-first directories in the new order the next time they are opened through the directory API and stored again (for example MFS directories on their next access). [#1212](https://github.com/ipfs/boxo/pull/1212)
 - ✨ `gateway`: responses now include the `Ipfs-Uri` header with a canonical `ipfs://` or `ipns://` URI for the requested content path, and expose it via the default `Access-Control-Expose-Headers`. The header carries the content root in canonical form (base32 CIDv1 for `/ipfs/`, base36 CIDv1 for cryptographic `/ipns/` names, lowercase FQDN for DNSLink) with percent-encoded path segments, so clients get a value that is safe in HTTP field context regardless of bytes in the underlying path. [IPIP-548](https://github.com/ipfs/specs/pull/548) [#1209](https://github.com/ipfs/boxo/pull/1209)
 
@@ -27,14 +44,10 @@ The following emojis are used to highlight certain changes:
 - upgrade to `go-libp2p-kad-dht` [v0.42.2](https://github.com/libp2p/go-libp2p-kad-dht/releases/tag/v0.42.2)
 - upgrade to `go.opentelemetry.io` [v1.46.0](https://github.com/open-telemetry/opentelemetry-go/releases/tag/v1.46.0)
 
-### Removed
-
 ### Fixed
 
 - `gateway`: `X-Ipfs-Path` values no longer carry bytes that are invalid in an HTTP field value (Section 5.5 of RFC 9110). The header used to echo raw UnixFS file names, so non-ASCII paths arrived garbled or broke strict clients; when the header is enabled, it is now omitted for such paths, which only the percent-encoded `Ipfs-Uri` can carry. [#1209](https://github.com/ipfs/boxo/pull/1209)
 - `bootstrap`: the saved backup peer list is no longer dialed when no bootstrap peers are configured. [#1213](https://github.com/ipfs/boxo/pull/1213)
-
-### Security
 
 ## [v0.42.2]
 
