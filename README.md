@@ -36,6 +36,7 @@
   - [Release Process](#release-process)
   - [Why is the code coverage so bad?](#why-is-the-code-coverage-so-bad)
 - [General](#general)
+  - [Maintainer Info](#maintainer-info)
   - [Help](#help)
   - [What is the response time for issues or PRs filed?](#what-is-the-response-time-for-issues-or-prs-filed)
   - [What are some projects that depend on this project?](#what-are-some-projects-that-depend-on-this-project)
@@ -134,6 +135,15 @@ The code coverage of this repo is not currently representative of the actual tes
 
 ## General
 
+### Maintainer Info
+
+> [!IMPORTANT]
+> There is no dedicated maintainer at the moment.
+>
+> After Protocol Labs nucleation, the [Shipyard](https://ipshipyard.com/) team maintained this project in 2024, 2025 and 2026. Shipyard's IPFS maintenance work [ended on September 30, 2026](https://ipshipyard.com/blog/2026-the-end-of-ipfs-at-shipyard/).
+>
+> Bring support and transition questions to the [community forum](https://discuss.ipfs.tech/).
+
 ### Help
 
 If you suspect a bug or have technical questions, feel free to open an issue. 
@@ -142,7 +152,7 @@ For regular support, try [Community chat](https://docs.ipfs.tech/community/#chat
 
 ### What is the response time for issues or PRs filed?
 
-New issues and PRs to this repo are usually looked at on a weekly basis as part of [Shipyard's GO Triage triage](https://ipshipyard.notion.site/IPFS-Go-Triage-Boxo-Kubo-Rainbow-0ddee6b7f28d412da7dabe4f9107c29a). However, the response time may vary.
+There is no regular triage rotation. Issues and PRs are looked at when someone in the community picks them up, so response time varies.
 
 ### What are some projects that depend on this project?
 
