@@ -79,6 +79,21 @@ type Config struct {
 	// is being proxied by other service, which wants to use the error message.
 	DisableHTMLErrors bool
 
+	// DeprecatedXIpfsPath configures the gateway to send the legacy
+	// X-Ipfs-Path response header, deprecated by [IPIP-0548]. Disabled by
+	// default: the legacy value cannot represent all UnixFS file names (raw
+	// non-ASCII bytes are mangled per RFC 9110 field-value rules) and it is
+	// superseded by the Ipfs-Uri header, which is sent whenever the content
+	// root can be normalized. Enable only for backward compatibility with
+	// legacy consumers that still expect X-Ipfs-Path. When enabled, pair it
+	// with [Headers.WithDeprecatedXIpfsPath] so the header is also listed in
+	// Access-Control-Expose-Headers. Even when enabled, the header is
+	// omitted for content paths that contain bytes that cannot appear in an
+	// HTTP field value (Section 5.5 of RFC 9110), per [IPIP-0548].
+	//
+	// [IPIP-0548]: https://github.com/ipfs/specs/pull/548
+	DeprecatedXIpfsPath bool
+
 	// PublicGateways configures the behavior of known public gateways. Each key is
 	// a fully qualified domain name (FQDN). To be used with WithHostname.
 	PublicGateways map[string]*PublicGateway

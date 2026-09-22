@@ -3,6 +3,7 @@ package ipns
 import (
 	"bytes"
 	"crypto/rand"
+	"maps"
 	"testing"
 	"time"
 
@@ -526,10 +527,7 @@ func TestMetadataAPI(t *testing.T) {
 			"_custom_b": int64(42),
 		}))
 
-		got := make(map[string]MetadataValue)
-		for k, v := range rec.MetadataEntries() {
-			got[k] = v
-		}
+		got := maps.Collect(rec.MetadataEntries())
 		require.Len(t, got, 2)
 
 		s, err := got["_custom_a"].AsString()

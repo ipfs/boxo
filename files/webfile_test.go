@@ -36,7 +36,7 @@ func TestWebFile(t *testing.T) {
 		t.Fatalf("expected %q but got %q", content, string(body))
 	}
 	if actual := wf.Mode(); actual != mode {
-		t.Fatalf("expected file mode %q but got 0%q", mode, strconv.FormatUint(uint64(actual), 8))
+		t.Fatalf("expected file mode %O but got %O", mode, uint64(actual))
 	}
 	if actual := wf.ModTime(); !actual.Equal(mtime) {
 		t.Fatalf("expected last modified time %q but got %q", mtime, actual)

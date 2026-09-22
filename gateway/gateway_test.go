@@ -380,6 +380,101 @@ func TestHeaders(t *testing.T) {
 		test(dagCborResponseFormat, dagCborPath, dagCborRoots)
 	})
 
+	t.Run("Ipfs-Uri contains expected values", func(t *testing.T) {
+		test := func(responseFormat string, path string, uri string) {
+			t.Run(responseFormat+" "+path, func(t *testing.T) {
+				url := ts.URL + path
+				req := mustNewRequest(t, http.MethodGet, url, nil)
+				req.Header.Add("Accept", responseFormat)
+				res := mustDoWithoutRedirect(t, req)
+				_, err := io.Copy(io.Discard, res.Body)
+				require.NoError(t, err)
+				defer res.Body.Close()
+				require.Equal(t, http.StatusOK, res.StatusCode)
+				require.Equal(t, uri, res.Header.Get("Ipfs-Uri"))
+			})
+		}
+
+		test("", filePath, "ipfs://"+rootCID+"/subdir/fnord")
+		test("text/html", dirPath, "ipfs://"+rootCID+"/subdir/")
+		test("text/html", "/ipfs/"+rootCID+"/", "ipfs://"+rootCID+"/")
+		test("text/html", hamtFilePath, "ipfs://"+rootCID+"/hamt/685.txt")
+		test(dagJsonResponseFormat, dagCborPath, "ipfs://"+rootCID+"/subdir/dag-cbor-document")
+	})
+
+	t.Run("Ipfs-Uri is sent with 412 from Cache-Control: only-if-cached", func(t *testing.T) {
+		// Valid CID that is missing from the fixture, so only-if-cached
+		// returns 412 before the response format is known.
+		missingCID := "bafkreicm2cerwpdtah2rd7rxg5jcaqsj52blfuaprkurromr5y6p3a5zlu"
+		req := mustNewRequest(t, http.MethodGet, ts.URL+"/ipfs/"+missingCID, nil)
+		req.Header.Add("Cache-Control", "only-if-cached")
+		res := mustDoWithoutRedirect(t, req)
+		_, err := io.Copy(io.Discard, res.Body)
+		require.NoError(t, err)
+		defer res.Body.Close()
+		require.Equal(t, http.StatusPreconditionFailed, res.StatusCode)
+		require.Equal(t, "ipfs://"+missingCID, res.Header.Get("Ipfs-Uri"))
+	})
+
+	t.Run("Ipfs-Uri is sent with 400 from malformed Accept header", func(t *testing.T) {
+		req := mustNewRequest(t, http.MethodGet, ts.URL+filePath, nil)
+		req.Header.Add("Accept", "application/vnd.ipld.car; version=1; version=2")
+		res := mustDoWithoutRedirect(t, req)
+		_, err := io.Copy(io.Discard, res.Body)
+		require.NoError(t, err)
+		defer res.Body.Close()
+		require.Equal(t, http.StatusBadRequest, res.StatusCode)
+		require.Equal(t, "ipfs://"+rootCID+"/subdir/fnord", res.Header.Get("Ipfs-Uri"))
+	})
+
+	t.Run("X-Ipfs-Path is not sent by default", func(t *testing.T) {
+		req := mustNewRequest(t, http.MethodGet, ts.URL+filePath, nil)
+		res := mustDoWithoutRedirect(t, req)
+		_, err := io.Copy(io.Discard, res.Body)
+		require.NoError(t, err)
+		defer res.Body.Close()
+		require.Equal(t, http.StatusOK, res.StatusCode)
+		require.Empty(t, res.Header.Get("X-Ipfs-Path"))
+		require.NotContains(t, res.Header.Values("Access-Control-Expose-Headers"), "X-Ipfs-Path")
+		require.Contains(t, res.Header.Values("Access-Control-Expose-Headers"), "Ipfs-Uri")
+	})
+
+	t.Run("X-Ipfs-Path is sent when DeprecatedXIpfsPath is enabled", func(t *testing.T) {
+		ts := newTestServerWithConfig(t, backend, Config{
+			DeserializedResponses: true,
+			DeprecatedXIpfsPath:   true,
+		})
+		req := mustNewRequest(t, http.MethodGet, ts.URL+filePath, nil)
+		res := mustDoWithoutRedirect(t, req)
+		_, err := io.Copy(io.Discard, res.Body)
+		require.NoError(t, err)
+		defer res.Body.Close()
+		require.Equal(t, http.StatusOK, res.StatusCode)
+		require.Equal(t, filePath, res.Header.Get("X-Ipfs-Path"))
+		require.Equal(t, "ipfs://"+rootCID+"/subdir/fnord", res.Header.Get("Ipfs-Uri"))
+		require.Contains(t, res.Header.Values("Access-Control-Expose-Headers"), "X-Ipfs-Path")
+	})
+
+	t.Run("X-Ipfs-Path is omitted for field-value-unsafe paths even when DeprecatedXIpfsPath is enabled", func(t *testing.T) {
+		// The content path /ipfs/{cid}/łódź.txt contains raw non-ASCII
+		// bytes, which cannot appear in an HTTP field value (Section 5.5
+		// of RFC 9110), so the legacy header must be omitted despite the
+		// flag; Ipfs-Uri carries the percent-encoded path instead.
+		backend, root := newMockBackend(t, "dir-with-tricky-filenames.car")
+		ts := newTestServerWithConfig(t, backend, Config{
+			DeserializedResponses: true,
+			DeprecatedXIpfsPath:   true,
+		})
+		req := mustNewRequest(t, http.MethodGet, ts.URL+"/ipfs/"+root.String()+"/%C5%82%C3%B3d%C5%BA.txt", nil)
+		res := mustDoWithoutRedirect(t, req)
+		_, err := io.Copy(io.Discard, res.Body)
+		require.NoError(t, err)
+		defer res.Body.Close()
+		require.Equal(t, http.StatusOK, res.StatusCode)
+		require.Empty(t, res.Header.Get("X-Ipfs-Path"))
+		require.Equal(t, "ipfs://"+root.String()+"/%C5%82%C3%B3d%C5%BA.txt", res.Header.Get("Ipfs-Uri"))
+	})
+
 	t.Run("If-None-Match with wrong value forces path resolution, but X-Ipfs-Roots is correct (regression)", func(t *testing.T) {
 		test := func(responseFormat string, path string, roots string) {
 			t.Run(responseFormat, func(t *testing.T) {

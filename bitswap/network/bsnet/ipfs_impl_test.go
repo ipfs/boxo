@@ -933,14 +933,12 @@ func TestSendMessageManyCallersDoNotSerialize(t *testing.T) {
 	start := time.Now()
 	var wg sync.WaitGroup
 	errs := make(chan error, callers)
-	for i := 0; i < callers; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	for range callers {
+		wg.Go(func() {
 			if err := bsnet1.SendMessage(ctx, p2.ID(), msg); err != nil {
 				errs <- err
 			}
-		}()
+		})
 	}
 	wg.Wait()
 	close(errs)

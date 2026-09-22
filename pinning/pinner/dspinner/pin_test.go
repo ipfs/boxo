@@ -1605,12 +1605,10 @@ func TestCloseIdempotent(t *testing.T) {
 	require.NoError(t, p.Close())
 
 	var wg sync.WaitGroup
-	for i := 0; i < 8; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	for range 8 {
+		wg.Go(func() {
 			require.NoError(t, p.Close())
-		}()
+		})
 	}
 	wg.Wait()
 }
@@ -1766,29 +1764,25 @@ func TestCloseConcurrent(t *testing.T) {
 	nodes := makeNodes(4, dserv)
 
 	var wg sync.WaitGroup
-	for i := 0; i < 32; i++ {
+	for i := range 32 {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
 			_ = p.Pin(ctx, nodes[i%len(nodes)], true, "")
 		}(i)
 	}
-	for i := 0; i < 32; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	for range 32 {
+		wg.Go(func() {
 			streamCtx, cancel := context.WithCancel(ctx)
 			defer cancel()
 			for range p.RecursiveKeys(streamCtx, false) {
 			}
-		}()
+		})
 	}
-	for i := 0; i < 4; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	for range 4 {
+		wg.Go(func() {
 			_ = p.Close()
-		}()
+		})
 	}
 	wg.Wait()
 

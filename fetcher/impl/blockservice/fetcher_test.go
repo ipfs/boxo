@@ -2,6 +2,7 @@ package bsfetcher_test
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -174,8 +175,8 @@ func TestFetchIPLDPath(t *testing.T) {
 	explorePath := func(p string, s builder.SelectorSpec) builder.SelectorSpec {
 		return ssb.ExploreFields(func(efsb builder.ExploreFieldsSpecBuilder) { efsb.Insert(p, s) })
 	}
-	for i := len(path) - 1; i >= 0; i-- {
-		spec = explorePath(path[i], spec)
+	for _, p := range slices.Backward(path) {
+		spec = explorePath(p, spec)
 	}
 	sel := spec.Node()
 

@@ -125,8 +125,7 @@ func workDomain(ctx context.Context, r *DNSResolver, name string, res chan Async
 
 	txt, ttl, err := r.lookupTXT(ctx, name)
 	if err != nil {
-		var dnsErr *net.DNSError
-		if errors.As(err, &dnsErr) {
+		if dnsErr, ok := errors.AsType[*net.DNSError](err); ok {
 			// If no TXT records found, return same error as when no text
 			// records contain dnslink. Otherwise, return the actual error.
 			if dnsErr.IsNotFound {

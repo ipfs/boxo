@@ -253,7 +253,11 @@ func newTestServerWithConfigAndHeaders(t *testing.T, backend IPFSBackend, config
 	mux.Handle("/ipfs/", handler)
 	mux.Handle("/ipns/", handler)
 	handler = NewHostnameHandler(config, backend, mux)
-	handler = NewHeaders(headers).ApplyCors().Wrap(handler)
+	corsHeaders := NewHeaders(headers)
+	if config.DeprecatedXIpfsPath {
+		corsHeaders = corsHeaders.WithDeprecatedXIpfsPath()
+	}
+	handler = corsHeaders.ApplyCors().Wrap(handler)
 
 	ts := httptest.NewServer(handler)
 	t.Cleanup(func() { ts.Close() })

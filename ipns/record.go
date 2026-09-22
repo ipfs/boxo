@@ -485,7 +485,7 @@ func newRecord(sk ic.PrivKey, value []byte, seq uint64, eol time.Time, ttl time.
 		pb.Sequence = &seq
 		pb.Validity = []byte(util.FormatRFC3339(eol))
 		ttlNs := uint64(ttl.Nanoseconds())
-		pb.Ttl = proto.Uint64(ttlNs)
+		pb.Ttl = new(ttlNs)
 
 		// For now we still create V1 signatures. These are deprecated, and not
 		// used during verification anymore (Validate func requires SignatureV2),

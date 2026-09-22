@@ -106,9 +106,7 @@ func BenchmarkContended(b *testing.B) {
 
 			// Writer goroutine: calls markServed at the target rate.
 			if writeHz > 0 {
-				wg.Add(1)
-				go func() {
-					defer wg.Done()
+				wg.Go(func() {
 					interval := time.Second / time.Duration(writeHz)
 					t := time.NewTicker(interval)
 					defer t.Stop()
@@ -122,7 +120,7 @@ func BenchmarkContended(b *testing.B) {
 							i++
 						}
 					}
-				}()
+				})
 			}
 
 			var ops atomic.Uint64
