@@ -5,15 +5,17 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"os"
+	"path/filepath"
 	"strconv"
 	"sync"
 	"time"
 
+	"github.com/gammazero/cascadeq"
 	"github.com/ipfs/boxo/verifcid"
 	"github.com/ipfs/go-cid"
 	"github.com/ipfs/go-datastore"
 	"github.com/ipfs/go-datastore/namespace"
-	"github.com/ipfs/go-dsqueue"
 	logging "github.com/ipfs/go-log/v2"
 	metrics "github.com/ipfs/go-metrics-interface"
 	"github.com/multiformats/go-multihash"
@@ -39,10 +41,6 @@ const (
 
 	// batchReadSize is number of CIDs to read from provide queue in one visit.
 	batchReadSize = 2048
-
-	// dedupCacheSize is the number of CIDs which deduplication is done across.
-	// Set to 0 is disable deduplication.
-	dedupCacheSize = 0
 )
 
 var log = logging.Logger("provider")
@@ -65,7 +63,7 @@ type reprovider struct {
 	keyProviderLock sync.RWMutex
 	keyProvider     KeyChanFunc
 
-	q  *dsqueue.DSQueue
+	q  *cascadeq.Queue
 	ds datastore.Batching
 
 	maxReprovideBatchSize uint
@@ -87,6 +85,7 @@ type reprovider struct {
 	throughputMinimumProvides uint
 
 	keyPrefix datastore.Key
+	queueDir  string
 }
 
 var _ System = (*reprovider)(nil)
@@ -153,7 +152,14 @@ func New(ds datastore.Batching, opts ...Option) (System, error) {
 	}
 
 	s.ds = namespace.Wrap(ds, s.keyPrefix)
-	s.q = dsqueue.New(s.ds, "provide", dsqueue.WithDedupCacheSize(dedupCacheSize))
+
+	if s.queueDir == "" {
+		s.queueDir = filepath.Join(os.TempDir(), "providequeue")
+	}
+	s.q, err = cascadeq.New(s.queueDir)
+	if err != nil {
+		return nil, err
+	}
 
 	// This is after the options processing so we do not have to worry about leaking a context if there is an
 	// initialization error processing the options
@@ -216,6 +222,18 @@ func ProvideWorkerCount(n int) Option {
 	return func(system *reprovider) error {
 		if n > 0 {
 			system.provideWorkerCount = uint(n)
+		}
+		return nil
+	}
+}
+
+// QueueDir configures the base directory where the providr queue subdirectory
+// exists. If dir is set to "/tmp" then provide queue files are saved in the
+// "/tmp/providequeue" subdirectory.
+func QueueDir(dir string) Option {
+	return func(system *reprovider) error {
+		if dir != "" {
+			system.queueDir = dir
 		}
 		return nil
 	}
@@ -353,15 +371,13 @@ func (s *reprovider) provideWorker() {
 		provideOperation(s.ctx, c)
 	}
 
+	buf := make([][]byte, batchReadSize)
+
 	for data := range s.q.Out() {
 		provideCid(data)
-		buf, err := s.q.GetN(batchReadSize)
-		if err != nil {
-			log.Errorf("error fetching data from queue: %s", err)
-			continue
-		}
-		for _, data = range buf {
-			provideCid(data)
+		n := s.q.Drain(buf)
+		for i := range n {
+			provideCid(buf[i])
 		}
 	}
 }
@@ -434,9 +450,8 @@ func parseTime(b []byte) (time.Time, error) {
 	return time.Unix(0, tns), nil
 }
 
-// Clear removes all entries from the provide queue. Returns the number of CIDs
-// removed from the queue.
-func (s *reprovider) Clear() int {
+// Clear removes all entries from the provide queue.
+func (s *reprovider) Clear() error {
 	return s.q.Clear()
 }
 

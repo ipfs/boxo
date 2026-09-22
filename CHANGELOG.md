@@ -18,6 +18,7 @@ The following emojis are used to highlight certain changes:
 
 ### Changed
 
+- `provider`: legacy re/provider uses file-backed queue (cascadeq) instead of datastore-backed queue (go-dsqueue). This ensures, regardless of datastore implementation, that ordered retrieval of queued items is efficient and does not require reading all items into memory to sort them, which is possible if the datastore implementation does not provide efficient native ordered queries.
 - upgrade to `go-libp2p` [v0.50.0](https://github.com/libp2p/go-libp2p/releases/tag/v0.50.0)
 
 ### Removed
