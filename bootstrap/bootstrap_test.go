@@ -3,13 +3,20 @@ package bootstrap
 import (
 	"context"
 	"crypto/rand"
+	"errors"
 	"reflect"
+	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/libp2p/go-libp2p"
 	"github.com/libp2p/go-libp2p/core/crypto"
+	"github.com/libp2p/go-libp2p/core/host"
+	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/libp2p/go-libp2p/core/peerstore"
+	"github.com/libp2p/go-libp2p/core/routing"
 	"github.com/libp2p/go-libp2p/core/test"
 	ma "github.com/multiformats/go-multiaddr"
 )
@@ -327,4 +334,204 @@ func TestBootstrapRoundDialsBackupWhenBootstrapPeersPresent(t *testing.T) {
 	if !backupCalled {
 		t.Fatal("bootstrapRound did not consult the backup peer list despite configured bootstrap peers failing to connect")
 	}
+}
+
+const testPeriod = time.Minute
+
+// fakeHost implements only what bootstrapRound and
+// saveConnectedPeersAsTemporaryBootstrap use when cfg.BootstrapPeers returns
+// no peers, so no real libp2p goroutines run inside the synctest bubble.
+type fakeHost struct {
+	host.Host
+	network fakeNetwork
+}
+
+func (fakeHost) ID() peer.ID                { return "" }
+func (h fakeHost) Network() network.Network { return h.network }
+
+type fakeNetwork struct {
+	network.Network
+	peers []peer.ID
+}
+
+func (n fakeNetwork) Peers() []peer.ID             { return n.peers }
+func (fakeNetwork) Peerstore() peerstore.Peerstore { return fakePeerstore{} }
+
+type fakePeerstore struct{ peerstore.Peerstore }
+
+func (fakePeerstore) Addrs(peer.ID) []ma.Multiaddr {
+	return []ma.Multiaddr{ma.StringCast("/ip4/192.0.2.1/tcp/4001")}
+}
+
+type failingRouting struct {
+	routing.Routing
+	err error
+}
+
+func (r failingRouting) Bootstrap(context.Context) error { return r.err }
+
+// roundCounter counts calls to cfg.BootstrapPeers. Bootstrap calls it once up
+// front for its warning, then each round with too few connections calls it
+// once more. Each call takes delay, so a caller that does not wait for a call
+// observes it as not yet completed.
+type roundCounter struct {
+	delay     time.Duration
+	completed atomic.Int64
+}
+
+func (c *roundCounter) bootstrapPeers() []peer.AddrInfo {
+	time.Sleep(c.delay)
+	c.completed.Add(1)
+	return nil
+}
+
+// rounds returns the number of completed rounds, excluding the warning call.
+func (c *roundCounter) rounds() int {
+	return int(c.completed.Load()) - 1
+}
+
+func newTestConfig(counter *roundCounter, withBackup bool) BootstrapConfig {
+	cfg := DefaultBootstrapConfig
+	cfg.Period = testPeriod
+	cfg.BootstrapPeers = counter.bootstrapPeers
+	if withBackup {
+		load := func(context.Context) []peer.AddrInfo { return nil }
+		save := func(context.Context, []peer.AddrInfo) {}
+		cfg.SetBackupPeers(load, save)
+	}
+	return cfg
+}
+
+func startBootstrap(t *testing.T, h host.Host, cfg BootstrapConfig) {
+	t.Helper()
+	closer, err := Bootstrap("", h, nil, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := closer.Close(); err != nil {
+			t.Error(err)
+		}
+	})
+}
+
+var backupCases = []struct {
+	name       string
+	withBackup bool
+}{
+	{name: "without backup peers", withBackup: false},
+	{name: "with backup peers", withBackup: true},
+}
+
+func TestBootstrapReturnsAfterFirstRound(t *testing.T) {
+	for _, tt := range backupCases {
+		t.Run(tt.name, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				counter := &roundCounter{delay: time.Second}
+				startBootstrap(t, fakeHost{}, newTestConfig(counter, tt.withBackup))
+
+				if got := counter.rounds(); got != 1 {
+					t.Fatalf("Bootstrap returned after %d completed rounds, want 1", got)
+				}
+			})
+		})
+	}
+}
+
+func TestBootstrapRunsPeriodicRounds(t *testing.T) {
+	const periods = 5
+	for _, tt := range backupCases {
+		t.Run(tt.name, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				counter := &roundCounter{}
+				startBootstrap(t, fakeHost{}, newTestConfig(counter, tt.withBackup))
+
+				// Sleep off the tick boundary so the count is exact.
+				time.Sleep(periods*testPeriod + testPeriod/2)
+				synctest.Wait()
+
+				if got, want := counter.rounds(), 1+periods; got != want {
+					t.Fatalf("got %d rounds over %d periods, want %d: the first round plus one per period", got, periods, want)
+				}
+			})
+		})
+	}
+}
+
+// TestBootstrapCloseStopsRounds relies on synctest.Test failing when a
+// goroutine in the bubble is still blocked after the test function returns:
+// a supervisor that outlives Close fails the test.
+func TestBootstrapCloseStopsRounds(t *testing.T) {
+	for _, tt := range backupCases {
+		t.Run(tt.name, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				counter := &roundCounter{}
+				closer, err := Bootstrap("", fakeHost{}, nil, newTestConfig(counter, tt.withBackup))
+				if err != nil {
+					t.Fatal(err)
+				}
+
+				time.Sleep(testPeriod + testPeriod/2)
+				synctest.Wait()
+				if err := closer.Close(); err != nil {
+					t.Fatal(err)
+				}
+				synctest.Wait()
+				roundsAtClose := counter.rounds()
+
+				time.Sleep(5 * testPeriod)
+				synctest.Wait()
+
+				if ran := counter.rounds() - roundsAtClose; ran != 0 {
+					t.Fatalf("%d rounds ran after Close", ran)
+				}
+			})
+		})
+	}
+}
+
+func TestBootstrapRoutingErrorStopsSupervisor(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		wantErr := errors.New("routing bootstrap failed")
+		counter := &roundCounter{}
+		rt := failingRouting{err: wantErr}
+
+		closer, err := Bootstrap("", fakeHost{}, rt, newTestConfig(counter, false))
+		if !errors.Is(err, wantErr) {
+			t.Fatalf("got error %v, want %v", err, wantErr)
+		}
+		if closer != nil {
+			t.Fatal("got a closer from a failed Bootstrap")
+		}
+
+		time.Sleep(5 * testPeriod)
+		synctest.Wait()
+
+		if got := counter.rounds(); got != 1 {
+			t.Fatalf("got %d rounds, want 1: rounds ran after Bootstrap failed", got)
+		}
+	})
+}
+
+// TestBootstrapStartsBackupSaving checks that, with backup peers configured,
+// Bootstrap still starts the process that saves connected peers as backups.
+func TestBootstrapStartsBackupSaving(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		connected := test.RandPeerIDFatal(t)
+		h := fakeHost{network: fakeNetwork{peers: []peer.ID{connected}}}
+
+		var saved [][]peer.AddrInfo
+		cfg := newTestConfig(&roundCounter{}, false)
+		cfg.SetBackupPeers(
+			func(context.Context) []peer.AddrInfo { return nil },
+			func(_ context.Context, peers []peer.AddrInfo) { saved = append(saved, peers) },
+		)
+
+		startBootstrap(t, h, cfg)
+		synctest.Wait()
+
+		if len(saved) != 1 || len(saved[0]) != 1 || saved[0][0].ID != connected {
+			t.Fatalf("saved %v, want a single save of %s", saved, connected)
+		}
+	})
 }
