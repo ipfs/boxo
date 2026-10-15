@@ -18,11 +18,14 @@ The following emojis are used to highlight certain changes:
 
 ### Changed
 
+- `bootstrap`: `Bootstrap` now always returns after the first bootstrap round has completed, which can take up to `ConnectionTimeout` (10s by default). Previously it waited only when backup peers were configured, and returned right away otherwise. [#XXX](https://github.com/ipfs/boxo/pull/XXX)
 - upgrade to `go-libp2p` [v0.50.0](https://github.com/libp2p/go-libp2p/releases/tag/v0.50.0)
 
 ### Removed
 
 ### Fixed
+
+- `bootstrap`: periodic bootstrap rounds keep running every `Period` when no backup peers are configured, and `Close` now stops them. Previously only the first round ran, and its goroutine was never released, even after `Close`. [#XXX](https://github.com/ipfs/boxo/pull/XXX)
 
 ### Security
 

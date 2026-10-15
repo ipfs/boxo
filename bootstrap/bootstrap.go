@@ -118,8 +118,8 @@ func Bootstrap(id peer.ID, host host.Host, rt routing.Routing, cfg BootstrapConf
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	// Signal when first bootstrap round is complete, started independent of ticker.
-	doneWithRound := make(chan struct{})
+	// Closed when the first bootstrap round, started independent of the ticker, is complete.
+	firstRoundDone := make(chan struct{})
 
 	go func() {
 		// the periodic bootstrap function -- the connection supervisor
@@ -134,7 +134,7 @@ func Bootstrap(id peer.ID, host host.Host, rt routing.Routing, cfg BootstrapConf
 
 		// Run first round independent of ticker.
 		periodic()
-		<-doneWithRound
+		close(firstRoundDone)
 		if ctx.Err() != nil {
 			return
 		}
@@ -153,15 +153,15 @@ func Bootstrap(id peer.ID, host host.Host, rt routing.Routing, cfg BootstrapConf
 	if rt != nil {
 		if err := rt.Bootstrap(ctx); err != nil {
 			cancel()
-			close(doneWithRound)
 			return nil, err
 		}
 	}
 
+	<-firstRoundDone
+
 	// If loadBackupBootstrapPeers is not nil then saveBackupBootstrapPeers
 	// must also not be nil.
 	if cfg.loadBackupBootstrapPeers != nil {
-		doneWithRound <- struct{}{} // wait for first bootstrap
 		startSavePeersAsTemporaryBootstrapProc(ctx, cfg, host)
 	}
 
