@@ -3,7 +3,7 @@ module github.com/ipfs/boxo/examples
 go 1.26.0
 
 require (
-	github.com/ipfs/boxo v0.41.0
+	github.com/ipfs/boxo v0.43.0
 	github.com/ipfs/go-block-format v0.2.4
 	github.com/ipfs/go-cid v0.6.2
 	github.com/ipfs/go-datastore v0.9.2
@@ -37,10 +37,10 @@ require (
 	github.com/filecoin-project/go-clock v0.1.0 // indirect
 	github.com/flynn/noise v1.1.0 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.15 // indirect
-	github.com/gammazero/cascadeq v0.2.1 // indirect
+	github.com/gammazero/cascadeq v0.3.0 // indirect
 	github.com/gammazero/chanqueue v1.1.2 // indirect
-	github.com/gammazero/deque v1.2.1 // indirect
-	github.com/gammazero/fsutil v0.4.0 // indirect
+	github.com/gammazero/deque v1.2.2 // indirect
+	github.com/gammazero/fsutil v0.4.1 // indirect
 	github.com/go-logr/logr v1.4.4 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/google/gopacket v1.1.19 // indirect
@@ -73,7 +73,7 @@ require (
 	github.com/libp2p/go-doh-resolver v0.6.0 // indirect
 	github.com/libp2p/go-flow-metrics v0.3.0 // indirect
 	github.com/libp2p/go-libp2p-asn-util v0.4.1 // indirect
-	github.com/libp2p/go-libp2p-kad-dht v0.42.3-0.20260821055240-e41dae0c7945 // indirect
+	github.com/libp2p/go-libp2p-kad-dht v0.42.3-0.20261018063407-561b0a595e5d // indirect
 	github.com/libp2p/go-libp2p-kbucket v0.9.0 // indirect
 	github.com/libp2p/go-libp2p-record v0.3.1 // indirect
 	github.com/libp2p/go-libp2p-routing-helpers v0.7.6-0.20251016083611-f098f492895e // indirect
@@ -154,7 +154,7 @@ require (
 	golang.org/x/mod v0.41.0 // indirect
 	golang.org/x/net v0.59.0 // indirect
 	golang.org/x/sync v0.23.0 // indirect
-	golang.org/x/sys v0.48.0 // indirect
+	golang.org/x/sys v0.49.0 // indirect
 	golang.org/x/telemetry v0.0.0-20260908163034-4bcc4b2ee518 // indirect
 	golang.org/x/text v0.42.0 // indirect
 	golang.org/x/time v0.15.0 // indirect
