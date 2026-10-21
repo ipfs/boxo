@@ -16,7 +16,7 @@ The following emojis are used to highlight certain changes:
 
 ### Added
 
-- `bootstrap`: `BootstrapConfig.DeferFirstRound` runs the first bootstrap round after one `Period` instead of right away, and `Bootstrap` returns without waiting for it. Callers that bring up connections their own way at startup can then dial bootstrap peers only if that falls short. Off by default. [#XXX](https://github.com/ipfs/boxo/pull/XXX)
+- `bootstrap`: `BootstrapConfig.DeferFirstRound` runs the first bootstrap round after one `Period` instead of right away, and `Bootstrap` returns without waiting for it. Callers that bring up connections their own way at startup can then dial bootstrap peers only if that falls short. Off by default. [#1223](https://github.com/ipfs/boxo/pull/1223)
 
 ### Changed
 
