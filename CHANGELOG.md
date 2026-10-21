@@ -16,6 +16,8 @@ The following emojis are used to highlight certain changes:
 
 ### Added
 
+- `bootstrap`: `BootstrapConfig.DeferFirstRound` runs the first bootstrap round after one `Period` instead of right away, and `Bootstrap` returns without waiting for it. Callers that bring up connections their own way at startup can then dial bootstrap peers only if that falls short. Off by default. [#XXX](https://github.com/ipfs/boxo/pull/XXX)
+
 ### Changed
 
 - `bootstrap`: `Bootstrap` now always returns after the first bootstrap round has completed, which can take up to `ConnectionTimeout` (10s by default). Previously it waited only when backup peers were configured, and returned right away otherwise. [#1220](https://github.com/ipfs/boxo/pull/1220)
