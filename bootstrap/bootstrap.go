@@ -57,6 +57,13 @@ type BootstrapConfig struct {
 	// as backup bootstrap peers.
 	MaxBackupBootstrapSize int
 
+	// DeferFirstRound skips the round Bootstrap otherwise runs right away:
+	// the first round runs after Period, and Bootstrap returns without
+	// waiting for it. This suits callers that bring up connections their own
+	// way at startup, and only want bootstrap peers dialed if that falls
+	// short.
+	DeferFirstRound bool
+
 	saveBackupBootstrapPeers func(context.Context, []peer.AddrInfo)
 	loadBackupBootstrapPeers func(context.Context) []peer.AddrInfo
 }
@@ -118,7 +125,8 @@ func Bootstrap(id peer.ID, host host.Host, rt routing.Routing, cfg BootstrapConf
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	// Closed when the first bootstrap round, started independent of the ticker, is complete.
+	// Closed when the first bootstrap round, started independent of the ticker,
+	// is complete, or right away when cfg.DeferFirstRound skips it.
 	firstRoundDone := make(chan struct{})
 
 	go func() {
@@ -132,8 +140,10 @@ func Bootstrap(id peer.ID, host host.Host, rt routing.Routing, cfg BootstrapConf
 		ticker := time.NewTicker(cfg.Period)
 		defer ticker.Stop()
 
-		// Run first round independent of ticker.
-		periodic()
+		// Run first round independent of ticker, unless it waits for the first tick.
+		if !cfg.DeferFirstRound {
+			periodic()
+		}
 		close(firstRoundDone)
 		if ctx.Err() != nil {
 			return
@@ -193,8 +203,9 @@ func startSavePeersAsTemporaryBootstrapProc(ctx context.Context, cfg BootstrapCo
 		ticker := time.NewTicker(cfg.BackupBootstrapInterval)
 		defer ticker.Stop()
 
-		// Run the first round now (after the first bootstrap process has
-		// finished) as the SavePeersPeriod can be much longer than bootstrap.
+		// Save right away, as BackupBootstrapInterval can be much longer than
+		// Period. This follows the first bootstrap round, unless
+		// cfg.DeferFirstRound skipped it.
 		periodic()
 		if ctx.Err() != nil {
 			return

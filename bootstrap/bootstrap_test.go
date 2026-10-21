@@ -535,3 +535,30 @@ func TestBootstrapStartsBackupSaving(t *testing.T) {
 		}
 	})
 }
+
+func TestBootstrapDeferFirstRound(t *testing.T) {
+	const periods = 5
+	for _, tt := range backupCases {
+		t.Run(tt.name, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				counter := &roundCounter{}
+				cfg := newTestConfig(counter, tt.withBackup)
+				cfg.DeferFirstRound = true
+				startBootstrap(t, fakeHost{}, cfg)
+
+				synctest.Wait()
+				if got := counter.rounds(); got != 0 {
+					t.Fatalf("%d rounds ran before the first period, want 0", got)
+				}
+
+				// Sleep off the tick boundary so the count is exact.
+				time.Sleep(periods*testPeriod + testPeriod/2)
+				synctest.Wait()
+
+				if got := counter.rounds(); got != periods {
+					t.Fatalf("got %d rounds over %d periods, want one per period", got, periods)
+				}
+			})
+		})
+	}
+}
