@@ -22,6 +22,7 @@ func newObject(data []byte) blocks.Block {
 	return blocks.NewBlock(data)
 }
 
+
 func TestBlocks(t *testing.T) {
 	bstore := blockstore.NewBlockstore(dssync.MutexWrap(ds.NewMapDatastore()))
 	bs := New(bstore, offline.Exchange(bstore))
