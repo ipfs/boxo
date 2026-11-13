@@ -24,6 +24,8 @@ The following emojis are used to highlight certain changes:
 
 ### Fixed
 
+- `files`: `Filter.ShouldExclude` now honors `.gitignore` directory-only patterns (those ending in `/`, such as `bar/`), which previously matched nothing and let the directory through. [#1228](https://github.com/ipfs/boxo/pull/1228)
+
 ### Security
 
 ## [v0.43.0]
