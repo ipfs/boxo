@@ -45,5 +45,13 @@ func (filter *Filter) ShouldExclude(fileInfo os.FileInfo) (result bool) {
 	if !filter.IncludeHidden && isHidden(fileInfo) {
 		return true
 	}
+	// A .gitignore pattern ending in "/" matches directories only, and the
+	// matcher tells directories apart by a trailing slash on the path. Add one
+	// for directories so rules like "bar/" exclude the directory as documented.
+	// Patterns without a trailing slash still match the slashed path, so files
+	// and non-directory rules are unaffected.
+	if fileInfo.IsDir() {
+		path += "/"
+	}
 	return filter.Rules.MatchesPath(path)
 }
